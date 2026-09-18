@@ -81,18 +81,14 @@ class FaceDetector:
         # 1. Try MediaPipe BlazeFace
         if self.mp_detector is not None:
             try:
-                mp_results = self._detect_mediapipe(image_bgr, thresh)
-                if mp_results and len(mp_results) > 0:
-                    return mp_results
+                return self._detect_mediapipe(image_bgr, thresh)
             except Exception as e:
                 pass
 
         # 2. Try YuNet ONNX Detector
         if self.yunet_detector is not None:
             try:
-                yunet_results = self._detect_yunet(image_bgr, thresh)
-                if yunet_results and len(yunet_results) > 0:
-                    return yunet_results
+                return self._detect_yunet(image_bgr, thresh)
             except Exception:
                 pass
 
@@ -279,23 +275,33 @@ class FaceDetector:
         return results
 
     def _detect_haar(self, image_bgr: np.ndarray):
-        gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-        cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-        boxes = cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40))
-        results = []
-        for (x, y, w, h) in boxes:
-            results.append({
-                'box': (int(x), int(y), int(w), int(h)),
-                'confidence': 0.85,
-                'landmarks': [],
-                'orientation': 'FRONTAL',
-                'orientation_th': 'หน้าตรง',
-                'yaw_deg': 0.0,
-                'is_profile': False,
-                'raw_face': np.array([x, y, w, h, x+w*0.3, y+h*0.3, x+w*0.7, y+h*0.3, x+w*0.5, y+h*0.5, x+w*0.35, y+h*0.75, x+w*0.65, y+h*0.75, 0.85], dtype=np.float32),
-                'engine': 'haar'
-            })
-        return results
+        try:
+            if not hasattr(cv2, 'data') or not hasattr(cv2.data, 'haarcascades'):
+                return []
+            cascade_path = os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml')
+            if not os.path.exists(cascade_path):
+                return []
+            cascade = cv2.CascadeClassifier(cascade_path)
+            if cascade.empty():
+                return []
+            gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+            boxes = cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40))
+            results = []
+            for (x, y, w, h) in boxes:
+                results.append({
+                    'box': (int(x), int(y), int(w), int(h)),
+                    'confidence': 0.85,
+                    'landmarks': [],
+                    'orientation': 'FRONTAL',
+                    'orientation_th': 'หน้าตรง',
+                    'yaw_deg': 0.0,
+                    'is_profile': False,
+                    'raw_face': np.array([x, y, w, h, x+w*0.3, y+h*0.3, x+w*0.7, y+h*0.3, x+w*0.5, y+h*0.5, x+w*0.35, y+h*0.75, x+w*0.65, y+h*0.75, 0.85], dtype=np.float32),
+                    'engine': 'haar'
+                })
+            return results
+        except Exception:
+            return []
 
 
 detector = FaceDetector()

@@ -1,11 +1,12 @@
-﻿import sys
+import sys
 sys.stdout.reconfigure(encoding='utf-8')
 import urllib.request
 import json
 import cv2
 import base64
 
-dest = r"C:\Users\Changretta\.gemini\antigravity-ide\scratch\FaceVoice\backend\storage\test_face.jpg"
+import os
+dest = os.path.join(os.path.dirname(__file__), "backend", "storage", "test_face.jpg")
 img = cv2.imread(dest)
 _, buf = cv2.imencode('.jpg', img)
 b64_img = 'data:image/jpeg;base64,' + base64.b64encode(buf).decode()
