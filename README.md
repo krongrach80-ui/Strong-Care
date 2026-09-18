@@ -7,42 +7,52 @@
 
 ## 🌟 จุดเด่นของระบบ (Competition Highlights)
 
-1. **Anti-False Recognition System (ระบบป้องกันการทักทายผิด)**
-   - **Detection Quality Check**: ตรวจจับความเบลอ (Laplacian Variance), ความสว่างของแสง, และขนาดของใบหน้าก่อนนำไปประมวลผล
-   - **Temporal Multi-Frame Confirmation**: ต้องตรวจพบใบหน้าบุคคลเดิมต่อเนื่องตามจำนวนเฟรมที่กำหนด (ค่ามาตรฐาน: 3 เฟรม) ถึงจะเปลี่ยนสถานะเป็น **CONFIRMED** ช่วยขจัดปัญหา False Positives จากเฟรมที่มีการขยับหรือแสงสะท้อน
-   - **Voice Cooldown**: มีระบบหน่วงเวลา (เช่น 6 วินาที) ไม่เรียกชื่อซ้ำเมื่อยังยืนอยู่หน้ากล้อง เพื่อความเป็นธรรมชาติของเสียงพูด
+1. **Full-Stack Google MediaPipe AI Engine (60 FPS Real-time Inference)**
+   - **Google MediaPipe BlazeFace**: ตรวจจับใบหน้าและจุดชีวมิติระดับไมโคร ความเร็วสูงสุด **2.78 ms** ปราศจาก CDN (Zero-CDN Same-Origin Assets)
+   - **Google MediaPipe PoseLandmarker (33 จุดชีวมิติ)**: ตรวจจับโครงกระดูกร่างกาย 33 จุดแบบ 3 มิติ ติดตามการเคลื่อนไหวแบบ 1:1
 
-2. **AI Telemetry Debug Mode (HUD)**
-   - แสดงตัวชี้วัดความเร็วแบบสดบนหน้าจอ:
-     - **FPS (Camera vs AI Inference)**
-     - **Detection Latency (ms)**: เวลาตรวจจับใบหน้าด้วย OpenCV YuNet (เฉลี่ย 4–6 ms)
-     - **Embedding Latency (ms)**: เวลาสกัดเวกเตอร์ 128 มิติด้วย SFace (เฉลี่ย 8–12 ms)
-     - **Vector Search Latency (ms)**: เวลาค้นหา Cosine Similarity ในหน่วยความจำ (เฉลี่ย 0.5–1 ms)
-     - **Total Loop Latency (ms)**
+2. **ระบบตรวจจับแยกส่วนสรีระ 4 มิติ (4-Part Multi-Anatomical Tracking & HUD)**
+   - 🧠 **โครงหน้า (Face Structure)**: กรอบหน้า สันจมูก เบ้าตา ปาก มุมองศาใบหน้า (Holo Cyan `#38BDF8`)
+   - 🎽 **ลำตัว (Torso & Core)**: ไหล่ สะโพก แกนกระดูกสันหลัง (Spine) และ Cyber Mesh โปร่งแสง (Emerald `#10B981`)
+   - 💪 **แขนและมือ (Arms & Hands)**: ต้นแขน ปลายแขน ข้อศอก ข้อมือ ฝ่ามือ นิ้วมือ (Laser Orange `#F59E0B`)
+   - 🦵 **ขาและเท้า (Legs & Feet)**: สะโพก ข้อต่อหัวเข่า หน้าแข้ง ข้อเท้า ส้นเท้า และปลายเท้า (Cyber Purple `#A855F7`)
+   - **Live 4-Part Status Capsule**: แสดงสถานะการตรวจจับ 4 ส่วนแบบเรียลไทม์ `[ 🧠 โครงหน้า ] [ 🎽 ลำตัว ] [ 💪 แขน ] [ 🦵 ขา ]`
 
-3. **Multi-Angle Face Registration Wizard**
-   - ถ่ายภาพและสกัดเวกเตอร์ 5 มุมมอง (หน้าตรง, ซ้าย 15°, ขวา 15°, เงยหน้าเล็กน้อย, ก้มหน้าเล็กน้อย)
-   - สร้างโปรไฟล์รวมหลายเวกเตอร์ ทำให้จดจำใบหน้าได้แม่นยำแม้เอียงหน้า
+3. **Smart Gesture Recognition & Thai Voice Reaction**
+   - ตรวจจับท่าทางสรีระอัตโนมัติ:
+     - 🙏 **การไหว้ (Thai Greeting / Wai)**: ตรวจจับการพนมมือระดับอก/คาง ระบบ Chime และกล่าวต้อนรับภาษาไทยทันที
+     - 🙋‍♂️ / 🙋‍♀️ **การยกแขน / ชูมือ**: ตรวจจับความสูงของข้อมือเทียบกับระดับไหล่
+     - 👋 **การโบกมือ (Waving)**: ตรวจจับการยกและโบกมือทักทาย
+     - 🤔 **การสัมผัสใบหน้า / แตะคาง (Thinking)**
+     - 👉 / 👈 **การเอียงตัวซ้าย / ขวา (Leaning)**
+     - 🧍 **ลำตัวตั้งตรงมาตรฐาน (Upright & Centered)**
 
-4. **Hybrid AI Voice Synthesizer**
-   - รองรับ **Web Speech API** (เสียงภาษาไทยชัดเจน ไม่มีดีเลย์ รันในเบราว์เซอร์ได้ทันที)
+4. **ระบบตรวจจับใบหน้า e-KYC สไตล์ธนาคาร (Bank Smart Kiosk)**
+   - **Smooth Gradual Progress**: นับเปอร์เซ็นต์ชีวมิติ 0% → 100% อย่างต่อเนื่องนุ่มนวล
+   - **Face Distance Guidance**: คำนวณระยะห่างใบหน้าอัตโนมัติ แจ้งเตือน *"🔍 กรุณาเอาหน้าเข้ามาชิด"* พร้อมเสียงพูดภาษาไทยแนะนำ
+   - **6-Point Live Verification Checklist**: ตรวจสอบเกณฑ์ 6 จุดสดบนหน้าจอ (โครงหน้า, ลำตัว, แขน, ขา, ระยะห่าง, กึ่งกลางวงกลม)
+   - **Auto-Capture & Instant Register**: บันทึกภาพถ่ายชีวมิติอัตโนมัติเมื่อแถบความคืบหน้าครบ 100%
+
+5. **Anti-False Recognition & Temporal Multi-Frame Confirmation**
+   - ต้องตรวจพบใบหน้าบุคคลเดิมต่อเนื่องตามจำนวนเฟรมที่กำหนด (ค่ามาตรฐาน: 3 เฟรม) ถึงจะเปลี่ยนสถานะเป็น **CONFIRMED** ช่วยขจัดปัญหา False Positives จากแสงสะท้อนหรือการเคลื่อนไหวเร็ว
+   - **Voice Cooldown**: มีระบบหน่วงเวลาป้องกันการทักทายซ้ำซ้อน
+
+6. **Hybrid AI Voice Synthesizer**
+   - รองรับ **Web Speech API** (เสียงภาษาไทยชัดเจน รันบน Client 100%)
    - รองรับ **Edge-TTS / pyttsx3** บน Backend
-   - ปรับแต่ง Template ข้อความเสียงได้เองผ่านหน้า Settings (เช่น "สวัสดีครับ คุณ {name}", "ยินดีต้อนรับครับ {name}")
-
-5. **Auto Attendance Logging**
-   - บันทึกเวลาเข้างาน/เข้าเรียนอัตโนมัติเมื่อยืนยันตัวตนสำเร็จ
-   - ป้องกันการบันทึกซ้ำซ้อนภายในช่วงเวลา (Rate Limiting)
-   - ส่งออกข้อมูลเป็นไฟล์ CSV ได้ทันที
+   - ปรับแต่ง Template ข้อความเสียงได้อิสระ
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: React 18, TypeScript, Tailwind CSS, Lucide React, Glassmorphism Cyber Theme
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Lucide React, MediaPipe WASM/WebGL
 - **Backend**: Python 3.11, FastAPI, Async WebSockets, SQLAlchemy, Pydantic v2
-- **AI Models**:
-  - Face Detection: **OpenCV YuNet ONNX** (`face_detection_yunet_2023mar.onnx`)
-  - Face Embedding: **OpenCV SFace ONNX** (`face_recognition_sface_2021dec.onnx`)
+- **AI Engines & Models**:
+  - **Google MediaPipe BlazeFace** (`blaze_face_short_range.tflite`) - Face & Keypoints
+  - **Google MediaPipe PoseLandmarker** (`pose_landmarker_lite.task`) - 33 Skeletal Keypoints & Gestures
+  - **OpenCV SFace ONNX** (`face_recognition_sface_2021dec.onnx`) - 128-D Face Embeddings
+  - **OpenCV YuNet ONNX** (`face_detection_yunet_2023mar.onnx`) - High-Resolution Face Detector
 - **Database**:
   - ค่าเริ่มต้น: **SQLite (WAL Mode)** รันได้ทันที **100% Zero-Config**
   - รองรับการสลับไปใช้ **MariaDB/MySQL (XAMPP)** หรือ **PostgreSQL** เพียงเปลี่ยน `DATABASE_URL` ใน `.env`
