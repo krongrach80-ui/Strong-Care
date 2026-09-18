@@ -9,7 +9,7 @@ echo   Repository: https://github.com/krongrach80-ui/Strong-Care.git
 echo   Email: krongrach80@gmail.com
 echo ========================================================
 
-git push -u origin main
+git push origin main gh-pages
 
 if %ERRORLEVEL% equ 0 (
     echo.
