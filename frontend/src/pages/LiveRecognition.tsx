@@ -9,7 +9,9 @@ import {
   AlertCircle,
   Radio,
   Sliders,
-  Sparkles
+  Sparkles,
+  User,
+  Activity
 } from 'lucide-react';
 import { useCamera } from '../hooks/useCamera';
 import { useSpeech } from '../hooks/useSpeech';
@@ -36,6 +38,7 @@ export const LiveRecognition: React.FC = () => {
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
   const [showDebug, setShowDebug] = useState(true);
+  const [enableBodyTracking, setEnableBodyTracking] = useState(true);
 
   const [currentResult, setCurrentResult] = useState<any>(null);
   const [recentDetections, setRecentDetections] = useState<any[]>([]);
@@ -130,6 +133,149 @@ export const LiveRecognition: React.FC = () => {
       glowColor = 'rgba(245, 158, 11, 0.4)';
     }
 
+    // 1. FULL BODY & KINEMATIC POSE SKELETON (ตรวจจับทั้งร่างกาย)
+    if (enableBodyTracking && data.body && data.body.detected) {
+      const { x: bx, y: by, width: bw, height: bh } = data.body.box;
+
+      // 1.1 Full Body Cyber Corners & Boundary
+      ctx.save();
+      ctx.shadowColor = 'rgba(6, 182, 212, 0.5)';
+      ctx.shadowBlur = 18;
+      ctx.strokeStyle = '#06B6D4';
+      ctx.lineWidth = 3;
+
+      const bLen = Math.min(45, bw * 0.15);
+      // Top-Left Corner
+      ctx.beginPath();
+      ctx.moveTo(bx, by + bLen);
+      ctx.lineTo(bx, by);
+      ctx.lineTo(bx + bLen, by);
+      ctx.stroke();
+
+      // Top-Right Corner
+      ctx.beginPath();
+      ctx.moveTo(bx + bw - bLen, by);
+      ctx.lineTo(bx + bw, by);
+      ctx.lineTo(bx + bw, by + bLen);
+      ctx.stroke();
+
+      // Bottom-Left Corner
+      ctx.beginPath();
+      ctx.moveTo(bx, by + bh - bLen);
+      ctx.lineTo(bx, by + bh);
+      ctx.lineTo(bx + bLen, by + bh);
+      ctx.stroke();
+
+      // Bottom-Right Corner
+      ctx.beginPath();
+      ctx.moveTo(bx + bw - bLen, by + bh);
+      ctx.lineTo(bx + bw, by + bh);
+      ctx.lineTo(bx + bw, by + bh - bLen);
+      ctx.stroke();
+
+      // Faint cyber boundary
+      ctx.globalAlpha = 0.18;
+      ctx.strokeRect(bx, by, bw, bh);
+      ctx.restore();
+
+      // 1.2 Full Body Cyber Header Banner
+      const postureLabel = data.body.posture_th || data.body.posture || 'Upright';
+      const bodyHeader = `👤 HUMAN BODY DETECTED • ${postureLabel} (${data.body.coverage_percent || 0}% VIEW)`;
+      ctx.save();
+      ctx.font = 'bold 12px Outfit, sans-serif';
+      const bTextW = ctx.measureText(bodyHeader).width;
+      const bBannerH = 24;
+      const bBannerY = Math.max(8, by - bBannerH - 6);
+
+      ctx.fillStyle = 'rgba(9, 14, 26, 0.92)';
+      ctx.beginPath();
+      ctx.roundRect(bx, bBannerY, bTextW + 20, bBannerH, 4);
+      ctx.fill();
+
+      ctx.strokeStyle = '#06B6D4';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.fillStyle = '#22D3EE';
+      ctx.fillText(bodyHeader, bx + 10, bBannerY + 16);
+      ctx.restore();
+
+      // 1.3 Glowing Cyber Pose Skeleton (เส้นกระดูกและข้อต่อเรืองแสง)
+      if (data.body.keypoints && data.body.keypoints.length > 0) {
+        const kpMap: Record<string, { x: number; y: number; conf: number }> = {};
+        data.body.keypoints.forEach((kp: any) => {
+          kpMap[kp.id] = kp;
+        });
+
+        const bones = [
+          ['head', 'neck'],
+          ['neck', 'chest'],
+          ['neck', 'l_shoulder'],
+          ['neck', 'r_shoulder'],
+          ['l_shoulder', 'r_shoulder'],
+          ['l_shoulder', 'l_elbow'],
+          ['l_elbow', 'l_wrist'],
+          ['r_shoulder', 'r_elbow'],
+          ['r_elbow', 'r_wrist'],
+          ['chest', 'spine'],
+          ['spine', 'l_hip'],
+          ['spine', 'r_hip'],
+          ['l_hip', 'r_hip'],
+          ['l_shoulder', 'l_hip'],
+          ['r_shoulder', 'r_hip']
+        ];
+
+        // Draw Skeletal Lines
+        ctx.save();
+        ctx.shadowColor = 'rgba(56, 189, 248, 0.85)';
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.9)'; // Neon Sky Blue
+        ctx.lineWidth = 3.5;
+        ctx.lineCap = 'round';
+
+        bones.forEach(([idA, idB]) => {
+          const pA = kpMap[idA];
+          const pB = kpMap[idB];
+          if (pA && pB) {
+            ctx.beginPath();
+            ctx.moveTo(pA.x, pA.y);
+            ctx.lineTo(pB.x, pB.y);
+            ctx.stroke();
+          }
+        });
+        ctx.restore();
+
+        // Draw Joint Nodes (วงแหวนข้อต่อชีวมิติ)
+        ctx.save();
+        data.body.keypoints.forEach((kp: any) => {
+          if (kp.id === 'head' || kp.id === 'nose') return;
+          ctx.shadowColor = 'rgba(16, 185, 129, 0.95)';
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.arc(kp.x, kp.y, 5.5, 0, 2 * Math.PI);
+          ctx.fillStyle = '#10B981'; // Emerald glow
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.arc(kp.x, kp.y, 2.5, 0, 2 * Math.PI);
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fill();
+        });
+
+        // Biometric Core Pulse at Chest
+        const chest = kpMap['chest'];
+        if (chest) {
+          ctx.beginPath();
+          ctx.arc(chest.x, chest.y, 12, 0, 2 * Math.PI);
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
+    // 2. INNER FACE BOX & FACIAL LANDMARKS
     ctx.save();
     ctx.shadowColor = glowColor;
     ctx.shadowBlur = 15;
@@ -286,6 +432,18 @@ export const LiveRecognition: React.FC = () => {
           )}
 
           <button
+            onClick={() => setEnableBodyTracking(!enableBodyTracking)}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer shadow-sm ${
+              enableBodyTracking
+                ? 'bg-cyan-500 text-white border-cyan-400 font-bold shadow-cyan-500/20'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            <User className="w-3.5 h-3.5" />
+            <span>ตรวจจับทั้งร่างกาย: {enableBodyTracking ? 'เปิด' : 'ปิด'}</span>
+          </button>
+
+          <button
             onClick={() => setShowDebug(!showDebug)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer shadow-sm ${
               showDebug
@@ -329,6 +487,7 @@ export const LiveRecognition: React.FC = () => {
             telemetry={currentResult?.telemetry}
             status={currentResult?.status || 'no_face'}
             confidence={currentResult?.confidence || 0}
+            body={enableBodyTracking ? currentResult?.body : null}
           />
 
           <div className="absolute bottom-5 inset-x-0 flex justify-center z-20 pointer-events-none">

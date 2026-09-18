@@ -14,13 +14,15 @@ interface DebugOverlayProps {
   visible: boolean;
   status: string;
   confidence: number;
+  body?: any;
 }
 
 export const DebugOverlay: React.FC<DebugOverlayProps> = ({
   telemetry = {},
   visible,
   status,
-  confidence
+  confidence,
+  body
 }) => {
   if (!visible) return null;
 
@@ -70,6 +72,23 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
           </span>
           <span className="text-cyan-400">{totalMs} ms</span>
         </div>
+
+        {body?.detected && (
+          <div className="border-t border-cyan-500/20 pt-1.5 space-y-1">
+            <div className="flex justify-between items-center text-emerald-400">
+              <span className="flex items-center gap-1">👤 Body Track:</span>
+              <span className="font-bold">LOCKED ({body.keypoints?.length || 13} nodes)</span>
+            </div>
+            <div className="flex justify-between items-center text-cyan-300">
+              <span className="text-slate-400">Posture:</span>
+              <span className="font-bold">{body.posture_th || body.posture}</span>
+            </div>
+            <div className="flex justify-between items-center text-slate-400 text-[10px]">
+              <span>Coverage:</span>
+              <span className="text-slate-300">{body.coverage_percent}% View</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="mt-2.5 pt-2 border-t border-white/10 flex justify-between items-center text-[10px]">

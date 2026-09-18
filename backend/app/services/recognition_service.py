@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.models import RecognitionEvent, Attendance, User
 from ai.detector import detector
 from ai.recognizer import recognizer
+from ai.body_detector import body_detector
 from app.services.face_service import face_service
 from app.services.voice_service import voice_service
 
@@ -93,6 +94,7 @@ class RecognitionService:
             return {
                 'status': 'no_face',
                 'faces_detected': 0,
+                'body': None,
                 'confidence': 0.0,
                 'confirmed': False,
                 'confirmation_count': 0,
@@ -153,6 +155,9 @@ class RecognitionService:
             'center_y': round(face_center_y, 3),
             'message': distance_msg
         }
+
+        # 1.5 Body & Pose Detection (Whole Body Tracking)
+        body_info = body_detector.detect_body_and_pose(image_bgr, box, landmarks)
 
         # 2. Embedding Extraction
         t1 = time.perf_counter()
@@ -249,6 +254,7 @@ class RecognitionService:
                 'confidence': det_confidence,
                 'landmarks': landmarks
             },
+            'body': body_info,
             'voice_triggered': voice_triggered,
             'voice_text': voice_text,
             'attendance_recorded': attendance_recorded,
