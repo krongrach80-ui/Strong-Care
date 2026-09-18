@@ -25,13 +25,15 @@ import {
   User,
   Scan,
   Target,
-  Compass
+  Compass,
+  Activity
 } from 'lucide-react';
 import { useCamera } from '../hooks/useCamera';
 import { useSpeech } from '../hooks/useSpeech';
 import { useAuth } from '../context/AuthContext';
 import { api, AttendanceRecord } from '../services/api';
 import { useFaceDetection } from '../hooks/useFaceDetection';
+import { useBodyPose, POSE_CONNECTIONS_MAP, BodyPoseResult } from '../hooks/useBodyPose';
 
 interface SeniorKioskProps {
   onExit?: () => void;
@@ -54,6 +56,12 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
 
   // Edge AI Face Detection Hook
   const { faceResult: clientFaceResult } = useFaceDetection(videoRef, isActive);
+
+  // MediaPipe Pose & Body Gesture Detection
+  const [showBodySkeleton, setShowBodySkeleton] = useState<boolean>(true);
+  const [showChecklist, setShowChecklist] = useState<boolean>(true);
+  const { poseData: clientPoseData, latestPoseRef } = useBodyPose(videoRef, isActive);
+  const canvasPoseRef = useRef<HTMLCanvasElement | null>(null);
 
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [currentResult, setCurrentResult] = useState<any>(null);
@@ -94,6 +102,10 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
     ? currentResult
     : clientFaceResult;
 
+  const activePose = (currentResult?.body && currentResult.body.detected)
+    ? currentResult.body
+    : clientPoseData;
+
   const isConfirmed = activeKioskResult?.confirmed;
   const isRecognized = activeKioskResult?.status === 'recognized';
   const isUnknown = activeKioskResult?.status === 'unknown';
@@ -117,6 +129,100 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
     voiceGuideRef.current = voiceGuide;
     speakRef.current = speak;
   });
+
+  // Real-Time 60FPS MediaPipe Pose Skeleton Rendering on Canvas
+  useEffect(() => {
+    let animId: number;
+    const renderPose = () => {
+      const canvas = canvasPoseRef.current;
+      const video = videoRef.current;
+      if (canvas && video && video.videoWidth > 0) {
+        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+        }
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          const currentPose = latestPoseRef.current || (currentResult?.body?.detected ? currentResult.body : null);
+          if (showBodySkeleton && currentPose && currentPose.landmarks && currentPose.landmarks.length > 0) {
+            ctx.save();
+            const isArmUp = Boolean(currentPose.isArmRaised || currentPose.is_arm_raised);
+            ctx.shadowColor = isArmUp ? 'rgba(245, 158, 11, 0.9)' : 'rgba(16, 185, 129, 0.85)';
+            ctx.shadowBlur = 12;
+            ctx.strokeStyle = isArmUp ? '#F59E0B' : '#10B981';
+            ctx.lineWidth = 3.5;
+            ctx.lineCap = 'round';
+
+            const vw = canvas.width;
+            const vh = canvas.height;
+            const lms = currentPose.landmarks;
+
+            POSE_CONNECTIONS_MAP.forEach(([idxA, idxB]) => {
+              const ptA = lms[idxA];
+              const ptB = lms[idxB];
+              if (ptA && ptB && (ptA.visibility ?? 1) > 0.18 && (ptB.visibility ?? 1) > 0.18) {
+                ctx.beginPath();
+                ctx.moveTo(ptA.x * vw, ptA.y * vh);
+                ctx.lineTo(ptB.x * vw, ptB.y * vh);
+                ctx.stroke();
+              }
+            });
+
+            // Glowing Joint Nodes
+            lms.forEach((pt: any, idx: number) => {
+              if (idx >= 11 && idx <= 32 && (pt.visibility ?? 1) > 0.18) {
+                ctx.beginPath();
+                ctx.arc(pt.x * vw, pt.y * vh, 4.5, 0, 2 * Math.PI);
+                ctx.fillStyle = isArmUp ? '#FEF08A' : '#6EE7B7';
+                ctx.fill();
+                ctx.strokeStyle = '#022C22';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+              }
+            });
+            ctx.restore();
+          }
+        }
+      }
+      animId = requestAnimationFrame(renderPose);
+    };
+    animId = requestAnimationFrame(renderPose);
+    return () => cancelAnimationFrame(animId);
+  }, [showBodySkeleton, currentResult]);
+
+  // Voice greeting upon Wai (🙏 ไหว้) or Wave (👋 โบกมือ) gestures
+  const lastGestureVoiceRef = useRef<number>(0);
+  useEffect(() => {
+    if (!activePose?.detected) return;
+    const now = Date.now();
+    if (now - lastGestureVoiceRef.current < 8000) return;
+
+    const isWai = Boolean(
+      activePose.is_wai ||
+      activePose.posture?.toLowerCase().includes('wai') ||
+      activePose.posture_th?.includes('ไหว้')
+    );
+
+    const isWave = Boolean(
+      activePose.posture?.toLowerCase().includes('wave') ||
+      activePose.posture_th?.includes('โบกมือ')
+    );
+
+    if (isWai) {
+      lastGestureVoiceRef.current = now;
+      playChime('success');
+      if (voiceGuide) {
+        speak('สวัสดีค่ะ ยินดีต้อนรับค่ะ');
+      }
+    } else if (isWave) {
+      lastGestureVoiceRef.current = now;
+      playChime('success');
+      if (voiceGuide) {
+        speak('สวัสดีค่ะ โบกมือทักทายเรียบร้อยค่ะ');
+      }
+    }
+  }, [activePose?.posture_th, voiceGuide, playChime, speak]);
 
   useEffect(() => {
     scanModeRef.current = scanMode;
@@ -676,6 +782,14 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
         className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
       />
 
+      {/* 2. Real-Time MediaPipe Skeleton Overlay Canvas */}
+      <canvas
+        ref={canvasPoseRef}
+        className={`absolute inset-0 w-full h-full object-cover scale-x-[-1] pointer-events-none z-10 transition-opacity duration-300 ${
+          showBodySkeleton ? 'opacity-100' : 'opacity-0'
+        }`}
+      />
+
 
 
       {/* 3. Top Bank Header Bar */}
@@ -781,6 +895,34 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
             </span>
           </button>
 
+          {/* MediaPipe Pose Skeleton Toggle */}
+          <button
+            onClick={() => setShowBodySkeleton(!showBodySkeleton)}
+            title="เปิด/ปิดเส้นโครงร่างร่างกาย (MediaPipe Body Pose)"
+            className={`flex items-center gap-1.5 px-3 py-2.5 rounded-2xl text-xs font-bold backdrop-blur-md transition-all cursor-pointer border shadow-lg ${
+              showBodySkeleton
+                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400/50'
+                : 'bg-slate-900/80 text-slate-400 border-slate-700/80'
+            }`}
+          >
+            <Activity className="w-4 h-4 text-cyan-400" />
+            <span className="hidden lg:inline">โครงร่าง {showBodySkeleton ? 'ON' : 'OFF'}</span>
+          </button>
+
+          {/* Checklist Panel Toggle */}
+          <button
+            onClick={() => setShowChecklist(!showChecklist)}
+            title="แสดง/ซ่อน รายการตรวจสอบชีวมิติ"
+            className={`flex items-center gap-1.5 px-3 py-2.5 rounded-2xl text-xs font-bold backdrop-blur-md transition-all cursor-pointer border shadow-lg ${
+              showChecklist
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/50'
+                : 'bg-slate-900/80 text-slate-400 border-slate-700/80'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span className="hidden lg:inline">ตรวจสอบ {showChecklist ? 'ON' : 'OFF'}</span>
+          </button>
+
           {/* Voice Guide Toggle */}
           <button
             onClick={toggleVoiceGuide}
@@ -809,15 +951,15 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
         </div>
       </div>
 
-      {/* 4. Live Biometric Face Verification System Panel (ระบบตรวจสอบและวิเคราะห์ใบหน้าชีวมิติ) */}
-      {scanMode === 'REGISTER' && (
+      {/* 4. Live Biometric Face & Body Verification System Panel */}
+      {(scanMode === 'REGISTER' || showChecklist) && (
         <div className="absolute left-4 sm:left-6 md:left-8 top-20 sm:top-24 z-30 max-w-[280px] sm:max-w-[320px] w-full bg-slate-900/90 backdrop-blur-xl border border-cyan-500/40 rounded-3xl p-4 sm:p-5 shadow-[0_0_30px_rgba(6,182,212,0.15)] space-y-3 pointer-events-auto transition-all">
           {/* Panel Header */}
           <div className="flex items-center justify-between border-b border-slate-700/60 pb-2.5">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-emerald-400" />
               <span className="font-bold text-xs sm:text-sm text-white font-['Outfit']">
-                ระบบตรวจสอบใบหน้าชีวมิติ
+                ระบบตรวจสอบชีวมิติ & ท่าทาง
               </span>
             </div>
             <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono text-[10px] font-bold">
@@ -825,7 +967,7 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
             </span>
           </div>
 
-          {/* 5-Point Live Verification Checklist */}
+          {/* 6-Point Live Verification Checklist */}
           <div className="space-y-2 text-xs">
             {/* 1. Face Presence */}
             <div className="flex items-center justify-between">
@@ -909,6 +1051,19 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
                 {hasFace ? '✓ คมชัดระดับ HD' : '⏳ ตรวจสอบ'}
               </span>
             </div>
+
+            {/* 6. Body Pose & Gesture Detection */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-300">
+                <Activity className="w-3.5 h-3.5 text-slate-400" />
+                <span>6. โครงร่าง & ท่าทาง</span>
+              </div>
+              <span className={`font-bold text-[11px] flex items-center gap-1 ${
+                activePose?.detected ? 'text-emerald-400' : 'text-slate-500'
+              }`}>
+                {activePose?.detected ? `✓ ${activePose.posture_th || 'พบโครงร่าง'}` : '⏳ รอตรวจจับ'}
+              </span>
+            </div>
           </div>
 
           {/* Live Distance Gauge Bar */}
@@ -935,6 +1090,21 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
                 style={{ width: `${Math.min(100, Math.max(5, (distanceInfo?.sizeRatio || 0) * 100))}%` }}
               />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4.5 Live Body & Gesture Tracking Badge (MediaPipe 33-Keypoint Pose) */}
+      {activePose?.detected && (
+        <div className="absolute top-20 sm:top-24 right-4 sm:right-6 md:right-8 z-30 pointer-events-none animate-fadeIn">
+          <div className={`px-4 py-2 rounded-2xl border backdrop-blur-xl flex items-center gap-2.5 shadow-2xl font-mono text-xs font-black transition-all ${
+            (activePose.is_arm_raised || activePose.isArmRaised)
+              ? 'bg-amber-950/90 border-amber-400 text-amber-300 shadow-[0_0_25px_rgba(245,158,11,0.5)] animate-pulse'
+              : 'bg-slate-900/90 border-cyan-400/50 text-cyan-300 shadow-[0_0_20px_rgba(6,182,212,0.3)]'
+          }`}>
+            <span className={`w-2.5 h-2.5 rounded-full ${(activePose.is_arm_raised || activePose.isArmRaised) ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`} />
+            <span className="font-sans font-bold text-slate-300">ตรวจจับท่าทาง:</span>
+            <span className="text-white font-bold">{activePose.posture_th || 'ลำตัวตรงมาตรฐาน'}</span>
           </div>
         </div>
       )}
