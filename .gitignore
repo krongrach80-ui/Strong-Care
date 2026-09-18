@@ -1,0 +1,67 @@
+# Node / Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+.npm/
+
+# Python / Backend
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.env
+.venv
+venv/
+ENV/
+
+# Database & SQLite
+*.db
+*.sqlite
+*.sqlite3
+backend/facevoice.db
+backend/app.db
+
+# Storage / Uploads / Temporary images
+storage/
+backend/storage/faces/*
+!backend/storage/faces/.gitkeep
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS and IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Antigravity IDE Internal App Data
+antigravity-ide/
+.gemini/
+config/
+GEMINI.md

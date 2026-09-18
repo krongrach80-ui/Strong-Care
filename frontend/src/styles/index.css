@@ -1,0 +1,183 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* DataPulse Modern SaaS Light Canvas */
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background-color: #F8FAFC;
+    color: #0F172A;
+    background-image: 
+      radial-gradient(circle at 8% 8%, rgba(37, 99, 235, 0.05) 0px, transparent 40%),
+      radial-gradient(circle at 92% 10%, rgba(124, 58, 237, 0.05) 0px, transparent 45%),
+      radial-gradient(circle at 50% 30%, rgba(16, 185, 129, 0.03) 0px, transparent 50%),
+      linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Outfit', sans-serif;
+  }
+}
+
+/* Custom Light Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 8px;
+  border: 2px solid #F1F5F9;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Modern SaaS White Glassmorphism Cards */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.04), 0 0 1px 1px rgba(226, 232, 240, 0.7);
+}
+
+.glass-panel-matcha {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 12px 35px -5px rgba(15, 23, 42, 0.05), 0 0 1px 1px rgba(226, 232, 240, 0.8);
+}
+
+.glass-card-interactive {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.glass-card-interactive:hover {
+  transform: translateY(-2px);
+  border-color: #CBD5E1;
+  box-shadow: 0 16px 35px -8px rgba(15, 23, 42, 0.08), 0 0 1px 1px rgba(203, 213, 225, 0.8);
+}
+
+/* Iconic Electric Blue to Violet Text Gradient (Matching DataPulse Screenshot) */
+.text-gradient-pulse {
+  background: linear-gradient(135deg, #2563EB 0%, #4F46E5 45%, #7C3AED 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-purple {
+  background: linear-gradient(135deg, #2563EB 0%, #4F46E5 45%, #7C3AED 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-matcha {
+  background: linear-gradient(135deg, #059669 0%, #10B981 50%, #2563EB 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Subtle Ambient Lighting */
+.ambient-matcha-glow {
+  position: absolute;
+  width: 550px;
+  height: 550px;
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.05) 0%, transparent 70%);
+  pointer-events: none;
+  filter: blur(60px);
+}
+
+.ambient-purple-glow {
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.05) 0%, transparent 70%);
+  pointer-events: none;
+  filter: blur(60px);
+}
+
+/* Conversational chat container */
+.glass-panel-purple {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 16px 40px -8px rgba(15, 23, 42, 0.06), 0 0 1px 1px rgba(226, 232, 240, 0.8);
+}
+
+/* Button Animations */
+@keyframes ripple-ring {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.18);
+    opacity: 0.35;
+  }
+  100% {
+    transform: scale(1.38);
+    opacity: 0;
+  }
+}
+
+@keyframes shimmer-sweep {
+  0% {
+    transform: translateX(-150%) skewX(-20deg);
+  }
+  100% {
+    transform: translateX(250%) skewX(-20deg);
+  }
+}
+
+@keyframes float-pulse {
+  0%, 100% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-4px) scale(1.02);
+  }
+}
+
+.animate-ripple-1 {
+  animation: ripple-ring 2.8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+.animate-ripple-2 {
+  animation: ripple-ring 2.8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite 1.4s;
+}
+
+.animate-shimmer {
+  animation: shimmer-sweep 3s ease-in-out infinite;
+}
+
+.animate-float-pulse {
+  animation: float-pulse 3s ease-in-out infinite;
+}
+
+@keyframes laser-sweep {
+  0% {
+    top: 5%;
+    opacity: 0.3;
+  }
+  50% {
+    top: 92%;
+    opacity: 0.9;
+  }
+  100% {
+    top: 5%;
+    opacity: 0.3;
+  }
+}
+
+.animate-laser {
+  animation: laser-sweep 2.6s ease-in-out infinite;
+}
+
+
