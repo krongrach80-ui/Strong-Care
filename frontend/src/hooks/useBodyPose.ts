@@ -46,7 +46,9 @@ export const POSE_CONNECTIONS_MAP = [
   [15, 17], // Left Wrist to Left Pinky
   [15, 19], // Left Wrist to Left Index
   [16, 18], // Right Wrist to Right Pinky
-  [16, 20]  // Right Wrist to Right Index
+  [16, 20], // Right Wrist to Right Index
+  [0, 11],  // Neck/Nose to Left Shoulder
+  [0, 12],  // Neck/Nose to Right Shoulder
 ];
 
 export const useBodyPose = (
@@ -57,6 +59,7 @@ export const useBodyPose = (
   const [poseData, setPoseData] = useState<BodyPoseResult | null>(null);
   const latestPoseRef = useRef<BodyPoseResult | null>(null);
   const isProcessingRef = useRef<boolean>(false);
+  const lastSendTimeRef = useRef<number>(0);
   const animFrameIdRef = useRef<number | null>(null);
 
   // Smoothing buffers for jitter-free 60FPS motion
@@ -65,25 +68,40 @@ export const useBodyPose = (
 
   useEffect(() => {
     let isCancelled = false;
+    let retryTimer: any;
+    let retries = 0;
 
     const initPose = async () => {
+      if (isCancelled) return;
       try {
         const PoseConstructor = (window as any).Pose || MpPose;
         if (!PoseConstructor) {
-          console.warn('[Pose] Waiting for MediaPipe Pose to load...');
+          if (retries < 60) {
+            retries++;
+            retryTimer = setTimeout(initPose, 150);
+          } else {
+            console.warn('[Pose] Waiting for MediaPipe Pose timed out.');
+          }
           return;
         }
 
+        const basePath = (import.meta as any).env?.BASE_URL ? (import.meta as any).env.BASE_URL.replace(/\/$/, '') : '';
         const pose = new PoseConstructor({
-          locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`
+          locateFile: (file: string) => {
+            // Prioritize local repository assets on localhost or same origin
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+              return `${basePath}/mediapipe/pose/${file}`;
+            }
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`;
+          }
         });
 
         pose.setOptions({
-          modelComplexity: 1,
+          modelComplexity: 0, // Lite model: ultra fast, < 3MB, instant 60FPS in browser
           smoothLandmarks: true,
           enableSegmentation: false,
-          minDetectionConfidence: 0.45,
-          minTrackingConfidence: 0.45
+          minDetectionConfidence: 0.20, // Highly sensitive for dim lighting / webcam selfie
+          minTrackingConfidence: 0.20
         });
 
         pose.onResults((results: any) => {
@@ -110,7 +128,7 @@ export const useBodyPose = (
 
             const curVis = cur.visibility ?? 1;
             const prevVis = prev.visibility ?? 1;
-            if (curVis < 0.25 && prevVis > 0.35) {
+            if (curVis < 0.20 && prevVis > 0.30) {
               return { ...prev, visibility: prevVis * 0.9 };
             }
 
@@ -128,7 +146,7 @@ export const useBodyPose = (
           prevLandmarksRef.current = smoothedLms;
 
           // 2. Compute tight bounding box covering visible body parts
-          const validPoints = smoothedLms.filter((p) => (p.visibility ?? 1) > 0.30);
+          const validPoints = smoothedLms.filter((p) => (p.visibility ?? 1) > 0.20);
           const pts = validPoints.length > 4 ? validPoints : smoothedLms.slice(0, 25);
 
           const minX = Math.max(0, Math.min(...pts.map((p) => p.x)));
@@ -165,6 +183,8 @@ export const useBodyPose = (
           // 3. Side Profile & Orientation Detection
           const leftShoulder = smoothedLms[11];
           const rightShoulder = smoothedLms[12];
+          const leftElbow = smoothedLms[13];
+          const rightElbow = smoothedLms[14];
           const leftWrist = smoothedLms[15];
           const rightWrist = smoothedLms[16];
           const nose = smoothedLms[0];
@@ -197,7 +217,7 @@ export const useBodyPose = (
           }
 
           // 4. Compute Fallback Head Bounding Box (always tracks face even in profile)
-          const headPoints = smoothedLms.slice(0, 11).filter((p) => (p.visibility ?? 1) > 0.22);
+          const headPoints = smoothedLms.slice(0, 11).filter((p) => (p.visibility ?? 1) > 0.18);
           let headBox = null;
           if (headPoints.length >= 2) {
             const hMinX = Math.min(...headPoints.map((p) => p.x));
@@ -214,39 +234,76 @@ export const useBodyPose = (
             };
           }
 
-          // 5. Posture & Arm Gestures
-          const isLeftArmRaised = leftWrist && leftShoulder && leftWrist.y < leftShoulder.y - 0.05;
-          const isRightArmRaised = rightWrist && rightShoulder && rightWrist.y < rightShoulder.y - 0.05;
-          const isArmRaised = Boolean(isLeftArmRaised || isRightArmRaised);
+          // 5. Posture & Arm / Hand Gestures (รองรับทั้งยืน นั่งหน้าจอ โบกมือ ยกแขน ไหว้)
+          const isLeftHighRaise = leftWrist && leftShoulder && leftWrist.y < leftShoulder.y - 0.04;
+          const isRightHighRaise = rightWrist && rightShoulder && rightWrist.y < rightShoulder.y - 0.04;
+
+          const isLeftMidRaise = leftWrist && leftElbow && leftWrist.y < leftElbow.y - 0.03;
+          const isRightMidRaise = rightWrist && rightElbow && rightWrist.y < rightElbow.y - 0.03;
+
+          const isLeftArmRaised = Boolean(isLeftHighRaise || isLeftMidRaise);
+          const isRightArmRaised = Boolean(isRightHighRaise || isRightMidRaise);
+
+          // Thai Greeting / Wai (มือพนมเข้าหากันระดับอก/คาง)
+          const isWai = Boolean(
+            leftWrist && rightWrist &&
+            Math.hypot(leftWrist.x - rightWrist.x, leftWrist.y - rightWrist.y) < 0.14 &&
+            leftWrist.y < (leftShoulder?.y ?? 1) + 0.12
+          );
+
+          // Touching chin / head / thinking gesture
+          const isLeftTouchingFace = Boolean(
+            leftWrist && nose && Math.hypot(leftWrist.x - nose.x, leftWrist.y - nose.y) < 0.16
+          );
+          const isRightTouchingFace = Boolean(
+            rightWrist && nose && Math.hypot(rightWrist.x - nose.x, rightWrist.y - nose.y) < 0.16
+          );
+
+          const isArmRaised = Boolean(isLeftArmRaised || isRightArmRaised || isWai);
 
           let posture = 'Upright & Centered';
           let posture_th = 'ลำตัวตรงมาตรฐาน';
 
-          if (isLeftArmRaised && isRightArmRaised) {
-            posture = 'Both Arms Raised!';
-            posture_th = 'ยกแขนทั้งสองข้าง!';
-          } else if (isLeftArmRaised) {
-            posture = 'Left Arm Raised';
-            posture_th = 'ยกแขนซ้าย';
-          } else if (isRightArmRaised) {
-            posture = 'Right Arm Raised';
-            posture_th = 'ยกแขนขวา';
+          if (isWai) {
+            posture = 'Wai / Thai Greeting';
+            posture_th = '🙏 ไหว้ / ทักทาย';
+          } else if (isLeftHighRaise && isRightHighRaise) {
+            posture = 'Both Arms Raised High!';
+            posture_th = '🙌 ยกแขนทั้งสองข้าง!';
+          } else if (isLeftArmRaised && isRightArmRaised) {
+            posture = 'Both Hands Raised';
+            posture_th = '👐 ยกมือทั้งสองข้าง';
+          } else if (isLeftTouchingFace || isRightTouchingFace) {
+            posture = 'Hand to Face / Thinking';
+            posture_th = '🤔 แตะคาง / ใบหน้า';
+          } else if (isLeftHighRaise) {
+            posture = 'Left Arm Raised High';
+            posture_th = '🙋‍♀️ ชูแขนซ้าย';
+          } else if (isRightHighRaise) {
+            posture = 'Right Arm Raised High';
+            posture_th = '🙋‍♂️ ชูแขนขวา';
+          } else if (isLeftMidRaise) {
+            posture = 'Left Hand Waving';
+            posture_th = '👋 ยกมือซ้าย / โบกมือ';
+          } else if (isRightMidRaise) {
+            posture = 'Right Hand Waving';
+            posture_th = '👋 ยกมือขวา / โบกมือ';
           } else if (isProfile) {
             if (orientation === 'PROFILE_LEFT') {
               posture = 'Facing Left (Profile)';
-              posture_th = 'หันข้างซ้าย (ตรวจจับแม่นยำ)';
+              posture_th = '🔄 หันข้างซ้าย (ตรวจจับแม่นยำ)';
             } else {
               posture = 'Facing Right (Profile)';
-              posture_th = 'หันข้างขวา (ตรวจจับแม่นยำ)';
+              posture_th = '🔄 หันข้างขวา (ตรวจจับแม่นยำ)';
             }
           } else if (leftShoulder && rightShoulder) {
             const tilt = leftShoulder.y - rightShoulder.y;
-            if (tilt > 0.08) {
+            if (tilt > 0.07) {
               posture = 'Leaning Left';
-              posture_th = 'เอียงซ้าย';
-            } else if (tilt < -0.08) {
+              posture_th = '👉 เอียงตัวไปทางซ้าย';
+            } else if (tilt < -0.07) {
               posture = 'Leaning Right';
-              posture_th = 'เอียงขวา';
+              posture_th = '👈 เอียงตัวไปทางขวา';
             }
           }
 
@@ -276,6 +333,7 @@ export const useBodyPose = (
 
     return () => {
       isCancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
       if (poseRef.current) {
         try {
           poseRef.current.close();
@@ -284,7 +342,7 @@ export const useBodyPose = (
     };
   }, [videoRef]);
 
-  // Frame processing loop
+  // Frame processing loop (Anti-Deadlock 60FPS Watchdog)
   useEffect(() => {
     if (!enabled) return;
 
@@ -295,18 +353,28 @@ export const useBodyPose = (
 
       const video = videoRef.current;
       const pose = poseRef.current;
+      const now = performance.now();
+
+      // Watchdog: If processing lock is held > 600ms, unlock immediately
+      if (isProcessingRef.current && now - lastSendTimeRef.current > 600) {
+        isProcessingRef.current = false;
+      }
 
       if (
         video &&
         video.readyState >= 2 &&
+        video.videoWidth > 0 &&
         !video.paused &&
         pose &&
         !isProcessingRef.current
       ) {
         try {
           isProcessingRef.current = true;
+          lastSendTimeRef.current = now;
           await pose.send({ image: video });
         } catch (err) {
+          // ignore transient frame send errors
+        } finally {
           isProcessingRef.current = false;
         }
       }

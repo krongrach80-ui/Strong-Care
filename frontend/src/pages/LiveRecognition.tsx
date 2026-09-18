@@ -49,7 +49,7 @@ export const LiveRecognition: React.FC = () => {
 
   // Client-Side 60FPS MediaPipe Face & Pose Tracking (เสถียรภาพสูงระดับโปรดักชัน)
   const { faceResult: clientFaceResult, latestFaceRef } = useFaceDetection(videoRef, isActive);
-  const { poseData, latestPoseRef } = useBodyPose(videoRef, enableBodyTracking);
+  const { poseData, latestPoseRef } = useBodyPose(videoRef, enableBodyTracking && isActive);
   const lastResultRef = useRef<any>(null);
 
   const [currentResult, setCurrentResult] = useState<any>(null);
@@ -383,8 +383,8 @@ export const LiveRecognition: React.FC = () => {
       const ptB = lms[idxB];
       if (
         ptA && ptB &&
-        (ptA.visibility ?? 1) > 0.35 &&
-        (ptB.visibility ?? 1) > 0.35
+        (ptA.visibility ?? 1) > 0.18 &&
+        (ptB.visibility ?? 1) > 0.18
       ) {
         ctx.beginPath();
         ctx.moveTo(ptA.x * vw, ptA.y * vh);
@@ -397,7 +397,7 @@ export const LiveRecognition: React.FC = () => {
     // Real-time Joint Nodes
     ctx.save();
     lms.forEach((pt, idx) => {
-      if (idx >= 11 && idx <= 32 && (pt.visibility ?? 1) > 0.35) {
+      if (idx >= 11 && idx <= 32 && (pt.visibility ?? 1) > 0.18) {
         const px = pt.x * vw;
         const py = pt.y * vh;
 
@@ -840,6 +840,21 @@ export const LiveRecognition: React.FC = () => {
               body={enableBodyTracking ? (poseData || activeResult?.body) : null}
             />
 
+            {/* Live Gesture & Posture Feedback Pill (Theater Mode) */}
+            {enableBodyTracking && poseData?.detected && (
+              <div className="absolute top-4 left-4 sm:left-auto sm:right-56 z-20 pointer-events-none animate-fadeIn">
+                <div className={`px-4 py-2 rounded-2xl border backdrop-blur-xl flex items-center gap-2 shadow-2xl font-mono text-xs font-black transition-all ${
+                  poseData.isArmRaised
+                    ? 'bg-amber-950/90 border-amber-400 text-amber-300 shadow-[0_0_25px_rgba(245,158,11,0.5)] animate-pulse'
+                    : 'bg-slate-950/90 border-cyan-400/50 text-cyan-300 shadow-[0_0_20px_rgba(6,182,212,0.3)]'
+                }`}>
+                  <span className={`w-2.5 h-2.5 rounded-full ${poseData.isArmRaised ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`} />
+                  <span className="font-sans font-bold text-slate-300">ตรวจจับท่าทาง:</span>
+                  <span className="text-white font-bold">{poseData.posture_th}</span>
+                </div>
+              </div>
+            )}
+
             <div className="absolute bottom-5 inset-x-0 flex justify-center z-20 pointer-events-none">
               <ConfirmationBadge
                 status={activeResult?.status || 'no_face'}
@@ -1020,6 +1035,21 @@ export const LiveRecognition: React.FC = () => {
               confidence={activeResult?.confidence || 0}
               body={enableBodyTracking ? (poseData || activeResult?.body) : null}
             />
+
+            {/* Live Gesture & Posture Feedback Pill (Split Mode) */}
+            {enableBodyTracking && poseData?.detected && (
+              <div className="absolute top-4 left-4 sm:left-auto sm:right-56 z-20 pointer-events-none animate-fadeIn">
+                <div className={`px-4 py-2 rounded-2xl border backdrop-blur-xl flex items-center gap-2 shadow-2xl font-mono text-xs font-black transition-all ${
+                  poseData.isArmRaised
+                    ? 'bg-amber-950/90 border-amber-400 text-amber-300 shadow-[0_0_25px_rgba(245,158,11,0.5)] animate-pulse'
+                    : 'bg-slate-950/90 border-cyan-400/50 text-cyan-300 shadow-[0_0_20px_rgba(6,182,212,0.3)]'
+                }`}>
+                  <span className={`w-2.5 h-2.5 rounded-full ${poseData.isArmRaised ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`} />
+                  <span className="font-sans font-bold text-slate-300">ตรวจจับท่าทาง:</span>
+                  <span className="text-white font-bold">{poseData.posture_th}</span>
+                </div>
+              </div>
+            )}
 
             <div className="absolute bottom-5 inset-x-0 flex justify-center z-20 pointer-events-none">
               <ConfirmationBadge

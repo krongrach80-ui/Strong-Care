@@ -132,6 +132,7 @@ export const useFaceDetection = (
 ) => {
   const detectorRef = useRef<any>(null);
   const isRunningRef = useRef<boolean>(false);
+  const lastSendTimeRef = useRef<number>(0);
   const trackerRef = useRef<StableBoxTracker>(new StableBoxTracker());
   const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -191,8 +192,14 @@ export const useFaceDetection = (
           return;
         }
 
+        const basePath = (import.meta as any).env?.BASE_URL ? (import.meta as any).env.BASE_URL.replace(/\/$/, '') : '';
         const faceDetection = new FaceDetectionConstructor({
-          locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4.1646425229/${file}`
+          locateFile: (file: string) => {
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+              return `${basePath}/mediapipe/face_detection/${file}`;
+            }
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4.1646425229/${file}`;
+          }
         });
 
         faceDetection.setOptions({
@@ -451,15 +458,23 @@ export const useFaceDetection = (
     const processLoop = async () => {
       const video = videoRef.current;
       const detector = detectorRef.current;
+      const now = performance.now();
+
+      // Watchdog: If frame send lock is held > 600ms, unlock
+      if (isRunningRef.current && now - lastSendTimeRef.current > 600) {
+        isRunningRef.current = false;
+      }
 
       if (
         video &&
         video.readyState >= 2 &&
         video.videoWidth > 0 &&
+        !video.paused &&
         detector &&
         !isRunningRef.current
       ) {
         isRunningRef.current = true;
+        lastSendTimeRef.current = now;
         try {
           // Offscreen adaptive canvas enhancement for dark rooms / low-light conditions
           if (!offscreenCanvasRef.current) {
@@ -480,6 +495,8 @@ export const useFaceDetection = (
             await detector.send({ image: video });
           }
         } catch (err) {
+          // send error
+        } finally {
           isRunningRef.current = false;
         }
       }
