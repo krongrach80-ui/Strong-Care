@@ -8,25 +8,15 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4.1646425229/face_detection.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js" crossorigin="anonymous"></script>
     <script>
-      // Fallback to local files if CDN fails or is blocked
       (function() {
-        var base = (window.location.pathname.indexOf('/Strong-Care') !== -1) ? '/Strong-Care' : '';
-        if (!window.FaceDetection) {
-          var s1 = document.createElement('script');
-          s1.src = base + '/mediapipe/face_detection/face_detection.js';
-          document.head.appendChild(s1);
-        }
-        if (!window.Pose) {
-          var s2 = document.createElement('script');
-          s2.src = base + '/mediapipe/pose/pose.js';
-          document.head.appendChild(s2);
-        }
+        var isGh = (window.location.pathname.indexOf('/Strong-Care') !== -1) || (window.location.hostname.indexOf('github.io') !== -1);
+        var base = isGh ? (window.location.origin + '/Strong-Care') : '';
+        document.write('<script src="' + base + '/mediapipe/face_detection/face_detection.js"><\/script>');
+        document.write('<script src="' + base + '/mediapipe/pose/pose.js"><\/script>');
       })();
     </script>
-    <script type="module" crossorigin src="./assets/index-Cio0TTws.js"></script>
+    <script type="module" crossorigin src="./assets/index-tk0rw0HV.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-GXSoJXsI.css">
   </head>
   <body class="bg-background text-slate-100 font-sans antialiased selection:bg-emerald-500 selection:text-white min-h-screen overflow-x-hidden">
