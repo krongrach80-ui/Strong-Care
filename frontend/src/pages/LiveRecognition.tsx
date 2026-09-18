@@ -18,6 +18,7 @@ import { useSpeech } from '../hooks/useSpeech';
 import { DebugOverlay } from '../components/DebugOverlay';
 import { ConfirmationBadge } from '../components/ConfirmationBadge';
 import { api } from '../services/api';
+import { useBodyPose, POSE_CONNECTIONS_MAP, BodyPoseResult } from '../hooks/useBodyPose';
 
 export const LiveRecognition: React.FC = () => {
   const {
@@ -39,6 +40,9 @@ export const LiveRecognition: React.FC = () => {
   const [wsConnected, setWsConnected] = useState(false);
   const [showDebug, setShowDebug] = useState(true);
   const [enableBodyTracking, setEnableBodyTracking] = useState(true);
+
+  const { poseData, latestPoseRef } = useBodyPose(videoRef, enableBodyTracking);
+  const lastResultRef = useRef<any>(null);
 
   const [currentResult, setCurrentResult] = useState<any>(null);
   const [recentDetections, setRecentDetections] = useState<any[]>([]);
@@ -82,6 +86,7 @@ export const LiveRecognition: React.FC = () => {
   }, []);
 
   const handleRecognitionResult = (data: any) => {
+    lastResultRef.current = data;
     setCurrentResult(data);
 
     if (data.voice_triggered && data.voice_text) {
@@ -100,24 +105,200 @@ export const LiveRecognition: React.FC = () => {
         return [item, ...prev.slice(0, 7)];
       });
     }
-
-    drawFaceOverlay(data);
   };
 
-  const drawFaceOverlay = (data: any) => {
+  // Continuous 60FPS Render Loop (ขยับตามร่างกาย 100% เรียลไทม์)
+  useEffect(() => {
+    let animId: number;
+
+    const renderLoop = () => {
+      renderUnifiedOverlay();
+      animId = requestAnimationFrame(renderLoop);
+    };
+
+    animId = requestAnimationFrame(renderLoop);
+    return () => cancelAnimationFrame(animId);
+  }, [enableBodyTracking]);
+
+  const renderUnifiedOverlay = () => {
     const canvas = canvasOverlayRef.current;
     const video = videoRef.current;
     if (!canvas || !video || video.videoWidth === 0) return;
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+    }
+
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (!data.box || data.status === 'no_face') return;
+    const faceData = lastResultRef.current;
+    const currentPose = latestPoseRef.current;
 
+    // 1. Live Dynamic MediaPipe Pose Skeleton (ขยับตามร่างกายจริง 100%)
+    if (enableBodyTracking) {
+      if (currentPose && currentPose.detected && currentPose.landmarks && currentPose.landmarks.length > 0) {
+        drawLiveMediaPipePose(ctx, currentPose, canvas.width, canvas.height, faceData);
+      } else if (faceData?.body?.detected) {
+        drawFallbackKinematicBody(ctx, faceData.body, faceData.confirmed);
+      }
+    }
+
+    // 2. Face Box and Landmarks
+    if (faceData && faceData.box && faceData.status !== 'no_face') {
+      drawFaceBoxOverlay(ctx, faceData);
+    }
+  };
+
+  const drawLiveMediaPipePose = (
+    ctx: CanvasRenderingContext2D,
+    pose: BodyPoseResult,
+    vw: number,
+    vh: number,
+    faceData: any
+  ) => {
+    const lms = pose.landmarks;
+    const isConfirmed = faceData?.confirmed;
+    const strokeColor = isConfirmed ? '#10B981' : '#06B6D4';
+    const glowColor = isConfirmed ? 'rgba(16, 185, 129, 0.6)' : 'rgba(6, 182, 212, 0.6)';
+
+    // Dynamic Body Bounding Box that expands/contracts with arms
+    const { x: bx, y: by, width: bw, height: bh } = pose.box;
+    ctx.save();
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = 18;
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 3;
+
+    const bLen = Math.min(45, bw * 0.15);
+    // 4 Cyber Corners
+    ctx.beginPath();
+    ctx.moveTo(bx, by + bLen); ctx.lineTo(bx, by); ctx.lineTo(bx + bLen, by);
+    ctx.moveTo(bx + bw - bLen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + bLen);
+    ctx.moveTo(bx, by + bh - bLen); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + bLen, by + bh);
+    ctx.moveTo(bx + bw - bLen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - bLen);
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.15;
+    ctx.strokeRect(bx, by, bw, bh);
+    ctx.restore();
+
+    // Cyber Header Banner with real-time gesture tracking
+    const gestureText = pose.isArmRaised
+      ? `⚡ ${pose.posture_th} (DETECTED)`
+      : `👤 LIVE POSE: ${pose.posture_th}`;
+
+    ctx.save();
+    ctx.font = 'bold 12px Outfit, sans-serif';
+    const bTextW = ctx.measureText(gestureText).width;
+    const bBannerH = 24;
+    const bBannerY = Math.max(8, by - bBannerH - 6);
+
+    ctx.fillStyle = pose.isArmRaised ? 'rgba(234, 88, 12, 0.94)' : 'rgba(9, 14, 26, 0.92)';
+    ctx.beginPath();
+    ctx.roundRect(bx, bBannerY, bTextW + 22, bBannerH, 4);
+    ctx.fill();
+
+    ctx.strokeStyle = pose.isArmRaised ? '#F97316' : strokeColor;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = pose.isArmRaised ? '#FFF7ED' : '#22D3EE';
+    ctx.fillText(gestureText, bx + 11, bBannerY + 16);
+    ctx.restore();
+
+    // Real-time Glowing Skeletal Bones (ขยับตามแขน/ข้อต่อจริง 100%)
+    ctx.save();
+    ctx.shadowColor = 'rgba(56, 189, 248, 0.95)';
+    ctx.shadowBlur = 14;
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.92)';
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = 'round';
+
+    POSE_CONNECTIONS_MAP.forEach(([idxA, idxB]) => {
+      const ptA = lms[idxA];
+      const ptB = lms[idxB];
+      if (
+        ptA && ptB &&
+        (ptA.visibility ?? 1) > 0.35 &&
+        (ptB.visibility ?? 1) > 0.35
+      ) {
+        ctx.beginPath();
+        ctx.moveTo(ptA.x * vw, ptA.y * vh);
+        ctx.lineTo(ptB.x * vw, ptB.y * vh);
+        ctx.stroke();
+      }
+    });
+    ctx.restore();
+
+    // Real-time Joint Nodes
+    ctx.save();
+    lms.forEach((pt, idx) => {
+      if (idx >= 11 && idx <= 32 && (pt.visibility ?? 1) > 0.35) {
+        const px = pt.x * vw;
+        const py = pt.y * vh;
+
+        const isWrist = idx === 15 || idx === 16;
+        const nodeColor = isWrist ? '#F59E0B' : '#10B981';
+
+        ctx.shadowColor = isWrist ? 'rgba(245, 158, 11, 0.95)' : 'rgba(16, 185, 129, 0.95)';
+        ctx.shadowBlur = 12;
+
+        ctx.beginPath();
+        ctx.arc(px, py, isWrist ? 7 : 5.5, 0, 2 * Math.PI);
+        ctx.fillStyle = nodeColor;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(px, py, 2.5, 0, 2 * Math.PI);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fill();
+      }
+    });
+
+    // Biometric Core at Chest
+    if (lms[11] && lms[12]) {
+      const chestX = ((lms[11].x + lms[12].x) / 2) * vw;
+      const chestY = (((lms[11].y + lms[12].y) / 2) + 0.04) * vh;
+      ctx.beginPath();
+      ctx.arc(chestX, chestY, 13, 0, 2 * Math.PI);
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.8)';
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+    }
+    ctx.restore();
+  };
+
+  const drawFallbackKinematicBody = (
+    ctx: CanvasRenderingContext2D,
+    body: any,
+    isConfirmed: boolean
+  ) => {
+    const { x: bx, y: by, width: bw, height: bh } = body.box;
+    const strokeColor = isConfirmed ? '#10B981' : '#06B6D4';
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(6, 182, 212, 0.4)';
+    ctx.shadowBlur = 14;
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 2.5;
+
+    const bLen = Math.min(40, bw * 0.15);
+    ctx.beginPath();
+    ctx.moveTo(bx, by + bLen); ctx.lineTo(bx, by); ctx.lineTo(bx + bLen, by);
+    ctx.moveTo(bx + bw - bLen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + bLen);
+    ctx.moveTo(bx, by + bh - bLen); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + bLen, by + bh);
+    ctx.moveTo(bx + bw - bLen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - bLen);
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.15;
+    ctx.strokeRect(bx, by, bw, bh);
+    ctx.restore();
+  };
+
+  const drawFaceBoxOverlay = (ctx: CanvasRenderingContext2D, data: any) => {
     const { x, y, width: w, height: h, landmarks } = data.box;
     const isConfirmed = data.confirmed;
     const isRecognized = data.status === 'recognized';
@@ -133,149 +314,6 @@ export const LiveRecognition: React.FC = () => {
       glowColor = 'rgba(245, 158, 11, 0.4)';
     }
 
-    // 1. FULL BODY & KINEMATIC POSE SKELETON (ตรวจจับทั้งร่างกาย)
-    if (enableBodyTracking && data.body && data.body.detected) {
-      const { x: bx, y: by, width: bw, height: bh } = data.body.box;
-
-      // 1.1 Full Body Cyber Corners & Boundary
-      ctx.save();
-      ctx.shadowColor = 'rgba(6, 182, 212, 0.5)';
-      ctx.shadowBlur = 18;
-      ctx.strokeStyle = '#06B6D4';
-      ctx.lineWidth = 3;
-
-      const bLen = Math.min(45, bw * 0.15);
-      // Top-Left Corner
-      ctx.beginPath();
-      ctx.moveTo(bx, by + bLen);
-      ctx.lineTo(bx, by);
-      ctx.lineTo(bx + bLen, by);
-      ctx.stroke();
-
-      // Top-Right Corner
-      ctx.beginPath();
-      ctx.moveTo(bx + bw - bLen, by);
-      ctx.lineTo(bx + bw, by);
-      ctx.lineTo(bx + bw, by + bLen);
-      ctx.stroke();
-
-      // Bottom-Left Corner
-      ctx.beginPath();
-      ctx.moveTo(bx, by + bh - bLen);
-      ctx.lineTo(bx, by + bh);
-      ctx.lineTo(bx + bLen, by + bh);
-      ctx.stroke();
-
-      // Bottom-Right Corner
-      ctx.beginPath();
-      ctx.moveTo(bx + bw - bLen, by + bh);
-      ctx.lineTo(bx + bw, by + bh);
-      ctx.lineTo(bx + bw, by + bh - bLen);
-      ctx.stroke();
-
-      // Faint cyber boundary
-      ctx.globalAlpha = 0.18;
-      ctx.strokeRect(bx, by, bw, bh);
-      ctx.restore();
-
-      // 1.2 Full Body Cyber Header Banner
-      const postureLabel = data.body.posture_th || data.body.posture || 'Upright';
-      const bodyHeader = `👤 HUMAN BODY DETECTED • ${postureLabel} (${data.body.coverage_percent || 0}% VIEW)`;
-      ctx.save();
-      ctx.font = 'bold 12px Outfit, sans-serif';
-      const bTextW = ctx.measureText(bodyHeader).width;
-      const bBannerH = 24;
-      const bBannerY = Math.max(8, by - bBannerH - 6);
-
-      ctx.fillStyle = 'rgba(9, 14, 26, 0.92)';
-      ctx.beginPath();
-      ctx.roundRect(bx, bBannerY, bTextW + 20, bBannerH, 4);
-      ctx.fill();
-
-      ctx.strokeStyle = '#06B6D4';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      ctx.fillStyle = '#22D3EE';
-      ctx.fillText(bodyHeader, bx + 10, bBannerY + 16);
-      ctx.restore();
-
-      // 1.3 Glowing Cyber Pose Skeleton (เส้นกระดูกและข้อต่อเรืองแสง)
-      if (data.body.keypoints && data.body.keypoints.length > 0) {
-        const kpMap: Record<string, { x: number; y: number; conf: number }> = {};
-        data.body.keypoints.forEach((kp: any) => {
-          kpMap[kp.id] = kp;
-        });
-
-        const bones = [
-          ['head', 'neck'],
-          ['neck', 'chest'],
-          ['neck', 'l_shoulder'],
-          ['neck', 'r_shoulder'],
-          ['l_shoulder', 'r_shoulder'],
-          ['l_shoulder', 'l_elbow'],
-          ['l_elbow', 'l_wrist'],
-          ['r_shoulder', 'r_elbow'],
-          ['r_elbow', 'r_wrist'],
-          ['chest', 'spine'],
-          ['spine', 'l_hip'],
-          ['spine', 'r_hip'],
-          ['l_hip', 'r_hip'],
-          ['l_shoulder', 'l_hip'],
-          ['r_shoulder', 'r_hip']
-        ];
-
-        // Draw Skeletal Lines
-        ctx.save();
-        ctx.shadowColor = 'rgba(56, 189, 248, 0.85)';
-        ctx.shadowBlur = 12;
-        ctx.strokeStyle = 'rgba(56, 189, 248, 0.9)'; // Neon Sky Blue
-        ctx.lineWidth = 3.5;
-        ctx.lineCap = 'round';
-
-        bones.forEach(([idA, idB]) => {
-          const pA = kpMap[idA];
-          const pB = kpMap[idB];
-          if (pA && pB) {
-            ctx.beginPath();
-            ctx.moveTo(pA.x, pA.y);
-            ctx.lineTo(pB.x, pB.y);
-            ctx.stroke();
-          }
-        });
-        ctx.restore();
-
-        // Draw Joint Nodes (วงแหวนข้อต่อชีวมิติ)
-        ctx.save();
-        data.body.keypoints.forEach((kp: any) => {
-          if (kp.id === 'head' || kp.id === 'nose') return;
-          ctx.shadowColor = 'rgba(16, 185, 129, 0.95)';
-          ctx.shadowBlur = 10;
-          ctx.beginPath();
-          ctx.arc(kp.x, kp.y, 5.5, 0, 2 * Math.PI);
-          ctx.fillStyle = '#10B981'; // Emerald glow
-          ctx.fill();
-
-          ctx.beginPath();
-          ctx.arc(kp.x, kp.y, 2.5, 0, 2 * Math.PI);
-          ctx.fillStyle = '#FFFFFF';
-          ctx.fill();
-        });
-
-        // Biometric Core Pulse at Chest
-        const chest = kpMap['chest'];
-        if (chest) {
-          ctx.beginPath();
-          ctx.arc(chest.x, chest.y, 12, 0, 2 * Math.PI);
-          ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-        }
-        ctx.restore();
-      }
-    }
-
-    // 2. INNER FACE BOX & FACIAL LANDMARKS
     ctx.save();
     ctx.shadowColor = glowColor;
     ctx.shadowBlur = 15;
@@ -283,35 +321,14 @@ export const LiveRecognition: React.FC = () => {
     ctx.lineWidth = 2.5;
 
     const lineLen = Math.min(25, w * 0.2);
-    // Top-Left
     ctx.beginPath();
-    ctx.moveTo(x, y + lineLen);
-    ctx.lineTo(x, y);
-    ctx.lineTo(x + lineLen, y);
+    ctx.moveTo(x, y + lineLen); ctx.lineTo(x, y); ctx.lineTo(x + lineLen, y);
+    ctx.moveTo(x + w - lineLen, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + lineLen);
+    ctx.moveTo(x, y + h - lineLen); ctx.lineTo(x, y + h); ctx.lineTo(x + lineLen, y + h);
+    ctx.moveTo(x + w - lineLen, y + h); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w, y + h - lineLen);
     ctx.stroke();
 
-    // Top-Right
-    ctx.beginPath();
-    ctx.moveTo(x + w - lineLen, y);
-    ctx.lineTo(x + w, y);
-    ctx.lineTo(x + w, y + lineLen);
-    ctx.stroke();
-
-    // Bottom-Left
-    ctx.beginPath();
-    ctx.moveTo(x, y + h - lineLen);
-    ctx.lineTo(x, y + h);
-    ctx.lineTo(x + lineLen, y + h);
-    ctx.stroke();
-
-    // Bottom-Right
-    ctx.beginPath();
-    ctx.moveTo(x + w - lineLen, y + h);
-    ctx.lineTo(x + w, y + h);
-    ctx.lineTo(x + w, y + h - lineLen);
-    ctx.stroke();
-
-    ctx.globalAlpha = 0.4;
+    ctx.globalAlpha = 0.35;
     ctx.strokeRect(x, y, w, h);
     ctx.restore();
 
@@ -333,18 +350,18 @@ export const LiveRecognition: React.FC = () => {
       ? 'Unknown Person'
       : 'Analyzing...';
 
-    ctx.font = 'bold 14px Outfit, sans-serif';
+    ctx.font = 'bold 13px Outfit, sans-serif';
     const textWidth = ctx.measureText(label).width;
     const bannerH = 26;
-    const bannerY = Math.max(10, y - bannerH - 8);
+    const bannerY = Math.max(10, y - bannerH - 6);
 
-    ctx.fillStyle = 'rgba(9, 13, 22, 0.85)';
+    ctx.fillStyle = 'rgba(9, 13, 22, 0.88)';
     ctx.beginPath();
-    ctx.roundRect(x, bannerY, textWidth + 24, bannerH, 6);
+    ctx.roundRect(x, bannerY, textWidth + 24, bannerH, 4);
     ctx.fill();
 
     ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.2;
     ctx.stroke();
 
     ctx.fillStyle = strokeColor;
@@ -487,7 +504,7 @@ export const LiveRecognition: React.FC = () => {
             telemetry={currentResult?.telemetry}
             status={currentResult?.status || 'no_face'}
             confidence={currentResult?.confidence || 0}
-            body={enableBodyTracking ? currentResult?.body : null}
+            body={enableBodyTracking ? (poseData || currentResult?.body) : null}
           />
 
           <div className="absolute bottom-5 inset-x-0 flex justify-center z-20 pointer-events-none">

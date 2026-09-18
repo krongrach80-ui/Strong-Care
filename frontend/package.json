@@ -9,6 +9,7 @@
     "preview": "vite preview --port 3000"
   },
   "dependencies": {
+    "@mediapipe/pose": "^0.5.1675469404",
     "clsx": "^2.1.1",
     "lucide-react": "^0.363.0",
     "react": "^18.2.0",
