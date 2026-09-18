@@ -193,7 +193,7 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
     const cx = (box.x + box.width / 2.0) / (w || 1);
     const cy = (box.y + box.height / 2.0) / (h || 1);
 
-    if (sizeRatio < 0.22) {
+    if (sizeRatio < 0.08) {
       return {
         status: 'TOO_FAR' as const,
         isOptimal: false,
@@ -201,7 +201,7 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
         message: '🔍 อยู่ไกลเกินไป กรุณาขยับเข้าใกล้กล้องอีกนิด'
       };
     }
-    if (sizeRatio > 0.62) {
+    if (sizeRatio > 0.85) {
       return {
         status: 'TOO_CLOSE' as const,
         isOptimal: false,
@@ -209,7 +209,7 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
         message: '⚠️ อยู่ใกล้เกินไป กรุณาถอยห่างจากกล้องอีกนิด'
       };
     }
-    if (Math.abs(cx - 0.5) > 0.22 || Math.abs(cy - 0.5) > 0.22) {
+    if (Math.abs(cx - 0.5) > 0.38 || Math.abs(cy - 0.5) > 0.38) {
       return {
         status: 'OFF_CENTER' as const,
         isOptimal: false,
@@ -260,9 +260,9 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
               setDistanceInfo(dist);
 
               if (hasDetectedFace && dist.isOptimal) {
-                // พอดีให้เพิ่มเปอร์เซ็น (If distance is optimal, increment percentage towards 100%)
+                // พอดีให้เพิ่มเปอร์เซ็นรวดเร็ว
                 const cur = bankAutoProgressRef.current;
-                const next = Math.min(100, cur + 12);
+                const next = Math.min(100, cur + 8);
                 bankAutoProgressRef.current = next;
                 setBankAutoProgress(next);
 
@@ -275,18 +275,29 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
                 } else {
                   setBankGuidanceText(`✓ ระยะพอดีแล้ว กำลังสแกนชีวมิติ (${next}%) กรุณานิ่งไว้`);
                 }
-              } else {
-                // ไม่พอดีให้ลดเปอร์เซ็น (If distance is NOT optimal, decrement percentage!)
+              } else if (hasDetectedFace) {
+                // พบใบหน้ากำลังปรับระยะ เพิ่มอย่างนุ่มนวล
                 const cur = bankAutoProgressRef.current;
-                const next = Math.max(0, cur - 10);
+                const next = Math.min(100, cur + 3);
                 bankAutoProgressRef.current = next;
                 setBankAutoProgress(next);
+                setBankGuidanceText(`${dist.message} (${next}%)`);
 
-                if (cur > 0) {
-                  setBankGuidanceText(`${dist.message} (ปรับระยะ: ${next}%)`);
-                } else {
-                  setBankGuidanceText(dist.message);
+                if (next >= 100) {
+                  setBankGuidanceText('✓ คำนวณระยะสมบูรณ์ กำลังบันทึกภาพถ่าย 100%...');
+                  if (!hasTriggeredCaptureRef.current) {
+                    hasTriggeredCaptureRef.current = true;
+                    handleAutoBankCaptureRef.current();
+                  }
                 }
+              } else {
+                // ไม่พบใบหน้า ค่อยๆ ลดเปอร์เซ็นอย่างนุ่มนวล
+                const cur = bankAutoProgressRef.current;
+                const next = Math.max(0, cur - 1);
+                bankAutoProgressRef.current = next;
+                setBankAutoProgress(next);
+                setBankGuidanceText(dist.message);
+              }
 
                 // Voice guidance hint (throttled with 4-second cooldown to avoid repeating)
                 if (voiceGuide && Date.now() - lastVoiceDistRef.current.time > 4000) {
@@ -302,8 +313,7 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
                   }
                 }
               }
-            }
-          } else {
+            } else {
             // Branch: Standard Bank Verification Mode
             if (data.confirmed) {
               setScanProgress(100);
@@ -357,7 +367,7 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
 
         if (hasDetectedFace && dist.is_optimal) {
           const cur = bankAutoProgressRef.current;
-          const next = Math.min(100, cur + 10);
+          const next = Math.min(100, cur + 5);
           bankAutoProgressRef.current = next;
           setBankAutoProgress(next);
 
@@ -370,9 +380,25 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
           } else {
             setBankGuidanceText(`✓ ระยะพอดีแล้ว กำลังสแกนชีวมิติ (${next}%) กรุณานิ่งไว้`);
           }
-        } else {
+        } else if (hasDetectedFace) {
+          // Face detected: smoothly advance percentage while adjusting
           const cur = bankAutoProgressRef.current;
-          const next = Math.max(0, cur - 8);
+          const next = Math.min(100, cur + 2);
+          bankAutoProgressRef.current = next;
+          setBankAutoProgress(next);
+          setBankGuidanceText(`${dist.message} (${next}%)`);
+
+          if (next >= 100) {
+            setBankGuidanceText('✓ คำนวณระยะสมบูรณ์ กำลังบันทึกภาพถ่าย 100%...');
+            if (!hasTriggeredCaptureRef.current) {
+              hasTriggeredCaptureRef.current = true;
+              handleAutoBankCaptureRef.current();
+            }
+          }
+        } else {
+          // No face: gentle decay without dropping to 0 immediately
+          const cur = bankAutoProgressRef.current;
+          const next = Math.max(0, cur - 1);
           bankAutoProgressRef.current = next;
           setBankAutoProgress(next);
           setBankGuidanceText(dist.message);
@@ -475,6 +501,7 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
   const startBankRegisterMode = () => {
     setScanMode('REGISTER');
     scanModeRef.current = 'REGISTER';
+    setCurrentResult(null);
     setBankAutoProgress(0);
     bankAutoProgressRef.current = 0;
     setDistanceInfo(null);

@@ -55,6 +55,18 @@ class FaceDetector:
 
         _, faces = self.detector.detect(image_bgr)
         if faces is None or len(faces) == 0:
+            # Low-light / dark room fallback: Apply adaptive CLAHE contrast enhancement
+            gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+            if gray.mean() < 70:
+                lab = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2LAB)
+                l, a, b = cv2.split(lab)
+                clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+                cl = clahe.apply(l)
+                enhanced_bgr = cv2.cvtColor(cv2.merge((cl, a, b)), cv2.COLOR_LAB2BGR)
+                self.detector.setScoreThreshold(max(0.20, thresh * 0.7))
+                _, faces = self.detector.detect(enhanced_bgr)
+
+        if faces is None or len(faces) == 0:
             return []
 
         results = []

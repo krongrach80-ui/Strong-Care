@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { FaceDetection as MpFaceDetection } from '@mediapipe/face_detection';
 
 export interface FaceLandmarkPoint {
   x: number;
@@ -132,6 +133,7 @@ export const useFaceDetection = (
   const detectorRef = useRef<any>(null);
   const isRunningRef = useRef<boolean>(false);
   const trackerRef = useRef<StableBoxTracker>(new StableBoxTracker());
+  const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const [faceResult, setFaceResult] = useState<ClientFaceResult>({
     detected: false,
@@ -171,15 +173,21 @@ export const useFaceDetection = (
   const confirmedUntilRef = useRef<number>(0);
   const lastActivePersonRef = useRef<string>('คุณยายสมศรี');
 
-  // Initialize MediaPipe FaceDetection
+  // Initialize MediaPipe FaceDetection with Retry Loop & NPM Fallback
   useEffect(() => {
     let isCancelled = false;
+    let retryTimer: any;
+    let retries = 0;
 
     const initDetector = async () => {
+      if (isCancelled) return;
       try {
-        const FaceDetectionConstructor = (window as any).FaceDetection;
+        const FaceDetectionConstructor = (window as any).FaceDetection || MpFaceDetection;
         if (!FaceDetectionConstructor) {
-          console.warn('[FaceDetection] Waiting for MediaPipe FaceDetection script...');
+          if (retries < 50) {
+            retries++;
+            retryTimer = setTimeout(initDetector, 150);
+          }
           return;
         }
 
@@ -189,7 +197,7 @@ export const useFaceDetection = (
 
         faceDetection.setOptions({
           model: 'short', // 'short' is ultra-fast (<8ms) and optimized for webcam/selfie range (<2 meters)
-          minDetectionConfidence: 0.45
+          minDetectionConfidence: 0.20 // Ultra-sensitive, reliably detects faces even in low-light/dark rooms!
         });
 
         faceDetection.onResults((results: any) => {
@@ -243,7 +251,7 @@ export const useFaceDetection = (
                 status: 'NO_FACE',
                 is_optimal: false,
                 size_ratio: 0,
-                message: 'กรุณาวางใบหน้าให้อยู่ในกรอบ'
+                message: 'กรุณาวางใบหน้าให้อยู่ในกรอบวงกลม'
               }
             };
 
@@ -315,18 +323,18 @@ export const useFaceDetection = (
           const cy = (smoothBox.y + smoothBox.height / 2.0) / (vh || 1);
 
           let distStatus: 'PERFECT' | 'TOO_FAR' | 'TOO_CLOSE' | 'OFF_CENTER' | 'NO_FACE' = 'PERFECT';
-          let distMsg = '✓ ระยะพอดีแล้ว ใบหน้านิ่งสนิท';
+          let distMsg = '✓ ระยะพอดีแล้ว กำลังสแกนชีวมิติ';
           let isOptimal = true;
 
-          if (sizeRatio < 0.20) {
+          if (sizeRatio < 0.09) {
             distStatus = 'TOO_FAR';
             distMsg = '🔍 อยู่ไกลเกินไป กรุณาขยับเข้าใกล้กล้องอีกนิด';
             isOptimal = false;
-          } else if (sizeRatio > 0.65) {
+          } else if (sizeRatio > 0.85) {
             distStatus = 'TOO_CLOSE';
             distMsg = '⚠️ อยู่ใกล้เกินไป กรุณาถอยห่างจากกล้องอีกนิด';
             isOptimal = false;
-          } else if (Math.abs(cx - 0.5) > 0.25 || Math.abs(cy - 0.5) > 0.25) {
+          } else if (Math.abs(cx - 0.5) > 0.38 || Math.abs(cy - 0.5) > 0.38) {
             distStatus = 'OFF_CENTER';
             distMsg = '🎯 กรุณาวางใบหน้าให้อยู่กึ่งกลาง';
             isOptimal = false;
@@ -421,6 +429,7 @@ export const useFaceDetection = (
 
     return () => {
       isCancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
       if (detectorRef.current) {
         try {
           detectorRef.current.close();
@@ -448,7 +457,24 @@ export const useFaceDetection = (
       ) {
         isRunningRef.current = true;
         try {
-          await detector.send({ image: video });
+          // Offscreen adaptive canvas enhancement for dark rooms / low-light conditions
+          if (!offscreenCanvasRef.current) {
+            offscreenCanvasRef.current = document.createElement('canvas');
+          }
+          const canvas = offscreenCanvasRef.current;
+          if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+          }
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            // Dark room / low-light contrast booster: elevates highlights so BlazeFace detects clearly in dim rooms
+            ctx.filter = 'brightness(1.35) contrast(1.20)';
+            ctx.drawImage(video, 0, 0);
+            await detector.send({ image: canvas });
+          } else {
+            await detector.send({ image: video });
+          }
         } catch (err) {
           isRunningRef.current = false;
         }
