@@ -267,18 +267,18 @@ class RecognitionService:
         face_center_y = (box_y + box_h / 2.0) / float(max(1, frame_h))
         face_size_ratio = max(box_w, box_h) / float(max(1, min(frame_w, frame_h)))
 
-        if face_size_ratio < 0.08:
+        if face_size_ratio < 0.20:
             distance_status = 'TOO_FAR'
-            distance_msg = 'อยู่ไกลเกินไป กรุณาขยับเข้าใกล้กล้องอีกนิด'
+            distance_msg = '🔍 กรุณาเอาหน้าเข้ามาชิดกรอบวงกลม'
         elif face_size_ratio > 0.85:
             distance_status = 'TOO_CLOSE'
-            distance_msg = 'อยู่ใกล้เกินไป กรุณาถอยห่างจากกล้องอีกนิด'
-        elif abs(face_center_x - 0.5) > 0.38 or abs(face_center_y - 0.5) > 0.38:
+            distance_msg = '⚠️ อยู่ใกล้เกินไป กรุณาถอยห่างจากกล้องอีกนิด'
+        elif abs(face_center_x - 0.5) > 0.35 or abs(face_center_y - 0.5) > 0.35:
             distance_status = 'OFF_CENTER'
-            distance_msg = 'กรุณาวางใบหน้าให้อยู่กึ่งกลางวงกลม'
+            distance_msg = '🎯 กรุณาวางใบหน้าให้อยู่กึ่งกลางวงกลม'
         else:
             distance_status = 'PERFECT'
-            distance_msg = f'ระยะพอดี ({orientation_th})'
+            distance_msg = f'✓ เอาหน้าเข้ามาชิดพอดีแล้ว ({orientation_th})'
 
         distance_eval = {
             'status': distance_status,

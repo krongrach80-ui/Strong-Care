@@ -323,21 +323,25 @@ export const useFaceDetection = (
           const cy = (smoothBox.y + smoothBox.height / 2.0) / (vh || 1);
 
           let distStatus: 'PERFECT' | 'TOO_FAR' | 'TOO_CLOSE' | 'OFF_CENTER' | 'NO_FACE' = 'PERFECT';
-          let distMsg = '✓ ระยะพอดีแล้ว กำลังสแกนชีวมิติ';
+          let distMsg = '✓ เอาหน้าเข้ามาชิดพอดีแล้ว กำลังสแกนชีวมิติ';
           let isOptimal = true;
 
-          if (sizeRatio < 0.09) {
+          if (sizeRatio < 0.20) {
             distStatus = 'TOO_FAR';
-            distMsg = '🔍 อยู่ไกลเกินไป กรุณาขยับเข้าใกล้กล้องอีกนิด';
+            distMsg = '🔍 กรุณาเอาหน้าเข้ามาชิดกรอบวงกลม';
             isOptimal = false;
           } else if (sizeRatio > 0.85) {
             distStatus = 'TOO_CLOSE';
             distMsg = '⚠️ อยู่ใกล้เกินไป กรุณาถอยห่างจากกล้องอีกนิด';
             isOptimal = false;
-          } else if (Math.abs(cx - 0.5) > 0.38 || Math.abs(cy - 0.5) > 0.38) {
+          } else if (Math.abs(cx - 0.5) > 0.35 || Math.abs(cy - 0.5) > 0.35) {
             distStatus = 'OFF_CENTER';
-            distMsg = '🎯 กรุณาวางใบหน้าให้อยู่กึ่งกลาง';
+            distMsg = '🎯 กรุณาวางใบหน้าให้อยู่กึ่งกลางวงกลม';
             isOptimal = false;
+          } else {
+            distStatus = 'PERFECT';
+            distMsg = '✓ เอาหน้าเข้ามาชิดพอดีแล้ว กำลังสแกนชีวมิติ';
+            isOptimal = true;
           }
 
           // Multi-frame Anti-False Confirmation

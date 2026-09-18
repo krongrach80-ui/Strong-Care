@@ -21,7 +21,11 @@ import {
   Info,
   UserPlus,
   ScanFace,
-  Loader2
+  Loader2,
+  User,
+  Scan,
+  Target,
+  Compass
 } from 'lucide-react';
 import { useCamera } from '../hooks/useCamera';
 import { useSpeech } from '../hooks/useSpeech';
@@ -85,6 +89,21 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
   const [registerSuccessToast, setRegisterSuccessToast] = useState<string | null>(null);
   const [isShutterFlashing, setIsShutterFlashing] = useState<boolean>(false);
   const hasTriggeredCaptureRef = useRef<boolean>(false);
+
+  const activeKioskResult = (currentResult && currentResult.status !== 'no_face')
+    ? currentResult
+    : clientFaceResult;
+
+  const isConfirmed = activeKioskResult?.confirmed;
+  const isRecognized = activeKioskResult?.status === 'recognized';
+  const isUnknown = activeKioskResult?.status === 'unknown';
+  const hasFace = Boolean(
+    (activeKioskResult?.faces_detected && activeKioskResult.faces_detected > 0) ||
+    (activeKioskResult?.status && activeKioskResult.status !== 'no_face' && activeKioskResult.status !== 'no_frame') ||
+    activeKioskResult?.box ||
+    activeKioskResult?.detected
+  );
+  const personName = activeKioskResult?.name;
 
   // Synchronize refs with state for real-time WebSocket closures
   useEffect(() => {
@@ -193,12 +212,12 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
     const cx = (box.x + box.width / 2.0) / (w || 1);
     const cy = (box.y + box.height / 2.0) / (h || 1);
 
-    if (sizeRatio < 0.08) {
+    if (sizeRatio < 0.20) {
       return {
         status: 'TOO_FAR' as const,
         isOptimal: false,
         sizeRatio,
-        message: '🔍 อยู่ไกลเกินไป กรุณาขยับเข้าใกล้กล้องอีกนิด'
+        message: '🔍 กรุณาเอาหน้าเข้ามาชิดกรอบวงกลม'
       };
     }
     if (sizeRatio > 0.85) {
@@ -209,7 +228,7 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
         message: '⚠️ อยู่ใกล้เกินไป กรุณาถอยห่างจากกล้องอีกนิด'
       };
     }
-    if (Math.abs(cx - 0.5) > 0.38 || Math.abs(cy - 0.5) > 0.38) {
+    if (Math.abs(cx - 0.5) > 0.35 || Math.abs(cy - 0.5) > 0.35) {
       return {
         status: 'OFF_CENTER' as const,
         isOptimal: false,
@@ -221,7 +240,7 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
       status: 'PERFECT' as const,
       isOptimal: true,
       sizeRatio,
-      message: '✓ ระยะพอดีแล้ว กรุณานิ่งไว้'
+      message: '✓ เอาหน้าเข้ามาชิดพอดีแล้ว กำลังสแกนชีวมิติ'
     };
   }, []);
 
@@ -258,62 +277,8 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
                 : evalFaceDistance(data.box, data.frame_width, data.frame_height);
 
               setDistanceInfo(dist);
-
-              if (hasDetectedFace && dist.isOptimal) {
-                // พอดีให้เพิ่มเปอร์เซ็นรวดเร็ว
-                const cur = bankAutoProgressRef.current;
-                const next = Math.min(100, cur + 8);
-                bankAutoProgressRef.current = next;
-                setBankAutoProgress(next);
-
-                if (next >= 100) {
-                  setBankGuidanceText('✓ คำนวณระยะสมบูรณ์ กำลังบันทึกภาพถ่าย 100%...');
-                  if (!hasTriggeredCaptureRef.current) {
-                    hasTriggeredCaptureRef.current = true;
-                    handleAutoBankCaptureRef.current();
-                  }
-                } else {
-                  setBankGuidanceText(`✓ ระยะพอดีแล้ว กำลังสแกนชีวมิติ (${next}%) กรุณานิ่งไว้`);
-                }
-              } else if (hasDetectedFace) {
-                // พบใบหน้ากำลังปรับระยะ เพิ่มอย่างนุ่มนวล
-                const cur = bankAutoProgressRef.current;
-                const next = Math.min(100, cur + 3);
-                bankAutoProgressRef.current = next;
-                setBankAutoProgress(next);
-                setBankGuidanceText(`${dist.message} (${next}%)`);
-
-                if (next >= 100) {
-                  setBankGuidanceText('✓ คำนวณระยะสมบูรณ์ กำลังบันทึกภาพถ่าย 100%...');
-                  if (!hasTriggeredCaptureRef.current) {
-                    hasTriggeredCaptureRef.current = true;
-                    handleAutoBankCaptureRef.current();
-                  }
-                }
-              } else {
-                // ไม่พบใบหน้า ค่อยๆ ลดเปอร์เซ็นอย่างนุ่มนวล
-                const cur = bankAutoProgressRef.current;
-                const next = Math.max(0, cur - 1);
-                bankAutoProgressRef.current = next;
-                setBankAutoProgress(next);
-                setBankGuidanceText(dist.message);
-              }
-
-                // Voice guidance hint (throttled with 4-second cooldown to avoid repeating)
-                if (voiceGuide && Date.now() - lastVoiceDistRef.current.time > 4000) {
-                  if (dist.status === 'TOO_FAR') {
-                    speak('ขยับเข้ามาใกล้กล้องอีกนิดนะคะ');
-                    lastVoiceDistRef.current = { status: 'TOO_FAR', time: Date.now() };
-                  } else if (dist.status === 'TOO_CLOSE') {
-                    speak('ถอยห่างจากกล้องอีกนิดนะคะ');
-                    lastVoiceDistRef.current = { status: 'TOO_CLOSE', time: Date.now() };
-                  } else if (dist.status === 'OFF_CENTER') {
-                    speak('วางใบหน้าให้อยู่ตรงกลางกรอบวงกลมนะคะ');
-                    lastVoiceDistRef.current = { status: 'OFF_CENTER', time: Date.now() };
-                  }
-                }
-              }
-            } else {
+            }
+          } else {
             // Branch: Standard Bank Verification Mode
             if (data.confirmed) {
               setScanProgress(100);
@@ -349,6 +314,7 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
 
   // Client-Side Edge AI synchronization for SeniorKiosk (enables 100% offline & GitHub Pages support)
   const lastEdgeKioskSpokenRef = useRef<number>(0);
+  const lastOptimalSpokenRef = useRef<number>(0);
 
   useEffect(() => {
     // Only use clientFaceResult if WS is not receiving face updates
@@ -364,45 +330,6 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
           sizeRatio: dist.size_ratio,
           message: dist.message
         });
-
-        if (hasDetectedFace && dist.is_optimal) {
-          const cur = bankAutoProgressRef.current;
-          const next = Math.min(100, cur + 5);
-          bankAutoProgressRef.current = next;
-          setBankAutoProgress(next);
-
-          if (next >= 100) {
-            setBankGuidanceText('✓ คำนวณระยะสมบูรณ์ กำลังบันทึกภาพถ่าย 100%...');
-            if (!hasTriggeredCaptureRef.current) {
-              hasTriggeredCaptureRef.current = true;
-              handleAutoBankCaptureRef.current();
-            }
-          } else {
-            setBankGuidanceText(`✓ ระยะพอดีแล้ว กำลังสแกนชีวมิติ (${next}%) กรุณานิ่งไว้`);
-          }
-        } else if (hasDetectedFace) {
-          // Face detected: smoothly advance percentage while adjusting
-          const cur = bankAutoProgressRef.current;
-          const next = Math.min(100, cur + 2);
-          bankAutoProgressRef.current = next;
-          setBankAutoProgress(next);
-          setBankGuidanceText(`${dist.message} (${next}%)`);
-
-          if (next >= 100) {
-            setBankGuidanceText('✓ คำนวณระยะสมบูรณ์ กำลังบันทึกภาพถ่าย 100%...');
-            if (!hasTriggeredCaptureRef.current) {
-              hasTriggeredCaptureRef.current = true;
-              handleAutoBankCaptureRef.current();
-            }
-          }
-        } else {
-          // No face: gentle decay without dropping to 0 immediately
-          const cur = bankAutoProgressRef.current;
-          const next = Math.max(0, cur - 1);
-          bankAutoProgressRef.current = next;
-          setBankAutoProgress(next);
-          setBankGuidanceText(dist.message);
-        }
       }
     } else {
       // Standard Verification Mode
@@ -423,6 +350,93 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
       }
     }
   }, [clientFaceResult, currentResult, playChime, speak]);
+
+  // Dedicated Bank e-KYC Smooth Progress Accumulator (นับเปอร์เซ็นต์ค่อยๆ ขึ้น 0% -> 100% ภายใน 2 วินาที)
+  useEffect(() => {
+    if (scanMode !== 'REGISTER' || showRegisterModal) return;
+
+    const interval = setInterval(() => {
+      const activeDist = distanceInfo;
+      const isOptimal = Boolean(activeDist?.isOptimal);
+      const status = activeDist?.status;
+
+      if (hasFace && isOptimal) {
+        // ระยะชิดพอดี: เปอร์เซ็นต์ค่อยๆ นับขึ้นอย่างนุ่มนวล (+2% ทุก 40ms = 100% ใน 2.0 วินาที)
+        const cur = bankAutoProgressRef.current;
+        const next = Math.min(100, cur + 2);
+        bankAutoProgressRef.current = next;
+        setBankAutoProgress(next);
+
+        if (next >= 100) {
+          setBankGuidanceText('✓ ตรวจสอบชีวมิติครบถ้วน 100% กำลังบันทึกภาพถ่าย...');
+          if (!hasTriggeredCaptureRef.current) {
+            hasTriggeredCaptureRef.current = true;
+            handleAutoBankCaptureRef.current();
+          }
+        } else {
+          setBankGuidanceText(`✓ เอาหน้าเข้ามาชิดพอดีแล้ว กำลังสแกนชีวมิติ (${next}%) กรุณานิ่งไว้`);
+        }
+
+        // Voice announcement on entering optimal distance
+        if (voiceGuide && Date.now() - lastOptimalSpokenRef.current > 6000) {
+          lastOptimalSpokenRef.current = Date.now();
+          speak('ระยะพอดีแล้ว กำลังสแกนชีวมิติ กรุณานิ่งไว้นะคะ');
+        }
+      } else if (hasFace && status === 'TOO_FAR') {
+        // อยู่ไกลเกินไป: แจ้งเตือนให้เอาหน้าเข้ามาชิด
+        const cur = bankAutoProgressRef.current;
+        if (cur > 0) {
+          const next = Math.max(0, cur - 1);
+          bankAutoProgressRef.current = next;
+          setBankAutoProgress(next);
+        }
+        setBankGuidanceText('🔍 กรุณาเอาหน้าเข้ามาชิดกรอบวงกลม');
+
+        // สั่งเสียงพูดเตือนให้เอาหน้าเข้ามาชิด
+        if (voiceGuide && Date.now() - lastVoiceDistRef.current.time > 3500) {
+          speak('กรุณาเอาใบหน้าเข้ามาชิดอีกนิดนะคะ');
+          lastVoiceDistRef.current = { status: 'TOO_FAR', time: Date.now() };
+        }
+      } else if (hasFace && status === 'OFF_CENTER') {
+        const cur = bankAutoProgressRef.current;
+        if (cur > 0) {
+          const next = Math.max(0, cur - 1);
+          bankAutoProgressRef.current = next;
+          setBankAutoProgress(next);
+        }
+        setBankGuidanceText('🎯 วางใบหน้าให้อยู่กึ่งกลางวงกลม');
+
+        if (voiceGuide && Date.now() - lastVoiceDistRef.current.time > 4000) {
+          speak('วางใบหน้าให้อยู่ตรงกลางกรอบวงกลมนะคะ');
+          lastVoiceDistRef.current = { status: 'OFF_CENTER', time: Date.now() };
+        }
+      } else if (hasFace && status === 'TOO_CLOSE') {
+        const cur = bankAutoProgressRef.current;
+        if (cur > 0) {
+          const next = Math.max(0, cur - 1);
+          bankAutoProgressRef.current = next;
+          setBankAutoProgress(next);
+        }
+        setBankGuidanceText('⚠️ อยู่ใกล้เกินไป กรุณาถอยห่างอีกนิด');
+
+        if (voiceGuide && Date.now() - lastVoiceDistRef.current.time > 4000) {
+          speak('ถอยห่างจากกล้องอีกนิดนะคะ');
+          lastVoiceDistRef.current = { status: 'TOO_CLOSE', time: Date.now() };
+        }
+      } else {
+        // ไม่พบใบหน้า
+        const cur = bankAutoProgressRef.current;
+        if (cur > 0) {
+          const next = Math.max(0, cur - 1);
+          bankAutoProgressRef.current = next;
+          setBankAutoProgress(next);
+        }
+        setBankGuidanceText('กรุณาวางใบหน้าให้อยู่ในกรอบวงกลม');
+      }
+    }, 40);
+
+    return () => clearInterval(interval);
+  }, [scanMode, showRegisterModal, hasFace, distanceInfo, voiceGuide, speak]);
 
   // Frame sender loop (WebSocket)
   useEffect(() => {
@@ -629,20 +643,7 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
     }
   };
 
-  const activeKioskResult = (currentResult && currentResult.status !== 'no_face')
-    ? currentResult
-    : clientFaceResult;
 
-  const isConfirmed = activeKioskResult?.confirmed;
-  const isRecognized = activeKioskResult?.status === 'recognized';
-  const isUnknown = activeKioskResult?.status === 'unknown';
-  const hasFace = Boolean(
-    (activeKioskResult?.faces_detected && activeKioskResult.faces_detected > 0) ||
-    (activeKioskResult?.status && activeKioskResult.status !== 'no_face' && activeKioskResult.status !== 'no_frame') ||
-    activeKioskResult?.box ||
-    activeKioskResult?.detected
-  );
-  const personName = activeKioskResult?.name;
 
   return (
     <div className="fixed inset-0 w-screen h-screen z-50 bg-[#0A0F1D] overflow-hidden select-none flex items-center justify-center font-sans">
@@ -792,6 +793,136 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
         </div>
       </div>
 
+      {/* 4. Live Biometric Face Verification System Panel (ระบบตรวจสอบและวิเคราะห์ใบหน้าชีวมิติ) */}
+      {scanMode === 'REGISTER' && (
+        <div className="absolute left-4 sm:left-6 md:left-8 top-20 sm:top-24 z-30 max-w-[280px] sm:max-w-[320px] w-full bg-slate-900/90 backdrop-blur-xl border border-cyan-500/40 rounded-3xl p-4 sm:p-5 shadow-[0_0_30px_rgba(6,182,212,0.15)] space-y-3 pointer-events-auto transition-all">
+          {/* Panel Header */}
+          <div className="flex items-center justify-between border-b border-slate-700/60 pb-2.5">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-emerald-400" />
+              <span className="font-bold text-xs sm:text-sm text-white font-['Outfit']">
+                ระบบตรวจสอบใบหน้าชีวมิติ
+              </span>
+            </div>
+            <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono text-[10px] font-bold">
+              AI VERIFY
+            </span>
+          </div>
+
+          {/* 5-Point Live Verification Checklist */}
+          <div className="space-y-2 text-xs">
+            {/* 1. Face Presence */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-300">
+                <User className="w-3.5 h-3.5 text-slate-400" />
+                <span>1. ตรวจพบใบหน้า</span>
+              </div>
+              <span className={`font-bold text-[11px] flex items-center gap-1 ${
+                hasFace ? 'text-emerald-400' : 'text-slate-500'
+              }`}>
+                {hasFace ? '✓ ผ่านเกณฑ์' : '⏳ รอใบหน้า'}
+              </span>
+            </div>
+
+            {/* 2. Face Distance / Bring Closer */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-300">
+                <Scan className="w-3.5 h-3.5 text-slate-400" />
+                <span>2. ระยะห่างใบหน้า</span>
+              </div>
+              <span className={`font-bold text-[11px] flex items-center gap-1 ${
+                distanceInfo?.isOptimal
+                  ? 'text-emerald-400 font-black'
+                  : distanceInfo?.status === 'TOO_FAR'
+                  ? 'text-amber-400 animate-pulse font-black'
+                  : 'text-slate-500'
+              }`}>
+                {distanceInfo?.isOptimal
+                  ? '✓ ชิดพอดีเยี่ยม'
+                  : distanceInfo?.status === 'TOO_FAR'
+                  ? '⚠️ เอาหน้าเข้ามาชิด'
+                  : distanceInfo?.status === 'TOO_CLOSE'
+                  ? '⚠️ ถอยห่างนิด'
+                  : '⏳ รอจัดระยะ'}
+              </span>
+            </div>
+
+            {/* 3. Centering in Circle */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-300">
+                <Target className="w-3.5 h-3.5 text-slate-400" />
+                <span>3. กึ่งกลางวงกลม</span>
+              </div>
+              <span className={`font-bold text-[11px] flex items-center gap-1 ${
+                distanceInfo?.status !== 'OFF_CENTER' && hasFace
+                  ? 'text-emerald-400'
+                  : hasFace
+                  ? 'text-cyan-300'
+                  : 'text-slate-500'
+              }`}>
+                {distanceInfo?.status !== 'OFF_CENTER' && hasFace ? '✓ ตรงกลาง' : '🎯 ปรับกึ่งกลาง'}
+              </span>
+            </div>
+
+            {/* 4. Head Pose / Frontal */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-300">
+                <Compass className="w-3.5 h-3.5 text-slate-400" />
+                <span>4. ทิศทางหน้าตรง</span>
+              </div>
+              <span className={`font-bold text-[11px] flex items-center gap-1 ${
+                hasFace && !activeKioskResult?.is_profile
+                  ? 'text-emerald-400'
+                  : hasFace
+                  ? 'text-amber-300'
+                  : 'text-slate-500'
+              }`}>
+                {hasFace && !activeKioskResult?.is_profile ? '✓ หน้าตรง 100%' : '⚠️ มองตรงกล้อง'}
+              </span>
+            </div>
+
+            {/* 5. Quality & Lighting */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-300">
+                <Sparkles className="w-3.5 h-3.5 text-slate-400" />
+                <span>5. ความชัด / แสงสว่าง</span>
+              </div>
+              <span className={`font-bold text-[11px] flex items-center gap-1 ${
+                hasFace ? 'text-emerald-400' : 'text-slate-500'
+              }`}>
+                {hasFace ? '✓ คมชัดระดับ HD' : '⏳ ตรวจสอบ'}
+              </span>
+            </div>
+          </div>
+
+          {/* Live Distance Gauge Bar */}
+          <div className="pt-2 border-t border-slate-800 space-y-1">
+            <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold">
+              <span>ไกล (เอาหน้าเข้ามาชิด)</span>
+              <span className={distanceInfo?.isOptimal ? 'text-emerald-300 font-mono font-bold' : 'text-amber-300 font-mono font-bold'}>
+                {Math.round((distanceInfo?.sizeRatio || 0) * 100)}%
+              </span>
+              <span>ใกล้เกินไป</span>
+            </div>
+            <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden relative border border-slate-700">
+              {/* Ideal Target Zone: 20% to 85% */}
+              <div className="absolute left-[20%] right-[15%] inset-y-0 bg-emerald-500/25 border-x border-emerald-400/50" />
+              {/* Live Indicator Marker */}
+              <div
+                className={`h-full transition-all duration-150 ${
+                  distanceInfo?.isOptimal
+                    ? 'bg-emerald-400 shadow-[0_0_10px_#10B981]'
+                    : distanceInfo?.status === 'TOO_FAR'
+                    ? 'bg-amber-400'
+                    : 'bg-rose-400'
+                }`}
+                style={{ width: `${Math.min(100, Math.max(5, (distanceInfo?.sizeRatio || 0) * 100))}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 5. Central Bank Scanning Circle with Integrated Viewfinder Dark Mask (Zero-Drift 100% Alignment) */}
       <div
         className="absolute top-[47%] sm:top-[48%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(680px,76vh)] h-[min(680px,76vh)] rounded-full transition-all duration-500 flex items-center justify-center pointer-events-none z-20"
@@ -898,8 +1029,8 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
                   : 'bg-slate-800/80 text-slate-400 border-slate-700'
               }`}>
                 <span>
-                  {distanceInfo.status === 'PERFECT' && '✓ ระยะพอดีเยี่ยม กรุณานิ่งไว้'}
-                  {distanceInfo.status === 'TOO_FAR' && '🔍 ระยะไกลเกินไป (ขยับเข้าใกล้)'}
+                  {distanceInfo.status === 'PERFECT' && '✓ เอาหน้าเข้ามาชิดพอดีแล้ว'}
+                  {distanceInfo.status === 'TOO_FAR' && '🔍 กรุณาเอาหน้าเข้ามาชิด'}
                   {distanceInfo.status === 'TOO_CLOSE' && '⚠️ ระยะใกล้เกินไป (ถอยห่าง)'}
                   {distanceInfo.status === 'OFF_CENTER' && '🎯 จัดใบหน้าให้อยู่กึ่งกลางวงกลม'}
                   {distanceInfo.status === 'NO_FACE' && 'กรุณาวางใบหน้าในกรอบวงกลม'}
@@ -914,6 +1045,34 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
         <div className="absolute top-8 right-8 w-12 h-12 border-t-4 border-r-4 border-cyan-400/80 rounded-3xl" />
         <div className="absolute bottom-8 left-8 w-12 h-12 border-b-4 border-l-4 border-cyan-400/80 rounded-3xl" />
         <div className="absolute bottom-8 right-8 w-12 h-12 border-b-4 border-r-4 border-cyan-400/80 rounded-3xl" />
+
+        {/* In-Viewfinder Prominent Guide: เอาหน้าเข้ามาชิด */}
+        {scanMode === 'REGISTER' && distanceInfo?.status === 'TOO_FAR' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-20 animate-fadeIn">
+            <div className="px-6 py-3 rounded-full bg-amber-500 text-slate-950 font-black text-sm sm:text-base shadow-[0_0_40px_rgba(245,158,11,0.95)] border-2 border-white flex items-center gap-2 animate-bounce">
+              <Scan className="w-5 h-5 stroke-[2.5]" />
+              <span>🔍 กรุณาเอาหน้าเข้ามาชิด</span>
+            </div>
+            <div className="text-amber-300 font-mono text-xs sm:text-sm font-black tracking-widest mt-2.5 drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] animate-pulse flex items-center gap-1.5">
+              <span>▼</span>
+              <span>ขยับใบหน้าเข้ามาใกล้กรอบวงกลม</span>
+              <span>▼</span>
+            </div>
+          </div>
+        )}
+
+        {/* In-Viewfinder Prominent Scanning Progress: นับเปอร์เซ็นต์ค่อยๆ ขึ้น */}
+        {scanMode === 'REGISTER' && distanceInfo?.isOptimal && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-20 animate-fadeIn">
+            <div className="px-6 py-2.5 rounded-full bg-slate-950/80 border-2 border-emerald-400 backdrop-blur-md text-emerald-300 font-mono font-black text-base sm:text-lg shadow-[0_0_35px_rgba(16,185,129,0.5)] flex items-center gap-2.5 animate-pulse">
+              <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping" />
+              <span>สแกนชีวมิติ {bankAutoProgress}%</span>
+            </div>
+            <div className="text-emerald-300 font-sans text-xs font-bold mt-2 drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)]">
+              ✓ เอาหน้าเข้ามาชิดพอดีแล้ว กรุณานิ่งไว้
+            </div>
+          </div>
+        )}
 
         {/* Animated Horizontal Laser Scanner Line inside Circle */}
         {!isConfirmed && (
