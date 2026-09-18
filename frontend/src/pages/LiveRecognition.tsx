@@ -11,7 +11,12 @@ import {
   Sliders,
   Sparkles,
   User,
-  Activity
+  Activity,
+  Maximize,
+  Minimize,
+  Expand,
+  Shrink,
+  ZoomIn
 } from 'lucide-react';
 import { useCamera } from '../hooks/useCamera';
 import { useSpeech } from '../hooks/useSpeech';
@@ -46,6 +51,35 @@ export const LiveRecognition: React.FC = () => {
 
   const [currentResult, setCurrentResult] = useState<any>(null);
   const [recentDetections, setRecentDetections] = useState<any[]>([]);
+
+  // Camera viewport sizing & display controls (ขยายหน้าจอแบบเต็มตา)
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [isTheaterMode, setIsTheaterMode] = useState<boolean>(true);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [zoomLevel, setZoomLevel] = useState<number>(1.0);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!containerRef.current) return;
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().catch((err) => {
+        console.warn('Fullscreen request failed:', err);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch((err) => {
+          console.warn('Exit fullscreen failed:', err);
+        });
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, []);
 
   const connectWs = useCallback(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -448,6 +482,46 @@ export const LiveRecognition: React.FC = () => {
             </select>
           )}
 
+          {/* Zoom Selector in Header */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+            <span className="text-[11px] font-semibold text-slate-500 px-1.5">ซูม:</span>
+            {[1.0, 1.25, 1.5].map((lvl) => (
+              <button
+                key={lvl}
+                onClick={() => setZoomLevel(lvl)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  zoomLevel === lvl
+                    ? 'bg-cyan-500 text-white shadow-sm shadow-cyan-500/20'
+                    : 'text-slate-600 hover:bg-white'
+                }`}
+              >
+                {lvl}x
+              </button>
+            ))}
+          </div>
+
+          {/* Theater Mode Toggle */}
+          <button
+            onClick={() => setIsTheaterMode(!isTheaterMode)}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer shadow-sm ${
+              isTheaterMode
+                ? 'bg-purple-600 text-white border-purple-500 font-bold shadow-purple-600/20'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            {isTheaterMode ? <Shrink className="w-3.5 h-3.5" /> : <Expand className="w-3.5 h-3.5" />}
+            <span>โหมดจอใหญ่: {isTheaterMode ? 'เปิด' : 'ปิด'}</span>
+          </button>
+
+          {/* Fullscreen Toggle */}
+          <button
+            onClick={toggleFullscreen}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-all cursor-pointer shadow-sm"
+          >
+            {isFullscreen ? <Minimize className="w-3.5 h-3.5 text-cyan-600" /> : <Maximize className="w-3.5 h-3.5 text-cyan-600" />}
+            <span>{isFullscreen ? 'ย่อหน้าจอ' : 'เต็มจอ'}</span>
+          </button>
+
           <button
             onClick={() => setEnableBodyTracking(!enableBodyTracking)}
             className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer shadow-sm ${
@@ -483,117 +557,354 @@ export const LiveRecognition: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Grid: Video Stream & Activity Sidebar */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-3 relative rounded-3xl overflow-hidden glass-panel border border-white/10 bg-black min-h-[480px] flex items-center justify-center shadow-2xl">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full h-full object-cover"
-          />
+      {/* Main Layout Area */}
+      {isTheaterMode ? (
+        /* Theater Mode: Full-width massive camera viewport */
+        <div className="space-y-6">
+          {/* Massive Cinema Viewport */}
+          <div
+            ref={containerRef}
+            className={`relative rounded-3xl overflow-hidden glass-panel border border-white/10 bg-black shadow-2xl flex items-center justify-center transition-all duration-300 ${
+              isFullscreen
+                ? 'fixed inset-0 z-50 rounded-none w-screen h-screen'
+                : 'w-full h-[78vh] min-h-[640px] max-h-[880px]'
+            }`}
+          >
+            {/* Zoomable Inner Container */}
+            <div
+              className="relative w-full h-full flex items-center justify-center overflow-hidden transition-transform duration-300 ease-out origin-center"
+              style={{ transform: `scale(${zoomLevel})` }}
+            >
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
 
-          <canvas
-            ref={canvasOverlayRef}
-            className="absolute inset-0 w-full h-full object-cover pointer-events-none z-10"
-          />
+              <canvas
+                ref={canvasOverlayRef}
+                className="absolute inset-0 w-full h-full object-cover pointer-events-none z-10"
+              />
+            </div>
 
-          <DebugOverlay
-            visible={showDebug}
-            telemetry={currentResult?.telemetry}
-            status={currentResult?.status || 'no_face'}
-            confidence={currentResult?.confidence || 0}
-            body={enableBodyTracking ? (poseData || currentResult?.body) : null}
-          />
-
-          <div className="absolute bottom-5 inset-x-0 flex justify-center z-20 pointer-events-none">
-            <ConfirmationBadge
-              status={currentResult?.status || 'no_face'}
-              name={currentResult?.name}
-              confidence={currentResult?.confidence || 0}
-              confirmed={currentResult?.confirmed || false}
-              count={currentResult?.confirmation_count || 0}
-              target={currentResult?.confirmation_target || 3}
-            />
-          </div>
-
-          {!isActive && (
-            <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-30">
-              <div className="p-4 rounded-2xl bg-slate-900 border border-white/10 text-slate-400 mb-4">
-                <VideoOff className="w-10 h-10" />
+            {/* Quick Floating Overlays on Video Top Right */}
+            <div className="absolute top-4 right-4 z-20 flex items-center gap-2 bg-slate-950/80 backdrop-blur-md border border-white/15 rounded-2xl p-1.5 shadow-2xl">
+              {/* Zoom Buttons inside camera */}
+              <div className="flex items-center gap-1 px-2 py-1 bg-white/5 rounded-xl text-slate-300">
+                <span className="text-[10px] text-slate-400 font-mono">ซูม:</span>
+                {[1.0, 1.25, 1.5].map((lvl) => (
+                  <button
+                    key={lvl}
+                    onClick={() => setZoomLevel(lvl)}
+                    className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer ${
+                      zoomLevel === lvl
+                        ? 'bg-cyan-500 text-white shadow-sm shadow-cyan-500/30'
+                        : 'text-slate-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    {lvl}x
+                  </button>
+                ))}
               </div>
-              <h3 className="text-lg font-bold text-white mb-2 font-['Outfit']">Camera Not Started</h3>
-              <p className="text-xs text-slate-400 max-w-sm mb-6">
-                {cameraError || 'โปรดอนุญาตให้เข้าถึงเว็บแคม เพื่อเริ่มต้นระบบตรวจจับใบหน้าแบบเรียลไทม์'}
-              </p>
+
               <button
-                onClick={() => startCamera()}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
+                onClick={() => setIsTheaterMode(false)}
+                title="ย่อเป็นโหมดแบ่งข้าง"
+                className="p-2 rounded-xl bg-purple-600/90 hover:bg-purple-500 text-white border border-purple-400/40 transition-all cursor-pointer shadow-purple-600/30 flex items-center gap-1"
               >
-                <Camera className="w-4 h-4" />
-                <span>เปิดการทำงานกล้อง</span>
+                <Shrink className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline text-[11px]">ย่อข้าง</span>
+              </button>
+
+              <button
+                onClick={toggleFullscreen}
+                title={isFullscreen ? 'ย่อหน้าจอ' : 'เต็มหน้าจอ'}
+                className="p-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white border border-cyan-400/40 transition-all cursor-pointer shadow-cyan-600/30 flex items-center gap-1"
+              >
+                {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline text-[11px]">{isFullscreen ? 'ปกติ' : 'เต็มจอ'}</span>
               </button>
             </div>
-          )}
-        </div>
 
-        {/* Right Sidebar */}
-        <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-sm flex flex-col h-full space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div className="flex items-center gap-2 font-bold text-slate-900 text-sm font-['Outfit']">
-              <Radio className="w-4 h-4 text-emerald-500 animate-pulse" />
-              <span>ประวัติการตรวจจับล่าสุด</span>
+            <DebugOverlay
+              visible={showDebug}
+              telemetry={currentResult?.telemetry}
+              status={currentResult?.status || 'no_face'}
+              confidence={currentResult?.confidence || 0}
+              body={enableBodyTracking ? (poseData || currentResult?.body) : null}
+            />
+
+            <div className="absolute bottom-5 inset-x-0 flex justify-center z-20 pointer-events-none">
+              <ConfirmationBadge
+                status={currentResult?.status || 'no_face'}
+                name={currentResult?.name}
+                confidence={currentResult?.confidence || 0}
+                confirmed={currentResult?.confirmed || false}
+                count={currentResult?.confirmation_count || 0}
+                target={currentResult?.confirmation_target || 3}
+              />
             </div>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">
-              LIVE
-            </span>
-          </div>
 
-          <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 max-h-[460px]">
-            {recentDetections.length === 0 ? (
-              <div className="py-16 text-center text-slate-400 text-xs">
-                <Sparkles className="w-6 h-6 mx-auto mb-2 text-indigo-400 animate-pulse" />
-                <span>ยืนยันตัวตนสำเร็จแล้ว รายชื่อจะปรากฏตรงนี้</span>
-              </div>
-            ) : (
-              recentDetections.map((item) => (
-                <div
-                  key={item.id}
-                  className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3 text-xs animate-fadeIn"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs border border-indigo-100">
-                      {item.name.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <div className="font-bold text-slate-900">{item.name}</div>
-                      <div className="text-[10px] text-emerald-600 font-mono">
-                        {Math.round(item.confidence * 100)}% Confidence
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-[10px] text-slate-500 font-mono text-right">
-                    {item.time}
-                  </div>
+            {!isActive && (
+              <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-30">
+                <div className="p-4 rounded-2xl bg-slate-900 border border-white/10 text-slate-400 mb-4">
+                  <VideoOff className="w-10 h-10" />
                 </div>
-              ))
+                <h3 className="text-lg font-bold text-white mb-2 font-['Outfit']">Camera Not Started</h3>
+                <p className="text-xs text-slate-400 max-w-sm mb-6">
+                  {cameraError || 'โปรดอนุญาตให้เข้าถึงเว็บแคม เพื่อเริ่มต้นระบบตรวจจับใบหน้าแบบเรียลไทม์'}
+                </p>
+                <button
+                  onClick={() => startCamera()}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>เปิดการทำงานกล้อง</span>
+                </button>
+              </div>
             )}
           </div>
 
-          <div className="pt-3 border-t border-slate-100 text-[11px] text-slate-500 space-y-1.5">
-            <div className="font-semibold text-slate-700">คำแนะนำการทดสอบ:</div>
-            <div className="flex items-start gap-1.5">
-              <span className="text-emerald-500 font-bold">•</span>
-              <span>ระบบต้องการตรวจพบคนเดิมต่อเนื่อง 3 เฟรม เพื่อป้องกันการเรียกชื่อผิด</span>
+          {/* Under-Camera Dashboard Cards */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Recent Detections Card */}
+            <div className="lg:col-span-2 bg-white rounded-3xl p-5 border border-slate-200/90 shadow-sm flex flex-col space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2 font-bold text-slate-900 text-sm font-['Outfit']">
+                  <Radio className="w-4 h-4 text-emerald-500 animate-pulse" />
+                  <span>ประวัติการตรวจจับล่าสุด (Recent Detections)</span>
+                </div>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">
+                  LIVE FEED
+                </span>
+              </div>
+
+              {recentDetections.length === 0 ? (
+                <div className="py-8 text-center text-slate-400 text-xs">
+                  <Sparkles className="w-6 h-6 mx-auto mb-2 text-indigo-400 animate-pulse" />
+                  <span>ยังไม่มีรายการตรวจจับ — เมื่อยืนยันตัวตนสำเร็จ รายชื่อจะปรากฏตรงนี้</span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {recentDetections.map((item) => (
+                    <div
+                      key={item.id}
+                      className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3 text-xs animate-fadeIn"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs border border-indigo-100">
+                          {item.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-bold text-slate-900">{item.name}</div>
+                          <div className="text-[10px] text-emerald-600 font-mono">
+                            {Math.round(item.confidence * 100)}% Confidence
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-mono text-right">
+                        {item.time}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="flex items-start gap-1.5">
-              <span className="text-emerald-500 font-bold">•</span>
-              <span>มี Cooldown 6 วินาที ไม่ส่งเสียงซ้ำเมื่อยังยืนอยู่หน้ากล้อง</span>
+
+            {/* Testing Tips Card */}
+            <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-sm flex flex-col justify-between space-y-4">
+              <div>
+                <div className="font-bold text-slate-900 text-sm font-['Outfit'] border-b border-slate-100 pb-3 flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-cyan-500" />
+                  <span>คำแนะนำ & สถานะกล้อง</span>
+                </div>
+                <div className="mt-3 text-xs text-slate-600 space-y-2.5">
+                  <div className="flex items-start gap-2">
+                    <span className="text-emerald-500 font-bold">✓</span>
+                    <span><strong>หน้าจอใหญ่พิเศษ:</strong> ภาพคมชัดเต็มพื้นที่ เห็นการเคลื่อนไหวทั้งใบหน้าและร่างกาย</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-cyan-500 font-bold">✓</span>
+                    <span><strong>ซูมใบหน้า:</strong> คลิกปุ่ม 1x, 1.25x หรือ 1.5x เพื่อขยายให้เห็นใบหน้าชัดเจนขึ้น</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-indigo-500 font-bold">✓</span>
+                    <span><strong>ตรวจจับแม่นยำ:</strong> ระบบ Anti-False ตรวจซ้ำ 3 เฟรมพร้อมเสียงพูดตอบรับ</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-cyan-50/60 border border-cyan-100 text-[11px] text-cyan-800">
+                💡 <strong>เคล็ดลับ:</strong> กดปุ่ม <strong>[เต็มจอ]</strong> บนกล้อง เพื่อขยายเป็นแบบ Fullscreen ขอบจรดขอบจอ
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      ) : (
+        /* Split Mode: 3-column video + 1-column sidebar */
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div
+            ref={containerRef}
+            className={`lg:col-span-3 relative rounded-3xl overflow-hidden glass-panel border border-white/10 bg-black shadow-2xl flex items-center justify-center transition-all duration-300 ${
+              isFullscreen
+                ? 'fixed inset-0 z-50 rounded-none w-screen h-screen'
+                : 'h-[72vh] min-h-[580px]'
+            }`}
+          >
+            <div
+              className="relative w-full h-full flex items-center justify-center overflow-hidden transition-transform duration-300 ease-out origin-center"
+              style={{ transform: `scale(${zoomLevel})` }}
+            >
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
+
+              <canvas
+                ref={canvasOverlayRef}
+                className="absolute inset-0 w-full h-full object-cover pointer-events-none z-10"
+              />
+            </div>
+
+            {/* Quick Floating Overlays */}
+            <div className="absolute top-4 right-4 z-20 flex items-center gap-2 bg-slate-950/80 backdrop-blur-md border border-white/15 rounded-2xl p-1.5 shadow-2xl">
+              <div className="flex items-center gap-1 px-2 py-1 bg-white/5 rounded-xl text-slate-300">
+                <span className="text-[10px] text-slate-400 font-mono">ซูม:</span>
+                {[1.0, 1.25, 1.5].map((lvl) => (
+                  <button
+                    key={lvl}
+                    onClick={() => setZoomLevel(lvl)}
+                    className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer ${
+                      zoomLevel === lvl
+                        ? 'bg-cyan-500 text-white shadow-sm shadow-cyan-500/30'
+                        : 'text-slate-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    {lvl}x
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setIsTheaterMode(true)}
+                title="ขยายเป็นโหมดจอใหญ่"
+                className="p-2 rounded-xl bg-purple-600/90 hover:bg-purple-500 text-white border border-purple-400/40 transition-all cursor-pointer shadow-purple-600/30 flex items-center gap-1"
+              >
+                <Expand className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline text-[11px]">จอใหญ่</span>
+              </button>
+
+              <button
+                onClick={toggleFullscreen}
+                title={isFullscreen ? 'ย่อหน้าจอ' : 'เต็มหน้าจอ'}
+                className="p-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white border border-cyan-400/40 transition-all cursor-pointer shadow-cyan-600/30 flex items-center gap-1"
+              >
+                {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline text-[11px]">{isFullscreen ? 'ปกติ' : 'เต็มจอ'}</span>
+              </button>
+            </div>
+
+            <DebugOverlay
+              visible={showDebug}
+              telemetry={currentResult?.telemetry}
+              status={currentResult?.status || 'no_face'}
+              confidence={currentResult?.confidence || 0}
+              body={enableBodyTracking ? (poseData || currentResult?.body) : null}
+            />
+
+            <div className="absolute bottom-5 inset-x-0 flex justify-center z-20 pointer-events-none">
+              <ConfirmationBadge
+                status={currentResult?.status || 'no_face'}
+                name={currentResult?.name}
+                confidence={currentResult?.confidence || 0}
+                confirmed={currentResult?.confirmed || false}
+                count={currentResult?.confirmation_count || 0}
+                target={currentResult?.confirmation_target || 3}
+              />
+            </div>
+
+            {!isActive && (
+              <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-30">
+                <div className="p-4 rounded-2xl bg-slate-900 border border-white/10 text-slate-400 mb-4">
+                  <VideoOff className="w-10 h-10" />
+                </div>
+                <h3 className="text-lg font-bold text-white mb-2 font-['Outfit']">Camera Not Started</h3>
+                <p className="text-xs text-slate-400 max-w-sm mb-6">
+                  {cameraError || 'โปรดอนุญาตให้เข้าถึงเว็บแคม เพื่อเริ่มต้นระบบตรวจจับใบหน้าแบบเรียลไทม์'}
+                </p>
+                <button
+                  onClick={() => startCamera()}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>เปิดการทำงานกล้อง</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Right Sidebar */}
+          <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-sm flex flex-col h-full space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2 font-bold text-slate-900 text-sm font-['Outfit']">
+                <Radio className="w-4 h-4 text-emerald-500 animate-pulse" />
+                <span>ประวัติการตรวจจับล่าสุด</span>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">
+                LIVE
+              </span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 max-h-[460px]">
+              {recentDetections.length === 0 ? (
+                <div className="py-16 text-center text-slate-400 text-xs">
+                  <Sparkles className="w-6 h-6 mx-auto mb-2 text-indigo-400 animate-pulse" />
+                  <span>ยืนยันตัวตนสำเร็จแล้ว รายชื่อจะปรากฏตรงนี้</span>
+                </div>
+              ) : (
+                recentDetections.map((item) => (
+                  <div
+                    key={item.id}
+                    className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3 text-xs animate-fadeIn"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs border border-indigo-100">
+                        {item.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900">{item.name}</div>
+                        <div className="text-[10px] text-emerald-600 font-mono">
+                          {Math.round(item.confidence * 100)}% Confidence
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-mono text-right">
+                      {item.time}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 text-[11px] text-slate-500 space-y-1.5">
+              <div className="font-semibold text-slate-700">คำแนะนำการทดสอบ:</div>
+              <div className="flex items-start gap-1.5">
+                <span className="text-emerald-500 font-bold">•</span>
+                <span>ระบบต้องการตรวจพบคนเดิมต่อเนื่อง 3 เฟรม เพื่อป้องกันการเรียกชื่อผิด</span>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <span className="text-emerald-500 font-bold">•</span>
+                <span>มี Cooldown 6 วินาที ไม่ส่งเสียงซ้ำเมื่อยังยืนอยู่หน้ากล้อง</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

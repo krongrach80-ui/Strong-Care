@@ -81,7 +81,7 @@ const MainLayout: React.FC = () => {
         wsConnected={wsConnected}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-8 relative">
+      <main className="flex-1 max-w-[1760px] w-full mx-auto p-4 md:p-6 lg:p-8 relative">
         {currentTab === 'dashboard' && <Dashboard onNavigate={setCurrentTab} />}
         {currentTab === 'live' && <LiveRecognition />}
         {currentTab === 'register' && <RegisterPerson onSuccessNavigate={() => setCurrentTab('live')} />}
