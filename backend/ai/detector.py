@@ -1,4 +1,4 @@
-﻿import os
+import os
 import cv2
 import numpy as np
 import time
@@ -50,8 +50,8 @@ class FaceDetector:
             self._current_size = (w, h)
             self.detector.setInputSize((w, h))
 
-        if score_thresh is not None:
-            self.detector.setScoreThreshold(score_thresh)
+        thresh = score_thresh if score_thresh is not None else settings.DETECTION_SCORE_THRESHOLD
+        self.detector.setScoreThreshold(thresh)
 
         _, faces = self.detector.detect(image_bgr)
         if faces is None or len(faces) == 0:
@@ -62,18 +62,51 @@ class FaceDetector:
             # face structure: [x1, y1, w, h, x_re, y_re, x_le, y_le, x_nt, y_nt, x_rcm, y_rcm, x_lcm, y_lcm, score]
             x, y, bw, bh = int(face[0]), int(face[1]), int(face[2]), int(face[3])
             score = float(face[-1])
+            re_x, re_y = float(face[4]), float(face[5])
+            le_x, le_y = float(face[6]), float(face[7])
+            nt_x, nt_y = float(face[8]), float(face[9])
+            rcm_x, rcm_y = float(face[10]), float(face[11])
+            lcm_x, lcm_y = float(face[12]), float(face[13])
+
             landmarks = [
-                [float(face[4]), float(face[5])],    # Right eye
-                [float(face[6]), float(face[7])],    # Left eye
-                [float(face[8]), float(face[9])],    # Nose tip
-                [float(face[10]), float(face[11])],  # Right mouth corner
-                [float(face[12]), float(face[13])]   # Left mouth corner
+                [re_x, re_y],    # Right eye
+                [le_x, le_y],    # Left eye
+                [nt_x, nt_y],    # Nose tip
+                [rcm_x, rcm_y],  # Right mouth corner
+                [lcm_x, lcm_y]   # Left mouth corner
             ]
+
+            # Head Pose & Yaw Profile Analysis (ตรวจสอบการหันข้าง)
+            eye_span = max(1.0, abs(le_x - re_x))
+            eye_mid_x = (re_x + le_x) / 2.0
+            nose_offset = (nt_x - eye_mid_x) / eye_span
+            approx_yaw_deg = round(float(np.clip(nose_offset * 75.0, -90.0, 90.0)), 1)
+
+            if nose_offset > 0.35:
+                orientation = 'TURN_RIGHT'  # หันขวา
+                is_profile = True
+                orientation_th = 'หันขวา'
+            elif nose_offset < -0.35:
+                orientation = 'TURN_LEFT'   # หันซ้าย
+                is_profile = True
+                orientation_th = 'หันซ้าย'
+            elif abs(nose_offset) > 0.18:
+                orientation = 'SEMI_PROFILE'
+                is_profile = True
+                orientation_th = 'เอียงกึ่งข้าง'
+            else:
+                orientation = 'FRONTAL'
+                is_profile = False
+                orientation_th = 'หน้าตรง'
 
             results.append({
                 'box': (max(0, x), max(0, y), max(1, bw), max(1, bh)),
                 'confidence': round(score, 4),
                 'landmarks': landmarks,
+                'orientation': orientation,
+                'orientation_th': orientation_th,
+                'yaw_deg': approx_yaw_deg,
+                'is_profile': is_profile,
                 'raw_face': face
             })
         return results

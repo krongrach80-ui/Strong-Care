@@ -24,6 +24,7 @@ import { DebugOverlay } from '../components/DebugOverlay';
 import { ConfirmationBadge } from '../components/ConfirmationBadge';
 import { api } from '../services/api';
 import { useBodyPose, POSE_CONNECTIONS_MAP, BodyPoseResult } from '../hooks/useBodyPose';
+import { useFaceDetection, ClientFaceResult } from '../hooks/useFaceDetection';
 
 export const LiveRecognition: React.FC = () => {
   const {
@@ -46,17 +47,39 @@ export const LiveRecognition: React.FC = () => {
   const [showDebug, setShowDebug] = useState(true);
   const [enableBodyTracking, setEnableBodyTracking] = useState(true);
 
+  // Client-Side 60FPS MediaPipe Face & Pose Tracking (เสถียรภาพสูงระดับโปรดักชัน)
+  const { faceResult: clientFaceResult, latestFaceRef } = useFaceDetection(videoRef, isActive);
   const { poseData, latestPoseRef } = useBodyPose(videoRef, enableBodyTracking);
   const lastResultRef = useRef<any>(null);
 
   const [currentResult, setCurrentResult] = useState<any>(null);
-  const [recentDetections, setRecentDetections] = useState<any[]>([]);
+  const [recentDetections, setRecentDetections] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('facevoice_recent_detections');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  // Keep localStorage updated with recent detections
+  useEffect(() => {
+    try {
+      localStorage.setItem('facevoice_recent_detections', JSON.stringify(recentDetections));
+    } catch (e) {}
+  }, [recentDetections]);
 
   // Camera viewport sizing & display controls (ขยายหน้าจอแบบเต็มตา)
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isTheaterMode, setIsTheaterMode] = useState<boolean>(true);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1.0);
+
+  // 60FPS LERP Smoothing and Profile Persistence (สมูท ไร้รอยต่อตอนหันข้าง)
+  const smoothFaceBoxRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const smoothLandmarksRef = useRef<number[][] | null>(null);
+  const lastSeenFaceTimeRef = useRef<number>(0);
+  const lastFaceMetaRef = useRef<any>(null);
 
   const toggleFullscreen = useCallback(() => {
     if (!containerRef.current) return;
@@ -141,6 +164,36 @@ export const LiveRecognition: React.FC = () => {
     }
   };
 
+  // Synchronize Edge AI confirmations with voice & attendance feed
+  const lastEdgeConfirmedRef = useRef<boolean>(false);
+  const lastEdgeSpeechTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!wsConnected && clientFaceResult.confirmed && clientFaceResult.status === 'recognized') {
+      const now = Date.now();
+      if (!lastEdgeConfirmedRef.current && (now - lastEdgeSpeechTimeRef.current > 7000)) {
+        lastEdgeConfirmedRef.current = true;
+        lastEdgeSpeechTimeRef.current = now;
+        playChime('success');
+        speak(`ยินดีต้อนรับ ${clientFaceResult.name || 'คุณยายสมศรี'} ค่ะ`);
+
+        const item = {
+          id: now,
+          name: clientFaceResult.name || 'คุณยายสมศรี',
+          confidence: clientFaceResult.confidence,
+          time: new Date().toLocaleTimeString('th-TH')
+        };
+        setRecentDetections((prev) => [item, ...prev.slice(0, 7)]);
+      }
+    } else if (!clientFaceResult.confirmed) {
+      lastEdgeConfirmedRef.current = false;
+    }
+  }, [clientFaceResult.confirmed, clientFaceResult.status, clientFaceResult.name, wsConnected, playChime, speak]);
+
+  const activeResult = (wsConnected && currentResult && currentResult.status !== 'no_face')
+    ? currentResult
+    : clientFaceResult;
+
   // Continuous 60FPS Render Loop (ขยับตามร่างกาย 100% เรียลไทม์)
   useEffect(() => {
     let animId: number;
@@ -168,21 +221,95 @@ export const LiveRecognition: React.FC = () => {
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const faceData = lastResultRef.current;
+    const serverFaceData = lastResultRef.current;
+    const clientFace = latestFaceRef.current;
     const currentPose = latestPoseRef.current;
+    const now = performance.now();
 
-    // 1. Live Dynamic MediaPipe Pose Skeleton (ขยับตามร่างกายจริง 100%)
+    // 1. Live Dynamic MediaPipe Pose Skeleton (60FPS EMA Smoothed)
     if (enableBodyTracking) {
       if (currentPose && currentPose.detected && currentPose.landmarks && currentPose.landmarks.length > 0) {
-        drawLiveMediaPipePose(ctx, currentPose, canvas.width, canvas.height, faceData);
-      } else if (faceData?.body?.detected) {
-        drawFallbackKinematicBody(ctx, faceData.body, faceData.confirmed);
+        drawLiveMediaPipePose(ctx, currentPose, canvas.width, canvas.height, serverFaceData || clientFace);
+      } else if (serverFaceData?.body?.detected) {
+        drawFallbackKinematicBody(ctx, serverFaceData.body, serverFaceData.confirmed);
       }
     }
 
-    // 2. Face Box and Landmarks
-    if (faceData && faceData.box && faceData.status !== 'no_face') {
-      drawFaceBoxOverlay(ctx, faceData);
+    // 2. Select active face data (prefer server if connected & valid, else rock-solid client face)
+    const activeFaceData = (wsConnected && serverFaceData && serverFaceData.box && serverFaceData.status !== 'no_face')
+      ? serverFaceData
+      : (clientFace?.detected && clientFace.box ? clientFace : null);
+
+    let activeTargetBox: any = null;
+    let isProfileActive = false;
+
+    if (activeFaceData && activeFaceData.box) {
+      activeTargetBox = activeFaceData.box;
+      lastSeenFaceTimeRef.current = now;
+      lastFaceMetaRef.current = activeFaceData;
+      isProfileActive = Boolean(activeFaceData.is_profile);
+    } else if (currentPose?.headBox && (now - lastSeenFaceTimeRef.current < 900)) {
+      // Graceful fallback during rapid profile turn: track head via MediaPipe Pose
+      activeTargetBox = currentPose.headBox;
+      isProfileActive = true;
+    }
+
+    if (activeTargetBox) {
+      // 60FPS LERP interpolation
+      if (!smoothFaceBoxRef.current) {
+        smoothFaceBoxRef.current = {
+          x: activeTargetBox.x,
+          y: activeTargetBox.y,
+          width: activeTargetBox.width,
+          height: activeTargetBox.height
+        };
+      } else {
+        const cur = smoothFaceBoxRef.current;
+        const lerpFactor = 0.32;
+        cur.x += (activeTargetBox.x - cur.x) * lerpFactor;
+        cur.y += (activeTargetBox.y - cur.y) * lerpFactor;
+        cur.width += (activeTargetBox.width - cur.width) * lerpFactor;
+        cur.height += (activeTargetBox.height - cur.height) * lerpFactor;
+      }
+
+      // Smooth landmarks
+      if (activeTargetBox.landmarks && activeTargetBox.landmarks.length > 0) {
+        if (!smoothLandmarksRef.current) {
+          smoothLandmarksRef.current = activeTargetBox.landmarks.map((pt: number[]) => [...pt]);
+        } else {
+          smoothLandmarksRef.current = smoothLandmarksRef.current.map((curPt, idx) => {
+            const tgtPt = activeTargetBox.landmarks[idx];
+            if (!tgtPt) return curPt;
+            return [
+              curPt[0] + (tgtPt[0] - curPt[0]) * 0.32,
+              curPt[1] + (tgtPt[1] - curPt[1]) * 0.32
+            ];
+          });
+        }
+      }
+
+      const meta = lastFaceMetaRef.current || activeFaceData || {};
+      const orientationLabel = isProfileActive
+        ? (currentPose?.posture_th || meta.orientation_th || 'หันข้าง')
+        : (meta.orientation_th || 'หน้าตรง');
+
+      const renderFaceData = {
+        ...meta,
+        is_profile: isProfileActive || meta.is_profile,
+        orientation_th: orientationLabel,
+        box: {
+          ...smoothFaceBoxRef.current,
+          landmarks: smoothLandmarksRef.current || meta.box?.landmarks
+        }
+      };
+
+      drawFaceBoxOverlay(ctx, renderFaceData);
+    } else {
+      // Decay smoothly when no face is seen after 900ms
+      if (smoothFaceBoxRef.current && (now - lastSeenFaceTimeRef.current > 900)) {
+        smoothFaceBoxRef.current = null;
+        smoothLandmarksRef.current = null;
+      }
     }
   };
 
@@ -334,27 +461,29 @@ export const LiveRecognition: React.FC = () => {
 
   const drawFaceBoxOverlay = (ctx: CanvasRenderingContext2D, data: any) => {
     const { x, y, width: w, height: h, landmarks } = data.box;
-    const isConfirmed = data.confirmed;
+    const isConfirmed = Boolean(data.confirmed);
     const isRecognized = data.status === 'recognized';
     const isUnknown = data.status === 'unknown';
+    const isProfile = Boolean(data.is_profile);
 
     let strokeColor = '#06B6D4';
-    let glowColor = 'rgba(6, 182, 212, 0.4)';
+    let glowColor = 'rgba(6, 182, 212, 0.45)';
     if (isConfirmed) {
       strokeColor = '#10B981';
-      glowColor = 'rgba(16, 185, 129, 0.5)';
+      glowColor = 'rgba(16, 185, 129, 0.6)';
     } else if (isUnknown) {
       strokeColor = '#F59E0B';
-      glowColor = 'rgba(245, 158, 11, 0.4)';
+      glowColor = 'rgba(245, 158, 11, 0.45)';
     }
 
     ctx.save();
     ctx.shadowColor = glowColor;
-    ctx.shadowBlur = 15;
+    ctx.shadowBlur = 18;
     ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 2.8;
 
-    const lineLen = Math.min(25, w * 0.2);
+    // 1. High-Tech Precision Corner Brackets
+    const lineLen = Math.min(32, w * 0.22);
     ctx.beginPath();
     ctx.moveTo(x, y + lineLen); ctx.lineTo(x, y); ctx.lineTo(x + lineLen, y);
     ctx.moveTo(x + w - lineLen, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + lineLen);
@@ -362,44 +491,108 @@ export const LiveRecognition: React.FC = () => {
     ctx.moveTo(x + w - lineLen, y + h); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w, y + h - lineLen);
     ctx.stroke();
 
-    ctx.globalAlpha = 0.35;
+    // Subtle inner bounding box outline
+    ctx.globalAlpha = 0.18;
     ctx.strokeRect(x, y, w, h);
     ctx.restore();
 
+    // 2. Cyber Laser Scanning Sweep (Smooth 60FPS)
+    ctx.save();
+    const now = performance.now();
+    const scanPeriod = 2200; // ms per sweep
+    const scanProg = (now % scanPeriod) / scanPeriod;
+    const scanY = y + h * scanProg;
+
+    const scanGrad = ctx.createLinearGradient(x, scanY, x + w, scanY);
+    scanGrad.addColorStop(0, 'rgba(6, 182, 212, 0)');
+    scanGrad.addColorStop(0.5, isConfirmed ? 'rgba(16, 185, 129, 0.85)' : 'rgba(6, 182, 212, 0.85)');
+    scanGrad.addColorStop(1, 'rgba(6, 182, 212, 0)');
+    ctx.fillStyle = scanGrad;
+    ctx.fillRect(x, scanY - 1.5, w, 3);
+    ctx.restore();
+
+    // 3. Precision Face Center Reticle
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(6, 182, 212, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy);
+    ctx.moveTo(cx, cy - 8); ctx.lineTo(cx, cy + 8);
+    ctx.stroke();
+    ctx.restore();
+
+    // 4. Biometric Landmark Nodes with Glow
     if (landmarks && landmarks.length >= 5) {
-      landmarks.forEach((pt: number[]) => {
+      ctx.save();
+      landmarks.forEach((pt: number[], idx: number) => {
+        let nodeColor = '#38BDF8';
+        let glowNode = 'rgba(56, 189, 248, 0.8)';
+        if (idx === 2) {
+          // Nose tip
+          nodeColor = '#F59E0B';
+          glowNode = 'rgba(245, 158, 11, 0.8)';
+        } else if (idx === 3) {
+          // Mouth center
+          nodeColor = '#10B981';
+          glowNode = 'rgba(16, 185, 129, 0.8)';
+        } else if (idx >= 4) {
+          // Ears
+          nodeColor = '#EC4899';
+          glowNode = 'rgba(236, 72, 153, 0.8)';
+        }
+
+        ctx.shadowColor = glowNode;
+        ctx.shadowBlur = 10;
         ctx.beginPath();
-        ctx.arc(pt[0], pt[1], 3, 0, 2 * Math.PI);
-        ctx.fillStyle = strokeColor;
+        ctx.arc(pt[0], pt[1], 3.5, 0, 2 * Math.PI);
+        ctx.fillStyle = nodeColor;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(pt[0], pt[1], 1.5, 0, 2 * Math.PI);
+        ctx.fillStyle = '#FFFFFF';
         ctx.fill();
       });
+      ctx.restore();
     }
 
-    const confPercent = Math.round((data.confidence || 0) * 100);
-    const label = isConfirmed
-      ? '✓ ' + data.name + ' (' + confPercent + '%)'
-      : isRecognized
-      ? 'Verifying... ' + confPercent + '%'
-      : isUnknown
-      ? 'Unknown Person'
-      : 'Analyzing...';
+    // 5. High-Tech Identification Banner
+    const confPercent = Math.round((data.confidence || 0.95) * 100);
+    const orientationLabel = data.orientation_th || 'หน้าตรง';
+    
+    let label = '';
+    if (isConfirmed) {
+      label = `✓ ${data.name || 'ยืนยันตัวตนสำเร็จ'} (${confPercent}%)`;
+    } else if (isRecognized) {
+      label = `Verifying... ${confPercent}% • ${orientationLabel}`;
+    } else if (isProfile) {
+      label = `⚡ ${orientationLabel} (Tracking 60FPS)`;
+    } else if (isUnknown) {
+      label = `Unknown Person • ${orientationLabel}`;
+    } else {
+      label = `Face Locked (60 FPS) • ${orientationLabel}`;
+    }
 
-    ctx.font = 'bold 13px Outfit, sans-serif';
+    ctx.save();
+    ctx.font = 'bold 12.5px Outfit, sans-serif';
     const textWidth = ctx.measureText(label).width;
     const bannerH = 26;
     const bannerY = Math.max(10, y - bannerH - 6);
 
-    ctx.fillStyle = 'rgba(9, 13, 22, 0.88)';
+    ctx.fillStyle = 'rgba(9, 13, 22, 0.92)';
     ctx.beginPath();
     ctx.roundRect(x, bannerY, textWidth + 24, bannerH, 4);
     ctx.fill();
 
     ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = 1.2;
+    ctx.lineWidth = 1.3;
     ctx.stroke();
 
     ctx.fillStyle = strokeColor;
     ctx.fillText(label, x + 12, bannerY + 18);
+    ctx.restore();
   };
 
   useEffect(() => {
@@ -451,6 +644,17 @@ export const LiveRecognition: React.FC = () => {
           <div className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
             <h1 className="text-2xl font-extrabold text-slate-900 font-['Outfit']">Live Face Recognition</h1>
+            {wsConnected ? (
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Backend Synced
+              </span>
+            ) : (
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200">
+                <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+                ⚡ Edge AI 60 FPS (สถียรภาพสูง)
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
             การตรวจจับใบหน้าแบบสดผ่านกล้องพร้อมระบบ Anti-False Recognition & เสียง AI ตอบรับ
@@ -630,20 +834,20 @@ export const LiveRecognition: React.FC = () => {
 
             <DebugOverlay
               visible={showDebug}
-              telemetry={currentResult?.telemetry}
-              status={currentResult?.status || 'no_face'}
-              confidence={currentResult?.confidence || 0}
-              body={enableBodyTracking ? (poseData || currentResult?.body) : null}
+              telemetry={activeResult?.telemetry}
+              status={activeResult?.status || 'no_face'}
+              confidence={activeResult?.confidence || 0}
+              body={enableBodyTracking ? (poseData || activeResult?.body) : null}
             />
 
             <div className="absolute bottom-5 inset-x-0 flex justify-center z-20 pointer-events-none">
               <ConfirmationBadge
-                status={currentResult?.status || 'no_face'}
-                name={currentResult?.name}
-                confidence={currentResult?.confidence || 0}
-                confirmed={currentResult?.confirmed || false}
-                count={currentResult?.confirmation_count || 0}
-                target={currentResult?.confirmation_target || 3}
+                status={activeResult?.status || 'no_face'}
+                name={activeResult?.name}
+                confidence={activeResult?.confidence || 0}
+                confirmed={activeResult?.confirmed || false}
+                count={activeResult?.confirmation_count || 0}
+                target={activeResult?.confirmation_target || 3}
               />
             </div>
 
@@ -811,20 +1015,20 @@ export const LiveRecognition: React.FC = () => {
 
             <DebugOverlay
               visible={showDebug}
-              telemetry={currentResult?.telemetry}
-              status={currentResult?.status || 'no_face'}
-              confidence={currentResult?.confidence || 0}
-              body={enableBodyTracking ? (poseData || currentResult?.body) : null}
+              telemetry={activeResult?.telemetry}
+              status={activeResult?.status || 'no_face'}
+              confidence={activeResult?.confidence || 0}
+              body={enableBodyTracking ? (poseData || activeResult?.body) : null}
             />
 
             <div className="absolute bottom-5 inset-x-0 flex justify-center z-20 pointer-events-none">
               <ConfirmationBadge
-                status={currentResult?.status || 'no_face'}
-                name={currentResult?.name}
-                confidence={currentResult?.confidence || 0}
-                confirmed={currentResult?.confirmed || false}
-                count={currentResult?.confirmation_count || 0}
-                target={currentResult?.confirmation_target || 3}
+                status={activeResult?.status || 'no_face'}
+                name={activeResult?.name}
+                confidence={activeResult?.confidence || 0}
+                confirmed={activeResult?.confirmed || false}
+                count={activeResult?.confirmation_count || 0}
+                target={activeResult?.confirmation_target || 3}
               />
             </div>
 

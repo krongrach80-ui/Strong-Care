@@ -24,8 +24,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     
     # AI Engine Thresholds
-    DETECTION_SCORE_THRESHOLD: float = 0.60
-    SIMILARITY_THRESHOLD: float = 0.62  # SFace cosine similarity (0.60 - 0.70 typical)
+    DETECTION_SCORE_THRESHOLD: float = 0.40  # 0.40 enables robust detection of side-profile faces
+    SIMILARITY_THRESHOLD: float = 0.62  # SFace cosine similarity for frontal faces
+    PROFILE_SIMILARITY_THRESHOLD: float = 0.48  # SFace threshold for profile / side-turned faces
     TEMPORAL_CONFIRMATION_FRAMES: int = 3  # Must recognize same person N consecutive frames
     VOICE_COOLDOWN_SECONDS: float = 6.0  # Seconds before speaking again for same person
     
