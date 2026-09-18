@@ -105,7 +105,19 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
   );
   const personName = activeKioskResult?.name;
 
-  // Synchronize refs with state for real-time WebSocket closures
+  // Synchronize refs with state for real-time WebSocket closures and progress accumulator
+  const distanceInfoRef = useRef(distanceInfo);
+  const hasFaceRef = useRef(hasFace);
+  const voiceGuideRef = useRef(voiceGuide);
+  const speakRef = useRef(speak);
+
+  useEffect(() => {
+    distanceInfoRef.current = distanceInfo;
+    hasFaceRef.current = hasFace;
+    voiceGuideRef.current = voiceGuide;
+    speakRef.current = speak;
+  });
+
   useEffect(() => {
     scanModeRef.current = scanMode;
   }, [scanMode]);
@@ -356,11 +368,14 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
     if (scanMode !== 'REGISTER' || showRegisterModal) return;
 
     const interval = setInterval(() => {
-      const activeDist = distanceInfo;
+      const activeDist = distanceInfoRef.current;
       const isOptimal = Boolean(activeDist?.isOptimal);
       const status = activeDist?.status;
+      const currentHasFace = hasFaceRef.current;
+      const isVoice = voiceGuideRef.current;
+      const currentSpeak = speakRef.current;
 
-      if (hasFace && isOptimal) {
+      if (currentHasFace && isOptimal) {
         // ระยะชิดพอดี: เปอร์เซ็นต์ค่อยๆ นับขึ้นอย่างนุ่มนวล (+2% ทุก 40ms = 100% ใน 2.0 วินาที)
         const cur = bankAutoProgressRef.current;
         const next = Math.min(100, cur + 2);
@@ -378,11 +393,11 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
         }
 
         // Voice announcement on entering optimal distance
-        if (voiceGuide && Date.now() - lastOptimalSpokenRef.current > 6000) {
+        if (isVoice && Date.now() - lastOptimalSpokenRef.current > 6000) {
           lastOptimalSpokenRef.current = Date.now();
-          speak('ระยะพอดีแล้ว กำลังสแกนชีวมิติ กรุณานิ่งไว้นะคะ');
+          currentSpeak('ระยะพอดีแล้ว กำลังสแกนชีวมิติ กรุณานิ่งไว้นะคะ');
         }
-      } else if (hasFace && status === 'TOO_FAR') {
+      } else if (currentHasFace && status === 'TOO_FAR') {
         // อยู่ไกลเกินไป: แจ้งเตือนให้เอาหน้าเข้ามาชิด
         const cur = bankAutoProgressRef.current;
         if (cur > 0) {
@@ -393,11 +408,11 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
         setBankGuidanceText('🔍 กรุณาเอาหน้าเข้ามาชิดกรอบวงกลม');
 
         // สั่งเสียงพูดเตือนให้เอาหน้าเข้ามาชิด
-        if (voiceGuide && Date.now() - lastVoiceDistRef.current.time > 3500) {
-          speak('กรุณาเอาใบหน้าเข้ามาชิดอีกนิดนะคะ');
+        if (isVoice && Date.now() - lastVoiceDistRef.current.time > 3500) {
+          currentSpeak('กรุณาเอาใบหน้าเข้ามาชิดอีกนิดนะคะ');
           lastVoiceDistRef.current = { status: 'TOO_FAR', time: Date.now() };
         }
-      } else if (hasFace && status === 'OFF_CENTER') {
+      } else if (currentHasFace && status === 'OFF_CENTER') {
         const cur = bankAutoProgressRef.current;
         if (cur > 0) {
           const next = Math.max(0, cur - 1);
@@ -406,11 +421,11 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
         }
         setBankGuidanceText('🎯 วางใบหน้าให้อยู่กึ่งกลางวงกลม');
 
-        if (voiceGuide && Date.now() - lastVoiceDistRef.current.time > 4000) {
-          speak('วางใบหน้าให้อยู่ตรงกลางกรอบวงกลมนะคะ');
+        if (isVoice && Date.now() - lastVoiceDistRef.current.time > 4000) {
+          currentSpeak('วางใบหน้าให้อยู่ตรงกลางกรอบวงกลมนะคะ');
           lastVoiceDistRef.current = { status: 'OFF_CENTER', time: Date.now() };
         }
-      } else if (hasFace && status === 'TOO_CLOSE') {
+      } else if (currentHasFace && status === 'TOO_CLOSE') {
         const cur = bankAutoProgressRef.current;
         if (cur > 0) {
           const next = Math.max(0, cur - 1);
@@ -419,8 +434,8 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
         }
         setBankGuidanceText('⚠️ อยู่ใกล้เกินไป กรุณาถอยห่างอีกนิด');
 
-        if (voiceGuide && Date.now() - lastVoiceDistRef.current.time > 4000) {
-          speak('ถอยห่างจากกล้องอีกนิดนะคะ');
+        if (isVoice && Date.now() - lastVoiceDistRef.current.time > 4000) {
+          currentSpeak('ถอยห่างจากกล้องอีกนิดนะคะ');
           lastVoiceDistRef.current = { status: 'TOO_CLOSE', time: Date.now() };
         }
       } else {
@@ -436,7 +451,7 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
     }, 40);
 
     return () => clearInterval(interval);
-  }, [scanMode, showRegisterModal, hasFace, distanceInfo, voiceGuide, speak]);
+  }, [scanMode, showRegisterModal]);
 
   // Frame sender loop (WebSocket)
   useEffect(() => {
@@ -518,6 +533,7 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
     setCurrentResult(null);
     setBankAutoProgress(0);
     bankAutoProgressRef.current = 0;
+    hasTriggeredCaptureRef.current = false;
     setDistanceInfo(null);
     setCapturedPhoto(null);
     setShowRegisterModal(false);
@@ -927,7 +943,7 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
       <div
         className="absolute top-[47%] sm:top-[48%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(680px,76vh)] h-[min(680px,76vh)] rounded-full transition-all duration-500 flex items-center justify-center pointer-events-none z-20"
         style={{
-          boxShadow: isConfirmed 
+          boxShadow: (scanMode === 'VERIFY' && isConfirmed) 
             ? '0 0 0 9999px rgba(5, 46, 22, 0.88)' 
             : '0 0 0 9999px rgba(10, 15, 29, 0.86)'
         }}
@@ -940,7 +956,15 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
             cy="350"
             r="345"
             fill="none"
-            stroke={isConfirmed ? '#10B981' : isUnknown ? '#F59E0B' : 'rgba(255, 255, 255, 0.2)'}
+            stroke={
+              scanMode === 'REGISTER'
+                ? (distanceInfo?.isOptimal ? 'rgba(16, 185, 129, 0.4)' : 'rgba(255, 255, 255, 0.2)')
+                : isConfirmed
+                ? '#10B981'
+                : isUnknown
+                ? '#F59E0B'
+                : 'rgba(255, 255, 255, 0.2)'
+            }
             strokeWidth="8"
           />
 
@@ -978,7 +1002,7 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
         </svg>
 
         {/* Rotating Glowing Trail Ring (Active when scanning) */}
-        {!isConfirmed && (
+        {!(scanMode === 'VERIFY' && isConfirmed) && (
           <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-emerald-400 border-r-cyan-400 animate-spin pointer-events-none" style={{ animationDuration: '3s' }} />
         )}
 
@@ -1062,25 +1086,25 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
         )}
 
         {/* In-Viewfinder Prominent Scanning Progress: นับเปอร์เซ็นต์ค่อยๆ ขึ้น */}
-        {scanMode === 'REGISTER' && distanceInfo?.isOptimal && (
+        {scanMode === 'REGISTER' && (distanceInfo?.isOptimal || bankAutoProgress > 0) && (
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-20 animate-fadeIn">
             <div className="px-6 py-2.5 rounded-full bg-slate-950/80 border-2 border-emerald-400 backdrop-blur-md text-emerald-300 font-mono font-black text-base sm:text-lg shadow-[0_0_35px_rgba(16,185,129,0.5)] flex items-center gap-2.5 animate-pulse">
               <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping" />
               <span>สแกนชีวมิติ {bankAutoProgress}%</span>
             </div>
             <div className="text-emerald-300 font-sans text-xs font-bold mt-2 drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)]">
-              ✓ เอาหน้าเข้ามาชิดพอดีแล้ว กรุณานิ่งไว้
+              {bankAutoProgress >= 100 ? '✓ กำลังบันทึกภาพถ่ายชีวมิติ...' : '✓ เอาหน้าเข้ามาชิดพอดีแล้ว กรุณานิ่งไว้'}
             </div>
           </div>
         )}
 
         {/* Animated Horizontal Laser Scanner Line inside Circle */}
-        {!isConfirmed && (
+        {!(scanMode === 'VERIFY' && isConfirmed) && (
           <div className="absolute w-[88%] h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_30px_#06B6D4] animate-laser pointer-events-none" />
         )}
 
-        {/* Central Status Icon on Confirmation */}
-        {isConfirmed && (
+        {/* Central Status Icon on Confirmation (Only in Verification Mode) */}
+        {scanMode === 'VERIFY' && isConfirmed && (
           <div className="w-40 h-40 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-[0_0_80px_rgba(16,185,129,0.95)] animate-bounce z-20">
             <Check className="w-28 h-28 stroke-[3.5]" />
           </div>
@@ -1230,8 +1254,8 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
       </div>
 
 
-      {/* 7. Bank-Style Confirmation Receipt / Success Slip Card (Pops up when confirmed) */}
-      {isConfirmed && (
+      {/* 7. Bank-Style Confirmation Receipt / Success Slip Card (Pops up only when confirmed in VERIFY mode) */}
+      {scanMode === 'VERIFY' && isConfirmed && (
         <div className="absolute bottom-6 sm:bottom-8 inset-x-4 flex items-center justify-center z-40 pointer-events-auto">
           <div className="bg-slate-900/95 border-2 border-emerald-400 text-white w-full max-w-md p-5 sm:p-6 rounded-3xl backdrop-blur-2xl shadow-[0_0_60px_rgba(16,185,129,0.4)] animate-scaleUp space-y-4">
             {/* Slip Header */}
