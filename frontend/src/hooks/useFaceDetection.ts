@@ -192,13 +192,17 @@ export const useFaceDetection = (
           return;
         }
 
-        const basePath = (import.meta as any).env?.BASE_URL ? (import.meta as any).env.BASE_URL.replace(/\/$/, '') : '';
+        const isGhPages = typeof window !== 'undefined' && (
+          window.location.pathname.includes('/Strong-Care') ||
+          window.location.hostname.includes('github.io')
+        );
+        const origin = window.location.origin;
+        const basePath = isGhPages ? `${origin}/Strong-Care` : origin;
         const faceDetection = new FaceDetectionConstructor({
           locateFile: (file: string) => {
-            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-              return `${basePath}/mediapipe/face_detection/${file}`;
-            }
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4.1646425229/${file}`;
+            if (file.startsWith('http://') || file.startsWith('https://')) return file;
+            const clean = file.startsWith('/') ? file.slice(1) : file;
+            return `${basePath}/mediapipe/face_detection/${clean}`;
           }
         });
 
@@ -209,11 +213,10 @@ export const useFaceDetection = (
 
         faceDetection.onResults((results: any) => {
           if (isCancelled) return;
-          isRunningRef.current = false;
-
-          const now = performance.now();
-          const dt = now - lastLoopTimeRef.current;
-          lastLoopTimeRef.current = now;
+          try {
+            const now = performance.now();
+            const dt = now - lastLoopTimeRef.current;
+            lastLoopTimeRef.current = now;
 
           // Rolling FPS calculation
           const ft = frameTimesRef.current;
@@ -427,7 +430,12 @@ export const useFaceDetection = (
           };
 
           latestFaceRef.current = res;
-          setFaceResult(res);
+            setFaceResult(res);
+          } catch (err) {
+            console.error('[FaceDetection] onResults parse error:', err);
+          } finally {
+            isRunningRef.current = false;
+          }
         });
 
         detectorRef.current = faceDetection;
@@ -469,31 +477,16 @@ export const useFaceDetection = (
         video &&
         video.readyState >= 2 &&
         video.videoWidth > 0 &&
-        !video.paused &&
         detector &&
         !isRunningRef.current
       ) {
+        if (video.paused) {
+          video.play().catch(() => {});
+        }
         isRunningRef.current = true;
         lastSendTimeRef.current = now;
         try {
-          // Offscreen adaptive canvas enhancement for dark rooms / low-light conditions
-          if (!offscreenCanvasRef.current) {
-            offscreenCanvasRef.current = document.createElement('canvas');
-          }
-          const canvas = offscreenCanvasRef.current;
-          if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-          }
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            // Dark room / low-light contrast booster: elevates highlights so BlazeFace detects clearly in dim rooms
-            ctx.filter = 'brightness(1.35) contrast(1.20)';
-            ctx.drawImage(video, 0, 0);
-            await detector.send({ image: canvas });
-          } else {
-            await detector.send({ image: video });
-          }
+          await detector.send({ image: video });
         } catch (err) {
           // send error
         } finally {

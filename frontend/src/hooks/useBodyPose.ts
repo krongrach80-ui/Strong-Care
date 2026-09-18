@@ -85,14 +85,17 @@ export const useBodyPose = (
           return;
         }
 
-        const basePath = (import.meta as any).env?.BASE_URL ? (import.meta as any).env.BASE_URL.replace(/\/$/, '') : '';
+        const isGhPages = typeof window !== 'undefined' && (
+          window.location.pathname.includes('/Strong-Care') ||
+          window.location.hostname.includes('github.io')
+        );
+        const origin = window.location.origin;
+        const basePath = isGhPages ? `${origin}/Strong-Care` : origin;
         const pose = new PoseConstructor({
           locateFile: (file: string) => {
-            // Prioritize local repository assets on localhost or same origin
-            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-              return `${basePath}/mediapipe/pose/${file}`;
-            }
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`;
+            if (file.startsWith('http://') || file.startsWith('https://')) return file;
+            const clean = file.startsWith('/') ? file.slice(1) : file;
+            return `${basePath}/mediapipe/pose/${clean}`;
           }
         });
 
@@ -106,14 +109,13 @@ export const useBodyPose = (
 
         pose.onResults((results: any) => {
           if (isCancelled) return;
-          isProcessingRef.current = false;
-
-          if (!results.poseLandmarks || results.poseLandmarks.length === 0) {
-            latestPoseRef.current = null;
-            setPoseData(null);
-            prevLandmarksRef.current = null;
-            return;
-          }
+          try {
+            if (!results.poseLandmarks || results.poseLandmarks.length === 0) {
+              latestPoseRef.current = null;
+              setPoseData(null);
+              prevLandmarksRef.current = null;
+              return;
+            }
 
           const rawLms: BodyKeypoint[] = results.poseLandmarks;
           const prevLms = prevLandmarksRef.current;
@@ -321,9 +323,14 @@ export const useBodyPose = (
 
           latestPoseRef.current = res;
           setPoseData(res);
-        });
+        } catch (err) {
+          console.error('[Pose] onResults parse error:', err);
+        } finally {
+          isProcessingRef.current = false;
+        }
+      });
 
-        poseRef.current = pose;
+      poseRef.current = pose;
       } catch (err) {
         console.error('[Pose] Init error:', err);
       }
@@ -364,10 +371,12 @@ export const useBodyPose = (
         video &&
         video.readyState >= 2 &&
         video.videoWidth > 0 &&
-        !video.paused &&
         pose &&
         !isProcessingRef.current
       ) {
+        if (video.paused) {
+          video.play().catch(() => {});
+        }
         try {
           isProcessingRef.current = true;
           lastSendTimeRef.current = now;
