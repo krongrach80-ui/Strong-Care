@@ -8,7 +8,7 @@ Remove-Item -Force $gitIndex
 Remove-Item Env:\GIT_INDEX_FILE
 
 $parent = (git rev-parse origin/gh-pages).Trim()
-$commit = (git commit-tree $tree -p $parent -m "deploy: Stable 60FPS MediaPipe BlazeFace AI tracking & Deadzone Hysteresis filter").Trim()
+$commit = (git commit-tree $tree -p $parent -m "deploy: 4-part anatomical skeleton tracking (Face, Torso, Arms, Legs) & MediaPipe HUD").Trim()
 git update-ref refs/heads/gh-pages $commit
 Write-Host "gh-pages branch successfully updated to commit: $commit"
-git log -n 1 --stat refs/heads/gh-pages
+git push origin gh-pages
