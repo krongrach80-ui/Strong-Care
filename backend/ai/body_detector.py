@@ -188,7 +188,17 @@ class BodyPoseDetector:
                 posture = "Leaning Right"
                 posture_th = "เอียงขวา"
 
-        coverage_pct = round((body_w * body_h / (w * h)) * 100, 1)
+        has_face = any((pts[i].get('visibility', 1.0) if i < len(pts) else 0) > 0.20 for i in range(min(11, len(pts))))
+        has_torso = any((pts[i].get('visibility', 1.0) if i < len(pts) else 0) > 0.20 for i in [11, 12, 23, 24] if i < len(pts))
+        has_arms = any((pts[i].get('visibility', 1.0) if i < len(pts) else 0) > 0.20 for i in [13, 14, 15, 16] if i < len(pts))
+        has_legs = any((pts[i].get('visibility', 1.0) if i < len(pts) else 0) > 0.20 for i in [25, 26, 27, 28] if i < len(pts))
+
+        parts = {
+            "face": has_face,
+            "torso": has_torso,
+            "arms": has_arms,
+            "legs": has_legs
+        }
 
         return {
             "detected": True,
@@ -200,6 +210,7 @@ class BodyPoseDetector:
                 "height": body_h,
                 "confidence": 0.98
             },
+            "parts": parts,
             "posture": posture,
             "posture_th": posture_th,
             "is_arm_raised": is_arm_raised,
@@ -287,6 +298,13 @@ class BodyPoseDetector:
         body_area = body_w * body_h
         coverage_pct = round((body_area / (frame_w * frame_h)) * 100, 1)
 
+        parts = {
+            "face": True,
+            "torso": True,
+            "arms": True,
+            "legs": False
+        }
+
         return {
             "detected": True,
             "engine": "kinematic_fallback",
@@ -297,6 +315,7 @@ class BodyPoseDetector:
                 "height": body_h,
                 "confidence": 0.94
             },
+            "parts": parts,
             "posture": posture_status,
             "posture_th": posture_th,
             "is_arm_raised": False,

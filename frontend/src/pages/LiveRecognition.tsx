@@ -23,7 +23,7 @@ import { useSpeech } from '../hooks/useSpeech';
 import { DebugOverlay } from '../components/DebugOverlay';
 import { ConfirmationBadge } from '../components/ConfirmationBadge';
 import { api } from '../services/api';
-import { useBodyPose, POSE_CONNECTIONS_MAP, BodyPoseResult } from '../hooks/useBodyPose';
+import { useBodyPose, POSE_CONNECTIONS_MAP, drawFullAnatomySkeleton, BodyPoseResult } from '../hooks/useBodyPose';
 import { useFaceDetection, ClientFaceResult } from '../hooks/useFaceDetection';
 
 export const LiveRecognition: React.FC = () => {
@@ -370,66 +370,8 @@ export const LiveRecognition: React.FC = () => {
     ctx.fillText(gestureText, bx + 11, bBannerY + 16);
     ctx.restore();
 
-    // Real-time Glowing Skeletal Bones (ขยับตามแขน/ข้อต่อจริง 100%)
-    ctx.save();
-    ctx.shadowColor = 'rgba(56, 189, 248, 0.95)';
-    ctx.shadowBlur = 14;
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.92)';
-    ctx.lineWidth = 3.5;
-    ctx.lineCap = 'round';
-
-    POSE_CONNECTIONS_MAP.forEach(([idxA, idxB]) => {
-      const ptA = lms[idxA];
-      const ptB = lms[idxB];
-      if (
-        ptA && ptB &&
-        (ptA.visibility ?? 1) > 0.18 &&
-        (ptB.visibility ?? 1) > 0.18
-      ) {
-        ctx.beginPath();
-        ctx.moveTo(ptA.x * vw, ptA.y * vh);
-        ctx.lineTo(ptB.x * vw, ptB.y * vh);
-        ctx.stroke();
-      }
-    });
-    ctx.restore();
-
-    // Real-time Joint Nodes
-    ctx.save();
-    lms.forEach((pt, idx) => {
-      if (idx >= 11 && idx <= 32 && (pt.visibility ?? 1) > 0.18) {
-        const px = pt.x * vw;
-        const py = pt.y * vh;
-
-        const isWrist = idx === 15 || idx === 16;
-        const nodeColor = isWrist ? '#F59E0B' : '#10B981';
-
-        ctx.shadowColor = isWrist ? 'rgba(245, 158, 11, 0.95)' : 'rgba(16, 185, 129, 0.95)';
-        ctx.shadowBlur = 12;
-
-        ctx.beginPath();
-        ctx.arc(px, py, isWrist ? 7 : 5.5, 0, 2 * Math.PI);
-        ctx.fillStyle = nodeColor;
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.arc(px, py, 2.5, 0, 2 * Math.PI);
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fill();
-      }
-    });
-
-    // Biometric Core at Chest
-    if (lms[11] && lms[12]) {
-      const chestX = ((lms[11].x + lms[12].x) / 2) * vw;
-      const chestY = (((lms[11].y + lms[12].y) / 2) + 0.04) * vh;
-      ctx.beginPath();
-      ctx.arc(chestX, chestY, 13, 0, 2 * Math.PI);
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.8)';
-      ctx.lineWidth = 1.8;
-      ctx.stroke();
-    }
-    ctx.restore();
+    // Real-time 4-Part Anatomical Skeleton (Face, Torso, Arms, Legs)
+    drawFullAnatomySkeleton(ctx, pose, vw, vh, { isConfirmed, showLabels: true });
   };
 
   const drawFallbackKinematicBody = (
@@ -840,9 +782,9 @@ export const LiveRecognition: React.FC = () => {
               body={enableBodyTracking ? (poseData || activeResult?.body) : null}
             />
 
-            {/* Live Gesture & Posture Feedback Pill (Theater Mode) */}
+            {/* Live Gesture & 4-Part Anatomical Feedback Pill (Theater Mode) */}
             {enableBodyTracking && poseData?.detected && (
-              <div className="absolute top-4 left-4 sm:left-auto sm:right-56 z-20 pointer-events-none animate-fadeIn">
+              <div className="absolute top-4 left-4 sm:left-auto sm:right-56 z-20 pointer-events-none flex flex-col items-end gap-1.5 animate-fadeIn">
                 <div className={`px-4 py-2 rounded-2xl border backdrop-blur-xl flex items-center gap-2 shadow-2xl font-mono text-xs font-black transition-all ${
                   poseData.isArmRaised
                     ? 'bg-amber-950/90 border-amber-400 text-amber-300 shadow-[0_0_25px_rgba(245,158,11,0.5)] animate-pulse'
@@ -851,6 +793,22 @@ export const LiveRecognition: React.FC = () => {
                   <span className={`w-2.5 h-2.5 rounded-full ${poseData.isArmRaised ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`} />
                   <span className="font-sans font-bold text-slate-300">ตรวจจับท่าทาง:</span>
                   <span className="text-white font-bold">{poseData.posture_th}</span>
+                </div>
+
+                {/* 4-Part Anatomical Status Pills */}
+                <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-950/90 border border-slate-800 backdrop-blur-xl shadow-xl">
+                  <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${poseData.parts?.face !== false ? 'bg-sky-500/20 text-sky-300' : 'text-slate-500'}`}>
+                    🧠 โครงหน้า {poseData.parts?.face !== false ? '✓' : '⏳'}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${poseData.parts?.torso ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-500'}`}>
+                    🎽 ลำตัว {poseData.parts?.torso ? '✓' : '⏳'}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${poseData.parts?.arms ? 'bg-amber-500/20 text-amber-300' : 'text-slate-500'}`}>
+                    💪 แขน {poseData.parts?.arms ? '✓' : '⏳'}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${poseData.parts?.legs ? 'bg-purple-500/20 text-purple-300' : 'text-slate-500'}`}>
+                    🦵 ขา {poseData.parts?.legs ? '✓' : '⏳'}
+                  </span>
                 </div>
               </div>
             )}
@@ -1036,9 +994,9 @@ export const LiveRecognition: React.FC = () => {
               body={enableBodyTracking ? (poseData || activeResult?.body) : null}
             />
 
-            {/* Live Gesture & Posture Feedback Pill (Split Mode) */}
+            {/* Live Gesture & 4-Part Anatomical Feedback Pill (Split Mode) */}
             {enableBodyTracking && poseData?.detected && (
-              <div className="absolute top-4 left-4 sm:left-auto sm:right-56 z-20 pointer-events-none animate-fadeIn">
+              <div className="absolute top-4 left-4 sm:left-auto sm:right-56 z-20 pointer-events-none flex flex-col items-end gap-1.5 animate-fadeIn">
                 <div className={`px-4 py-2 rounded-2xl border backdrop-blur-xl flex items-center gap-2 shadow-2xl font-mono text-xs font-black transition-all ${
                   poseData.isArmRaised
                     ? 'bg-amber-950/90 border-amber-400 text-amber-300 shadow-[0_0_25px_rgba(245,158,11,0.5)] animate-pulse'
@@ -1047,6 +1005,22 @@ export const LiveRecognition: React.FC = () => {
                   <span className={`w-2.5 h-2.5 rounded-full ${poseData.isArmRaised ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`} />
                   <span className="font-sans font-bold text-slate-300">ตรวจจับท่าทาง:</span>
                   <span className="text-white font-bold">{poseData.posture_th}</span>
+                </div>
+
+                {/* 4-Part Anatomical Status Pills */}
+                <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-950/90 border border-slate-800 backdrop-blur-xl shadow-xl">
+                  <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${poseData.parts?.face !== false ? 'bg-sky-500/20 text-sky-300' : 'text-slate-500'}`}>
+                    🧠 โครงหน้า {poseData.parts?.face !== false ? '✓' : '⏳'}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${poseData.parts?.torso ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-500'}`}>
+                    🎽 ลำตัว {poseData.parts?.torso ? '✓' : '⏳'}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${poseData.parts?.arms ? 'bg-amber-500/20 text-amber-300' : 'text-slate-500'}`}>
+                    💪 แขน {poseData.parts?.arms ? '✓' : '⏳'}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${poseData.parts?.legs ? 'bg-purple-500/20 text-purple-300' : 'text-slate-500'}`}>
+                    🦵 ขา {poseData.parts?.legs ? '✓' : '⏳'}
+                  </span>
                 </div>
               </div>
             )}

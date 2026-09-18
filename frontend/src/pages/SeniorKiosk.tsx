@@ -33,7 +33,7 @@ import { useSpeech } from '../hooks/useSpeech';
 import { useAuth } from '../context/AuthContext';
 import { api, AttendanceRecord } from '../services/api';
 import { useFaceDetection } from '../hooks/useFaceDetection';
-import { useBodyPose, POSE_CONNECTIONS_MAP, BodyPoseResult } from '../hooks/useBodyPose';
+import { useBodyPose, POSE_CONNECTIONS_MAP, drawFullAnatomySkeleton, BodyPoseResult } from '../hooks/useBodyPose';
 
 interface SeniorKioskProps {
   onExit?: () => void;
@@ -146,42 +146,7 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
           const currentPose = latestPoseRef.current || (currentResult?.body?.detected ? currentResult.body : null);
           if (showBodySkeleton && currentPose && currentPose.landmarks && currentPose.landmarks.length > 0) {
-            ctx.save();
-            const isArmUp = Boolean(currentPose.isArmRaised || currentPose.is_arm_raised);
-            ctx.shadowColor = isArmUp ? 'rgba(245, 158, 11, 0.9)' : 'rgba(16, 185, 129, 0.85)';
-            ctx.shadowBlur = 12;
-            ctx.strokeStyle = isArmUp ? '#F59E0B' : '#10B981';
-            ctx.lineWidth = 3.5;
-            ctx.lineCap = 'round';
-
-            const vw = canvas.width;
-            const vh = canvas.height;
-            const lms = currentPose.landmarks;
-
-            POSE_CONNECTIONS_MAP.forEach(([idxA, idxB]) => {
-              const ptA = lms[idxA];
-              const ptB = lms[idxB];
-              if (ptA && ptB && (ptA.visibility ?? 1) > 0.18 && (ptB.visibility ?? 1) > 0.18) {
-                ctx.beginPath();
-                ctx.moveTo(ptA.x * vw, ptA.y * vh);
-                ctx.lineTo(ptB.x * vw, ptB.y * vh);
-                ctx.stroke();
-              }
-            });
-
-            // Glowing Joint Nodes
-            lms.forEach((pt: any, idx: number) => {
-              if (idx >= 11 && idx <= 32 && (pt.visibility ?? 1) > 0.18) {
-                ctx.beginPath();
-                ctx.arc(pt.x * vw, pt.y * vh, 4.5, 0, 2 * Math.PI);
-                ctx.fillStyle = isArmUp ? '#FEF08A' : '#6EE7B7';
-                ctx.fill();
-                ctx.strokeStyle = '#022C22';
-                ctx.lineWidth = 1.5;
-                ctx.stroke();
-              }
-            });
-            ctx.restore();
+            drawFullAnatomySkeleton(ctx, currentPose, canvas.width, canvas.height, { showLabels: true });
           }
         }
       }
@@ -969,24 +934,65 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
 
           {/* 6-Point Live Verification Checklist */}
           <div className="space-y-2 text-xs">
-            {/* 1. Face Presence */}
+            {/* 1. โครงหน้าชีวมิติ (Face Structure) */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-slate-300">
-                <User className="w-3.5 h-3.5 text-slate-400" />
-                <span>1. ตรวจพบใบหน้า</span>
+                <User className="w-3.5 h-3.5 text-sky-400" />
+                <span>1. 🧠 โครงหน้าชีวมิติ</span>
               </div>
               <span className={`font-bold text-[11px] flex items-center gap-1 ${
-                hasFace ? 'text-emerald-400' : 'text-slate-500'
+                (activePose?.parts?.face || hasFace) ? 'text-emerald-400' : 'text-slate-500'
               }`}>
-                {hasFace ? '✓ ผ่านเกณฑ์' : '⏳ รอใบหน้า'}
+                {(activePose?.parts?.face || hasFace) ? '✓ ผ่านเกณฑ์ (HD)' : '⏳ รอใบหน้า'}
               </span>
             </div>
 
-            {/* 2. Face Distance / Bring Closer */}
+            {/* 2. โครงสร้างลำตัว (Torso & Core) */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-slate-300">
-                <Scan className="w-3.5 h-3.5 text-slate-400" />
-                <span>2. ระยะห่างใบหน้า</span>
+                <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                <span>2. 🎽 โครงสร้างลำตัว</span>
+              </div>
+              <span className={`font-bold text-[11px] flex items-center gap-1 ${
+                activePose?.parts?.torso ? 'text-emerald-400' : 'text-slate-500'
+              }`}>
+                {activePose?.parts?.torso ? '✓ ตรวจพบแกนกลาง' : '⏳ รอตรวจจับ'}
+              </span>
+            </div>
+
+            {/* 3. แขนและมือ (Arms & Hands) */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-300">
+                <Activity className="w-3.5 h-3.5 text-amber-400" />
+                <span>3. 💪 แขนและมือ</span>
+              </div>
+              <span className={`font-bold text-[11px] flex items-center gap-1 ${
+                activePose?.parts?.arms ? 'text-emerald-400' : 'text-slate-500'
+              }`}>
+                {activePose?.parts?.arms 
+                  ? (activePose.isArmRaised ? `⚡ ${activePose.posture_th}` : '✓ ตรวจพบข้อต่อแขน') 
+                  : '⏳ รอตรวจจับ'}
+              </span>
+            </div>
+
+            {/* 4. ท่ายืนและขา (Legs & Feet) */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-300">
+                <Activity className="w-3.5 h-3.5 text-purple-400" />
+                <span>4. 🦵 ท่ายืนและขา</span>
+              </div>
+              <span className={`font-bold text-[11px] flex items-center gap-1 ${
+                activePose?.parts?.legs ? 'text-emerald-400' : 'text-slate-500'
+              }`}>
+                {activePose?.parts?.legs ? '✓ ยืนมั่นคง' : '⏳ ระยะใกล้ (นั่ง)'}
+              </span>
+            </div>
+
+            {/* 5. ระยะห่างใบหน้า (Face Distance) */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-300">
+                <Scan className="w-3.5 h-3.5 text-cyan-400" />
+                <span>5. 🔍 ระยะห่างใบหน้า</span>
               </div>
               <span className={`font-bold text-[11px] flex items-center gap-1 ${
                 distanceInfo?.isOptimal
@@ -1005,11 +1011,11 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
               </span>
             </div>
 
-            {/* 3. Centering in Circle */}
+            {/* 6. กึ่งกลางวงกลม (Centering in Circle) */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-slate-300">
                 <Target className="w-3.5 h-3.5 text-slate-400" />
-                <span>3. กึ่งกลางวงกลม</span>
+                <span>6. 🎯 กึ่งกลางวงกลม</span>
               </div>
               <span className={`font-bold text-[11px] flex items-center gap-1 ${
                 distanceInfo?.status !== 'OFF_CENTER' && hasFace
@@ -1019,49 +1025,6 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
                   : 'text-slate-500'
               }`}>
                 {distanceInfo?.status !== 'OFF_CENTER' && hasFace ? '✓ ตรงกลาง' : '🎯 ปรับกึ่งกลาง'}
-              </span>
-            </div>
-
-            {/* 4. Head Pose / Frontal */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-slate-300">
-                <Compass className="w-3.5 h-3.5 text-slate-400" />
-                <span>4. ทิศทางหน้าตรง</span>
-              </div>
-              <span className={`font-bold text-[11px] flex items-center gap-1 ${
-                hasFace && !activeKioskResult?.is_profile
-                  ? 'text-emerald-400'
-                  : hasFace
-                  ? 'text-amber-300'
-                  : 'text-slate-500'
-              }`}>
-                {hasFace && !activeKioskResult?.is_profile ? '✓ หน้าตรง 100%' : '⚠️ มองตรงกล้อง'}
-              </span>
-            </div>
-
-            {/* 5. Quality & Lighting */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-slate-300">
-                <Sparkles className="w-3.5 h-3.5 text-slate-400" />
-                <span>5. ความชัด / แสงสว่าง</span>
-              </div>
-              <span className={`font-bold text-[11px] flex items-center gap-1 ${
-                hasFace ? 'text-emerald-400' : 'text-slate-500'
-              }`}>
-                {hasFace ? '✓ คมชัดระดับ HD' : '⏳ ตรวจสอบ'}
-              </span>
-            </div>
-
-            {/* 6. Body Pose & Gesture Detection */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-slate-300">
-                <Activity className="w-3.5 h-3.5 text-slate-400" />
-                <span>6. โครงร่าง & ท่าทาง</span>
-              </div>
-              <span className={`font-bold text-[11px] flex items-center gap-1 ${
-                activePose?.detected ? 'text-emerald-400' : 'text-slate-500'
-              }`}>
-                {activePose?.detected ? `✓ ${activePose.posture_th || 'พบโครงร่าง'}` : '⏳ รอตรวจจับ'}
               </span>
             </div>
           </div>
@@ -1094,9 +1057,10 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
         </div>
       )}
 
-      {/* 4.5 Live Body & Gesture Tracking Badge (MediaPipe 33-Keypoint Pose) */}
+      {/* 4.5 Live Body & Gesture Tracking Badge & 4-Part Anatomical Capsule */}
       {activePose?.detected && (
-        <div className="absolute top-20 sm:top-24 right-4 sm:right-6 md:right-8 z-30 pointer-events-none animate-fadeIn">
+        <div className="absolute top-20 sm:top-24 right-4 sm:right-6 md:right-8 z-30 pointer-events-none flex flex-col items-end gap-2 animate-fadeIn">
+          {/* Posture Badge */}
           <div className={`px-4 py-2 rounded-2xl border backdrop-blur-xl flex items-center gap-2.5 shadow-2xl font-mono text-xs font-black transition-all ${
             (activePose.is_arm_raised || activePose.isArmRaised)
               ? 'bg-amber-950/90 border-amber-400 text-amber-300 shadow-[0_0_25px_rgba(245,158,11,0.5)] animate-pulse'
@@ -1105,6 +1069,34 @@ export const SeniorKiosk: React.FC<SeniorKioskProps> = ({ onExit }) => {
             <span className={`w-2.5 h-2.5 rounded-full ${(activePose.is_arm_raised || activePose.isArmRaised) ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`} />
             <span className="font-sans font-bold text-slate-300">ตรวจจับท่าทาง:</span>
             <span className="text-white font-bold">{activePose.posture_th || 'ลำตัวตรงมาตรฐาน'}</span>
+          </div>
+
+          {/* 4-Part Anatomical Status Pills (โครงหน้า, ลำตัว, แขน, ขา) */}
+          <div className="flex items-center gap-1.5 p-1.5 rounded-2xl bg-slate-900/90 border border-slate-700/80 backdrop-blur-xl shadow-2xl">
+            <div className={`px-2.5 py-1 rounded-xl text-[10px] sm:text-[11px] font-bold flex items-center gap-1 transition-all ${
+              (activePose.parts?.face || hasFace) ? 'bg-sky-500/20 text-sky-300 border border-sky-400/50 shadow-[0_0_10px_rgba(56,189,248,0.3)]' : 'text-slate-500 bg-slate-800/40'
+            }`}>
+              <span>🧠 โครงหน้า</span>
+              <span>{(activePose.parts?.face || hasFace) ? '✓' : '⏳'}</span>
+            </div>
+            <div className={`px-2.5 py-1 rounded-xl text-[10px] sm:text-[11px] font-bold flex items-center gap-1 transition-all ${
+              activePose.parts?.torso ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/50 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'text-slate-500 bg-slate-800/40'
+            }`}>
+              <span>🎽 ลำตัว</span>
+              <span>{activePose.parts?.torso ? '✓' : '⏳'}</span>
+            </div>
+            <div className={`px-2.5 py-1 rounded-xl text-[10px] sm:text-[11px] font-bold flex items-center gap-1 transition-all ${
+              activePose.parts?.arms ? 'bg-amber-500/20 text-amber-300 border border-amber-400/50 shadow-[0_0_10px_rgba(245,158,11,0.3)]' : 'text-slate-500 bg-slate-800/40'
+            }`}>
+              <span>💪 แขน</span>
+              <span>{activePose.parts?.arms ? '✓' : '⏳'}</span>
+            </div>
+            <div className={`px-2.5 py-1 rounded-xl text-[10px] sm:text-[11px] font-bold flex items-center gap-1 transition-all ${
+              activePose.parts?.legs ? 'bg-purple-500/20 text-purple-300 border border-purple-400/50 shadow-[0_0_10px_rgba(168,85,247,0.3)]' : 'text-slate-500 bg-slate-800/40'
+            }`}>
+              <span>🦵 ขา</span>
+              <span>{activePose.parts?.legs ? '✓' : '⏳'}</span>
+            </div>
           </div>
         </div>
       )}

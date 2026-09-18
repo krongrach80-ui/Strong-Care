@@ -8,6 +8,13 @@ export interface BodyKeypoint {
   visibility?: number;
 }
 
+export interface BodyPartsDetection {
+  face: boolean;   // โครงหน้า
+  torso: boolean;  // ลำตัว
+  arms: boolean;   // แขน (ซ้าย/ขวา)
+  legs: boolean;   // ขา (ซ้าย/ขวา)
+}
+
 export interface BodyPoseResult {
   detected: boolean;
   landmarks: BodyKeypoint[];
@@ -17,6 +24,7 @@ export interface BodyPoseResult {
     width: number;
     height: number;
   };
+  parts: BodyPartsDetection;
   posture: string;
   posture_th: string;
   isArmRaised: boolean;
@@ -30,26 +38,254 @@ export interface BodyPoseResult {
   } | null;
 }
 
-export const POSE_CONNECTIONS_MAP = [
-  [11, 12], // Left Shoulder to Right Shoulder
-  [11, 13], // Left Shoulder to Left Elbow
-  [13, 15], // Left Elbow to Left Wrist
-  [12, 14], // Right Shoulder to Right Elbow
-  [14, 16], // Right Elbow to Right Wrist
-  [11, 23], // Left Shoulder to Left Hip
-  [12, 24], // Right Shoulder to Right Hip
-  [23, 24], // Left Hip to Right Hip
-  [23, 25], // Left Hip to Left Knee
-  [25, 27], // Left Knee to Left Ankle
-  [24, 26], // Right Hip to Right Knee
-  [26, 28], // Right Knee to Right Ankle
-  [15, 17], // Left Wrist to Left Pinky
-  [15, 19], // Left Wrist to Left Index
-  [16, 18], // Right Wrist to Right Pinky
-  [16, 20], // Right Wrist to Right Index
-  [0, 11],  // Neck/Nose to Left Shoulder
-  [0, 12],  // Neck/Nose to Right Shoulder
+// 1. โครงหน้า (Face Contour & Features: 0..10)
+export const POSE_FACE_CONNECTIONS = [
+  [0, 1], [1, 2], [2, 3], [3, 7], // Left eye to ear
+  [0, 4], [4, 5], [5, 6], [6, 8], // Right eye to ear
+  [9, 10],                        // Mouth
+  [0, 9], [0, 10]                 // Nose to mouth corners
 ];
+
+// 2. ลำตัว (Torso & Core: shoulders, hips, spine)
+export const POSE_TORSO_CONNECTIONS = [
+  [11, 12], // Shoulder span
+  [23, 24], // Hip span
+  [11, 23], // Left flank
+  [12, 24], // Right flank
+];
+
+// 3. แขน (Arms & Hands: upper arm, forearm, fingers)
+export const POSE_ARM_CONNECTIONS = [
+  [11, 13], [13, 15], // Left arm
+  [15, 17], [15, 19], [15, 21], [17, 19], // Left hand & fingers
+  [12, 14], [14, 16], // Right arm
+  [16, 18], [16, 20], [16, 22], [18, 20]  // Right hand & fingers
+];
+
+// 4. ขา (Legs & Feet: thighs, knees, shins, feet)
+export const POSE_LEG_CONNECTIONS = [
+  [23, 25], [25, 27], // Left leg
+  [27, 29], [29, 31], [27, 31], // Left ankle, heel, toe
+  [24, 26], [26, 28], // Right leg
+  [28, 30], [30, 32], [28, 32]  // Right ankle, heel, toe
+];
+
+// All connections combined
+export const POSE_CONNECTIONS_MAP = [
+  ...POSE_FACE_CONNECTIONS,
+  ...POSE_TORSO_CONNECTIONS,
+  ...POSE_ARM_CONNECTIONS,
+  ...POSE_LEG_CONNECTIONS,
+  [0, 11], [0, 12] // Neck bridge
+];
+
+/**
+ * Real-time 60FPS Cyber Holo Multi-Anatomical Skeleton Renderer:
+ * Separately visualizes and highlights:
+ *  1. โครงหน้า (Face Structure & Contour - Cyan)
+ *  2. ลำตัว (Torso & Spine Core - Emerald)
+ *  3. แขน (Arms & Hands - Amber/Cyan)
+ *  4. ขา (Legs & Feet - Purple/Indigo)
+ */
+export const drawFullAnatomySkeleton = (
+  ctx: CanvasRenderingContext2D,
+  pose: BodyPoseResult,
+  vw: number,
+  vh: number,
+  options?: {
+    showLabels?: boolean;
+    isConfirmed?: boolean;
+  }
+) => {
+  if (!pose || !pose.landmarks || pose.landmarks.length === 0) return;
+  const lms = pose.landmarks;
+  const showLabels = options?.showLabels !== false;
+  const isArmUp = Boolean(pose.isArmRaised);
+
+  // Helper to draw connection lines
+  const drawLines = (
+    connections: number[][],
+    strokeStyle: string,
+    shadowColor: string,
+    lineWidth: number
+  ) => {
+    ctx.save();
+    ctx.shadowColor = shadowColor;
+    ctx.shadowBlur = 12;
+    ctx.strokeStyle = strokeStyle;
+    ctx.lineWidth = lineWidth;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    connections.forEach(([iA, iB]) => {
+      const pA = lms[iA];
+      const pB = lms[iB];
+      if (
+        pA && pB &&
+        (pA.visibility ?? 1) > 0.18 &&
+        (pB.visibility ?? 1) > 0.18
+      ) {
+        ctx.beginPath();
+        ctx.moveTo(pA.x * vw, pA.y * vh);
+        ctx.lineTo(pB.x * vw, pB.y * vh);
+        ctx.stroke();
+      }
+    });
+    ctx.restore();
+  };
+
+  // Helper to draw cyber HUD badge on body parts
+  const drawPartBadge = (text: string, x: number, y: number, color: string, bg: string) => {
+    if (!showLabels) return;
+    ctx.save();
+    ctx.font = 'bold 10px Outfit, sans-serif';
+    const tw = ctx.measureText(text).width;
+    const pad = 6;
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    ctx.roundRect(x - pad, y - 11, tw + pad * 2, 16, 4);
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.fillText(text, x, y);
+    ctx.restore();
+  };
+
+  // 1. โครงหน้า (Face Contour & Facial Mesh: 0..10 - Cyan Holo)
+  drawLines(POSE_FACE_CONNECTIONS, '#38BDF8', 'rgba(56, 189, 248, 0.9)', 2.2);
+
+  // Draw face landmarks (eyes, nose, mouth)
+  for (let i = 0; i <= 10; i++) {
+    const pt = lms[i];
+    if (pt && (pt.visibility ?? 1) > 0.18) {
+      ctx.beginPath();
+      ctx.arc(pt.x * vw, pt.y * vh, 3, 0, 2 * Math.PI);
+      ctx.fillStyle = '#BAE6FD';
+      ctx.fill();
+    }
+  }
+
+  // Draw face contour tag
+  if (lms[0] && (lms[0].visibility ?? 1) > 0.25) {
+    drawPartBadge('🧠 โครงหน้า', lms[0].x * vw - 24, Math.max(16, (lms[0].y * vh) - 30), '#38BDF8', 'rgba(12, 74, 110, 0.85)');
+  }
+
+  // 2. ลำตัว (Torso & Spine: 11, 12, 23, 24 - Emerald Matrix)
+  drawLines(POSE_TORSO_CONNECTIONS, '#10B981', 'rgba(16, 185, 129, 0.85)', 3.8);
+
+  // Soft translucent fill inside Torso polygon
+  const p11 = lms[11], p12 = lms[12], p23 = lms[23], p24 = lms[24];
+  if (
+    p11 && p12 && p23 && p24 &&
+    (p11.visibility ?? 1) > 0.2 && (p12.visibility ?? 1) > 0.2 &&
+    (p23.visibility ?? 1) > 0.2 && (p24.visibility ?? 1) > 0.2
+  ) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(p11.x * vw, p11.y * vh);
+    ctx.lineTo(p12.x * vw, p12.y * vh);
+    ctx.lineTo(p24.x * vw, p24.y * vh);
+    ctx.lineTo(p23.x * vw, p23.y * vh);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(16, 185, 129, 0.08)';
+    ctx.fill();
+
+    // Glowing Spine (เส้นกระดูกสันหลังแกนกลาง)
+    const midShoulderX = ((p11.x + p12.x) / 2) * vw;
+    const midShoulderY = ((p11.y + p12.y) / 2) * vh;
+    const midHipX = ((p23.x + p24.x) / 2) * vw;
+    const midHipY = ((p23.y + p24.y) / 2) * vh;
+
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = '#34D399';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(midShoulderX, midShoulderY);
+    ctx.lineTo(midHipX, midHipY);
+    ctx.stroke();
+
+    // Chest Biometric Core Circle
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(midShoulderX, midShoulderY + 22, 10, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(52, 211, 153, 0.8)';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+
+    drawPartBadge('🎽 ลำตัว', midShoulderX - 16, midShoulderY + 42, '#34D399', 'rgba(6, 78, 59, 0.85)');
+    ctx.restore();
+  }
+
+  // 3. แขน (Arms & Hands: 11..22 - Amber Gold when active / Cyan when rest)
+  const armColor = isArmUp ? '#F59E0B' : '#06B6D4';
+  const armGlow = isArmUp ? 'rgba(245, 158, 11, 0.95)' : 'rgba(6, 182, 212, 0.85)';
+  drawLines(POSE_ARM_CONNECTIONS, armColor, armGlow, 3.5);
+
+  // Glowing Joint Nodes on Arms (Elbows & Wrists)
+  [13, 14, 15, 16].forEach((idx) => {
+    const pt = lms[idx];
+    if (pt && (pt.visibility ?? 1) > 0.18) {
+      const isWrist = idx === 15 || idx === 16;
+      ctx.beginPath();
+      ctx.arc(pt.x * vw, pt.y * vh, isWrist ? 5.5 : 4.5, 0, 2 * Math.PI);
+      ctx.fillStyle = isArmUp ? '#FEF08A' : '#67E8F9';
+      ctx.fill();
+      ctx.strokeStyle = '#022C22';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      if (isWrist && showLabels && (pt.visibility ?? 1) > 0.35) {
+        drawPartBadge('💪 แขน', (pt.x * vw) - 14, (pt.y * vh) - 14, armColor, 'rgba(15, 23, 42, 0.85)');
+      }
+    }
+  });
+
+  // Hand / Finger Nodes (17..22)
+  for (let i = 17; i <= 22; i++) {
+    const pt = lms[i];
+    if (pt && (pt.visibility ?? 1) > 0.18) {
+      ctx.beginPath();
+      ctx.arc(pt.x * vw, pt.y * vh, 2.8, 0, 2 * Math.PI);
+      ctx.fillStyle = isArmUp ? '#FCD34D' : '#A5F3FC';
+      ctx.fill();
+    }
+  }
+
+  // 4. ขา (Legs & Feet: 23..32 - Cyber Purple)
+  drawLines(POSE_LEG_CONNECTIONS, '#A855F7', 'rgba(168, 85, 247, 0.85)', 3.5);
+
+  // Glowing Joint Nodes on Legs (Knees & Ankles)
+  [25, 26, 27, 28].forEach((idx) => {
+    const pt = lms[idx];
+    if (pt && (pt.visibility ?? 1) > 0.18) {
+      const isKnee = idx === 25 || idx === 26;
+      ctx.beginPath();
+      ctx.arc(pt.x * vw, pt.y * vh, 5, 0, 2 * Math.PI);
+      ctx.fillStyle = '#E9D5FF';
+      ctx.fill();
+      ctx.strokeStyle = '#3B0764';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      if (isKnee && showLabels && (pt.visibility ?? 1) > 0.35) {
+        drawPartBadge('🦵 ขา', (pt.x * vw) - 12, (pt.y * vh) - 14, '#C084FC', 'rgba(59, 7, 100, 0.85)');
+      }
+    }
+  });
+
+  // Feet / Toes Nodes (29..32)
+  for (let i = 29; i <= 32; i++) {
+    const pt = lms[i];
+    if (pt && (pt.visibility ?? 1) > 0.18) {
+      ctx.beginPath();
+      ctx.arc(pt.x * vw, pt.y * vh, 3, 0, 2 * Math.PI);
+      ctx.fillStyle = '#F3E8FF';
+      ctx.fill();
+    }
+  }
+};
 
 export const useBodyPose = (
   videoRef: React.RefObject<HTMLVideoElement>,
@@ -309,10 +545,28 @@ export const useBodyPose = (
             }
           }
 
+          // Compute detection status for 4 major anatomical regions:
+          // 1. โครงหน้า (Face): points 0..10
+          const hasFace = smoothedLms.slice(0, 11).some((p) => (p.visibility ?? 1) > 0.18);
+          // 2. ลำตัว (Torso): shoulders (11,12) and hips (23,24)
+          const hasTorso = [11, 12, 23, 24].some((i) => (smoothedLms[i]?.visibility ?? 1) > 0.18);
+          // 3. แขน (Arms): elbows (13,14) or wrists (15,16)
+          const hasArms = [13, 14, 15, 16].some((i) => (smoothedLms[i]?.visibility ?? 1) > 0.18);
+          // 4. ขา (Legs): knees (25,26) or ankles (27,28)
+          const hasLegs = [25, 26, 27, 28].some((i) => (smoothedLms[i]?.visibility ?? 1) > 0.18);
+
+          const parts: BodyPartsDetection = {
+            face: hasFace,
+            torso: hasTorso,
+            arms: hasArms,
+            legs: hasLegs
+          };
+
           const res: BodyPoseResult = {
             detected: true,
             landmarks: smoothedLms,
             box: smoothBox,
+            parts,
             posture,
             posture_th,
             isArmRaised,
