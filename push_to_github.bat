@@ -7,9 +7,16 @@ echo ========================================================
 echo   Pushing Strong Care to GitHub (krongrach80-ui)
 echo   Repository: https://github.com/krongrach80-ui/Strong-Care.git
 echo   Email: krongrach80@gmail.com
-echo ========================================================
+echo [1/3] Adding changes...
+git add -A
 
-git push origin main gh-pages
+echo [2/3] Committing changes...
+for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value') do set dt=%%I
+set timestamp=%dt:~0,4%-%dt:~4,2%-%dt:~6,2% %dt:~8,2%:%dt:~10,2%:%dt:~12,2%
+git commit -m "Update Strong Care: %timestamp%" 2>nul
+
+echo [3/3] Pushing to GitHub...
+git push origin main
 
 if %ERRORLEVEL% equ 0 (
     echo.
