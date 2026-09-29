@@ -59,12 +59,16 @@ export const PeopleDirectory: React.FC<PeopleDirectoryProps> = ({ onRegisterClic
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200/90 shadow-sm">
         <div>
-          <div className="flex items-center gap-2">
-            <Users className="w-6 h-6 text-[#2563EB]" />
-            <h1 className="text-2xl font-bold text-slate-900 font-['Outfit']">รายชื่อสมาชิกที่ลงทะเบียน</h1>
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-[#E6F7F7] text-[#008783] flex items-center justify-center border border-[#B2EBE6] shadow-xs">
+              <Users className="w-5 h-5" />
+            </div>
+            <h1 className="text-2xl font-black text-[#0F3D3E] font-['Outfit']">
+              ทะเบียนผู้ป่วยและสมาชิก (Patient Directory)
+            </h1>
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            จัดการโปรไฟล์ใบหน้าและตรวจสอบโฟลเดอร์จัดเก็บภาพถ่ายบนเซิร์ฟเวอร์ ({users.length} คน)
+          <p className="text-xs text-slate-500 mt-1">
+            ฐานข้อมูลเวชระเบียนชีวมิติใบหน้าและโฟลเดอร์จัดเก็บภาพถ่ายทางการแพทย์ รพ.รามาธิบดี ({users.length} ราย)
           </p>
         </div>
 
@@ -73,15 +77,15 @@ export const PeopleDirectory: React.FC<PeopleDirectoryProps> = ({ onRegisterClic
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="ค้นหาชื่อ หรือ username..."
+              placeholder="ค้นหาชื่อ, HN หรือ username..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 focus:outline-none focus:border-indigo-500 font-medium"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#00A39E] font-medium"
             />
           </div>
           <button
             onClick={onRegisterClick}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white font-bold text-xs shadow-md shadow-emerald-500/25 transition-all cursor-pointer shrink-0"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#00A39E] hover:bg-[#008783] text-white font-bold text-xs shadow-md shadow-teal-700/20 border border-teal-600 transition-all cursor-pointer shrink-0 active:scale-95"
           >
             <UserPlus className="w-4 h-4" />
             <span>เพิ่มสมาชิกใหม่</span>

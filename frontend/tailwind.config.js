@@ -38,6 +38,34 @@ export default {
           dark: '#5B21B6',
         },
 
+        // Ramathibodi Hospital, Mahidol University Official Palette (From rama.mahidol.ac.th)
+        rama: {
+          teal: '#00A39E',        // Official Ramathibodi Medical Teal / Turquoise
+          tealHover: '#008783',   // Darker Teal for button hover & active state
+          tealLight: '#E6F7F7',   // Signature Pastel Mint/Teal Banner (from rama.mahidol.ac.th)
+          tealBorder: '#B2EBE6',  // Crisp Mint Border
+          deep: '#0F3D3E',        // Deep Teal Slate for Headings & Contrast
+          canvas: '#FFFFFF',      // Pure Clean Hospital White
+          subtle: '#F8FAFB',      // Light Clinical Soft Background
+          blue: '#0284C7',        // Clinical Sky Cyan
+          coral: '#E11D48',       // Hospital Heart Red / Emergency (Image 1)
+        },
+
+        // Mahidol University & Hospital Official Identity Palette
+        mahidol: {
+          navy: '#0F3D3E',        // Deep Teal Navy
+          blue: '#008783',        // Rama Medium Teal
+          royal: '#00A39E',       // Ramathibodi Teal
+          tint: '#E6F7F7',        // Soft Hospital Mint Blue
+          canvas: '#F8FAFB',      // Hospital Clean Slate Background
+          gold: '#00A39E',        // Accent Teal
+          goldLight: '#E6F7F7',   // Mint Pill
+          goldBorder: '#B2EBE6',  // Mint Border
+          goldHover: '#008783',   // Deep Teal
+          goldDark: '#0F3D3E',    // Contrast Text
+          mint: '#00A39E',        // Clinical Health Mint
+        },
+
         // Text Hierarchy
         textPrimary: '#0F172A',   // Slate 900 (High Contrast Dark Navy)
         textSecondary: '#334155', // Slate 700
@@ -45,10 +73,10 @@ export default {
         textLight: '#94A3B8',     // Slate 400
 
         // Backward compatibility mappings
-        background: '#F8FAFC',
+        background: '#F4F7FB',
         primary: {
-          DEFAULT: '#10B981',
-          glow: 'rgba(16, 185, 129, 0.25)',
+          DEFAULT: '#002244',
+          glow: 'rgba(0, 34, 68, 0.25)',
         },
         matcha: {
           DEFAULT: '#10B981',
@@ -57,9 +85,9 @@ export default {
           deep: '#047857',
         },
         aiPurple: {
-          DEFAULT: '#7C3AED',
-          light: '#A78BFA',
-          dark: '#6D28D9',
+          DEFAULT: '#002244',
+          light: '#0A4B8F',
+          dark: '#001830',
         }
       },
       animation: {

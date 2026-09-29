@@ -10,7 +10,7 @@ import uvicorn
 from app.core.config import settings
 from app.core.database import init_db, AsyncSessionLocal
 from app.services.face_service import face_service
-from app.api import auth, users, faces, recognition, attendance, voice, system, websocket
+from app.api import auth, users, faces, recognition, attendance, voice, system, websocket, rehab, payroll
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -54,6 +54,8 @@ app.include_router(attendance.router, prefix=settings.API_V1_STR)
 app.include_router(voice.router, prefix=settings.API_V1_STR)
 app.include_router(system.router, prefix=settings.API_V1_STR)
 app.include_router(websocket.router, prefix=settings.API_V1_STR)
+app.include_router(rehab.router, prefix=settings.API_V1_STR)
+app.include_router(payroll.router, prefix=settings.API_V1_STR)
 
 # Mount Frontend Dist if available
 frontend_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
@@ -63,7 +65,8 @@ if frontend_dist.exists():
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         if full_path.startswith("api/") or full_path.startswith("storage/") or full_path.startswith("docs") or full_path.startswith("openapi.json"):
-            return None
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Not Found")
         file_candidate = frontend_dist / full_path
         if file_candidate.is_file():
             return FileResponse(file_candidate)

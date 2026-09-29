@@ -42,6 +42,40 @@
    - รองรับ **Edge-TTS / pyttsx3** บน Backend
    - ปรับแต่ง Template ข้อความเสียงได้อิสระ
 
+7. **📱 One-Stop Service บนโทรศัพท์มือถือ (Mobile One-Stop Hub)**
+   - **Digital Patient Card & QR Pass**: บัตรประจำตัวผู้ป่วยดิจิทัล พร้อม QR Code ขนาดใหญ่สำหรับแตะสแกนเข้าตู้ทำกายภาพทันทีโดยไม่ต้องกรอกข้อมูล
+   - **AI Home PT Studio**: เปิดกล้องมือถือ (รองรับสลับกล้องหน้า/หลัง) ฝึกกายภาพบำบัดที่บ้าน ตรวจจับ 33 จุดสรีระ คำนวณองศา Range of Motion (ROM) และนับจำนวนครั้งอัตโนมัติ
+   - **Smart Queue & Booking**: ระบบกดจองคิวเครื่องทำกายภาพล่วงหน้า พร้อม Live Queue Radar แสดงสถานะคิวที่กำลังเรียกแบบเรียลไทม์
+   - **Health Records & ROM Trends**: บันทึกสถิติการฟื้นฟู กราฟแนวโน้มองศาข้อต่อ และประเมินระดับความปวด (VAS 0-10)
+
+8. **🏥 One-Stop Service ในเครื่องทำกายภาพบำบัด (PT Machine Kiosk Station)**
+   - **Contactless Dual Check-In**: เช็คอินอัตโนมัติด้วย **สแกนใบหน้า e-KYC** หรือ **สแกน QR Code จากโทรศัพท์มือถือ** โหลดโปรแกรมที่แพทย์สั่งขึ้นจอทันที
+   - **AI Interactive Workout Station**: หน้าจอ HUD ขนาดใหญ่ แสดง 3D Hologram Skeleton พร้อม Virtual Coach ท่าต้นแบบ, ตัววัดองศาข้อต่อขนาดใหญ่, และระบบแจ้งเตือนความปลอดภัยป้องกันการเสียสมดุล/หกล้ม
+   - **One-Stop Checkout & Auto-Sync to Mobile**: สรุปจำนวนครั้ง องศาความยืดหยุ่น คะแนนความถูกต้อง แคลอรี่ และ**ส่งผลการรักษาเข้าโทรศัพท์มือถือของผู้ป่วยอัตโนมัติทันที**
+
+9. **🏛️ ระบบกายภาพบำบัด โรงพยาบาลมหิดล (Faculty of Physical Therapy, Mahidol University System)**
+   - **Pre-PT Triage & Vital Signs Safety Clearance**: บันทึกสัญญาณชีพก่อนทำหัตถการ (BP, HR, SpO2, Temp, VAS Pain 0-10) พร้อมระบบตรวจสอบข้อห้าม/สัญญาณอันตราย (Red Flag Alert) ตามเกณฑ์ปลอดภัยของ ม.มหิดล
+   - **Fall Risk & Functional Assessment Tests**:
+     - **TUG Test (Timed Up & Go)**: ตัวจับเวลาสดวิเคราะห์ความเสี่ยงล้ม (<10s ปกติ, 10-20s เสี่ยงปานกลาง, >20s เสี่ยงสูง)
+     - **Berg Balance Scale (BBS)**: แบบประเมินการทรงตัว 14 หัวข้อ คะแนนเต็ม 56
+     - **5-Times Sit to Stand (5xSTS)**: ประเมินแรงกล้ามเนื้อขาส่วนล่าง
+   - **5 คลินิกกายภาพบำบัดเฉพาะทาง ม.มหิดล**:
+     1. คลินิกกระดูกและกล้ามเนื้อ (Orthopedic PT)
+     2. คลินิกโรคระบบประสาทและหลอดเลือดสมอง (Neurological PT - Stroke / Parkinson's)
+     3. คลินิกปอด หัวใจ และทรวงอก (Cardiopulmonary PT)
+     4. คลินิกผู้สูงอายุและชะลอความเสื่อม (Geriatric PT)
+     5. คลินิกเวชศาสตร์การกีฬาและการฟื้นฟู (Sports PT)
+   - **Mahidol PT SOAP Clinical Notes (เวชระเบียนมาตรฐานวิชาชีพ ม.มหิดล)**:
+     - บันทึกเวชระเบียนครบ 4 มิติ: S (Subjective), O (Objective), A (Assessment), P (Plan) พร้อมลงนามนักกายภาพบำบัดวิชาชีพ (ว.ก.บ.)
+   - **PT Exercise Prescription & Protocol Dispatch (ระบบใบสั่งการรักษา)**:
+     - ออกใบสั่งโปรแกรมท่าบริหาร AI เฉพาะบุคคล กำหนด Reps, Sets, Target Angle ROM, Precautions
+     - ส่งตรงเข้า **ตู้กายภาพบำบัด AI (PT Machine Kiosk)** และ **มือถือผู้ป่วย (Mobile Home PT)**
+     - พิมพ์ใบสั่งการรักษาทางการแพทย์มาตรฐานมหิดล (Print Official Mahidol PT Prescription) พร้อม QR Code
+   - **Hospital Smart Queue & Vocal Caller (ระบบคิวและเสียงประกาศโรงพยาบาลแท้)**:
+     - เสียงระฆังโรงพยาบาลคู่ (Two-tone Hospital Chime) พร้อมเสียงประกาศเรียกชื่อผู้ป่วยภาษาไทยมาตรฐานโรงพยาบาลศิริราช-รามาธิบดี
+   - **Mahidol Motion & Goniometry Lab (ห้องแล็บชีวกลศาสตร์)**:
+     - เครื่องมือจำลองวัดมุมข้อต่อดิจิทัล (Interactive Goniometer Simulator) เปรียบเทียบเกณฑ์ Normal ROM ของ ม.มหิดล
+
 ---
 
 ## 🛠️ Tech Stack

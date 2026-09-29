@@ -139,5 +139,123 @@ export const api = {
   async resetTracker() {
     const res = await fetch(API_BASE + '/recognition/reset-tracker', { method: 'POST' });
     return res.json();
+  },
+
+  // Mahidol Hospital Physical Therapy API methods
+  async getRehabSessions(patientName?: string) {
+    const url = patientName 
+      ? `${API_BASE}/rehab/sessions?patient_name=${encodeURIComponent(patientName)}`
+      : `${API_BASE}/rehab/sessions`;
+    const res = await fetch(url);
+    return res.json();
+  },
+
+  async createRehabSession(data: any) {
+    const res = await fetch(`${API_BASE}/rehab/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  async getRehabQueue() {
+    const res = await fetch(`${API_BASE}/rehab/queue`);
+    return res.json();
+  },
+
+  async bookQueue(data: {
+    patient_name: string;
+    patient_id?: string;
+    exercise_type: string;
+    exercise_name_th: string;
+    time_slot: string;
+    assigned_station?: string;
+  }) {
+    const res = await fetch(`${API_BASE}/rehab/queue/book`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  async updateQueueStatus(ticketId: number, status: string, assignedStation?: string) {
+    const res = await fetch(`${API_BASE}/rehab/queue/${ticketId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, assigned_station: assignedStation })
+    });
+    return res.json();
+  },
+
+  async callQueue(ticketNumber: string, stationName: string, patientName: string) {
+    const res = await fetch(`${API_BASE}/rehab/queue/call`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticket_number: ticketNumber, station_name: stationName, patient_name: patientName })
+    });
+    return res.json();
+  },
+
+  async createAssessment(data: any) {
+    const res = await fetch(`${API_BASE}/rehab/assessments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  async getAssessments(patientId?: string) {
+    const url = patientId 
+      ? `${API_BASE}/rehab/assessments?patient_id=${encodeURIComponent(patientId)}`
+      : `${API_BASE}/rehab/assessments`;
+    const res = await fetch(url);
+    return res.json();
+  },
+
+  async createSoapNote(data: any) {
+    const res = await fetch(`${API_BASE}/rehab/soap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  async getSoapNotes(patientId?: string) {
+    const url = patientId 
+      ? `${API_BASE}/rehab/soap?patient_id=${encodeURIComponent(patientId)}`
+      : `${API_BASE}/rehab/soap`;
+    const res = await fetch(url);
+    return res.json();
+  },
+
+  async createPrescription(data: any) {
+    const res = await fetch(`${API_BASE}/rehab/prescriptions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  async getPrescriptions(patientId?: string) {
+    const url = patientId 
+      ? `${API_BASE}/rehab/prescriptions?patient_id=${encodeURIComponent(patientId)}`
+      : `${API_BASE}/rehab/prescriptions`;
+    const res = await fetch(url);
+    return res.json();
+  },
+
+  async getPatients() {
+    const res = await fetch(`${API_BASE}/rehab/patients`);
+    return res.json();
+  },
+
+  async triggerSeed() {
+    const res = await fetch(`${API_BASE}/rehab/seed`, { method: 'POST' });
+    return res.json();
   }
 };

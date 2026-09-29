@@ -3,16 +3,16 @@
 @tailwind utilities;
 
 @layer base {
-  /* DataPulse Modern SaaS Light Canvas */
+  /* Ramathibodi Hospital, Mahidol University Clean Clinical Canvas */
   body {
     font-family: 'Plus Jakarta Sans', sans-serif;
-    background-color: #F8FAFC;
-    color: #0F172A;
+    background-color: #F8FAFB;
+    color: #1E293B;
     background-image: 
-      radial-gradient(circle at 8% 8%, rgba(37, 99, 235, 0.05) 0px, transparent 40%),
-      radial-gradient(circle at 92% 10%, rgba(124, 58, 237, 0.05) 0px, transparent 45%),
-      radial-gradient(circle at 50% 30%, rgba(16, 185, 129, 0.03) 0px, transparent 50%),
-      linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+      radial-gradient(circle at 8% 8%, rgba(0, 163, 158, 0.06) 0px, transparent 35%),
+      radial-gradient(circle at 92% 10%, rgba(2, 132, 199, 0.05) 0px, transparent 40%),
+      radial-gradient(circle at 50% 20%, rgba(0, 163, 158, 0.03) 0px, transparent 50%),
+      linear-gradient(180deg, #FFFFFF 0%, #F0FDFB 40%, #F8FAFB 100%);
     background-attachment: fixed;
     min-height: 100vh;
   }
@@ -22,7 +22,7 @@
   }
 }
 
-/* Custom Light Scrollbar */
+/* Custom Ramathibodi Hospital Clean Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -31,66 +31,86 @@
   background: #F1F5F9;
 }
 ::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
+  background: #B2EBE6;
   border-radius: 8px;
   border: 2px solid #F1F5F9;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
+  background: #00A39E;
 }
 
-/* Modern SaaS White Glassmorphism Cards */
+/* Signature Ramathibodi Hospital Mint Banner (Directly Matching rama.mahidol.ac.th) */
+.banner-rama-mint {
+  background-color: #E6F7F7;
+  border: 1px solid #B2EBE6;
+  color: #008783;
+}
+
+/* Ramathibodi Hospital Clean Glassmorphism Cards */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.98);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid #E2E8F0;
-  box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.04), 0 0 1px 1px rgba(226, 232, 240, 0.7);
+  box-shadow: 0 10px 30px -5px rgba(0, 163, 158, 0.05), 0 0 1px 1px rgba(226, 232, 240, 0.8);
 }
 
-.glass-panel-matcha {
+.glass-panel-mahidol {
   background: #FFFFFF;
-  border: 1px solid #E2E8F0;
-  box-shadow: 0 12px 35px -5px rgba(15, 23, 42, 0.05), 0 0 1px 1px rgba(226, 232, 240, 0.8);
+  border: 1px solid #B2EBE6;
+  border-top: 3px solid #00A39E;
+  box-shadow: 0 12px 35px -5px rgba(0, 163, 158, 0.08), 0 0 1px 1px rgba(178, 235, 230, 0.6);
 }
 
 .glass-card-interactive {
   background: #FFFFFF;
   border: 1px solid #E2E8F0;
-  box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 4px 20px -4px rgba(0, 163, 158, 0.04);
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .glass-card-interactive:hover {
   transform: translateY(-2px);
-  border-color: #CBD5E1;
-  box-shadow: 0 16px 35px -8px rgba(15, 23, 42, 0.08), 0 0 1px 1px rgba(203, 213, 225, 0.8);
+  border-color: #00A39E;
+  box-shadow: 0 16px 35px -8px rgba(0, 163, 158, 0.15), 0 0 1px 1px rgba(0, 163, 158, 0.3);
 }
 
-/* Iconic Electric Blue to Violet Text Gradient (Matching DataPulse Screenshot) */
+/* Ramathibodi Medical Teal & Cyan Text Gradients */
+.text-gradient-rama {
+  background: linear-gradient(135deg, #0F3D3E 0%, #00A39E 55%, #0284C7 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-mahidol {
+  background: linear-gradient(135deg, #0F3D3E 0%, #008783 45%, #00A39E 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
 .text-gradient-pulse {
-  background: linear-gradient(135deg, #2563EB 0%, #4F46E5 45%, #7C3AED 100%);
+  background: linear-gradient(135deg, #00A39E 0%, #008783 50%, #0284C7 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .text-gradient-purple {
-  background: linear-gradient(135deg, #2563EB 0%, #4F46E5 45%, #7C3AED 100%);
+  background: linear-gradient(135deg, #0F3D3E 0%, #00A39E 60%, #0284C7 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .text-gradient-matcha {
-  background: linear-gradient(135deg, #059669 0%, #10B981 50%, #2563EB 100%);
+  background: linear-gradient(135deg, #008783 0%, #00A39E 50%, #10B981 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-/* Subtle Ambient Lighting */
+/* Ramathibodi Ambient Lighting */
 .ambient-matcha-glow {
   position: absolute;
   width: 550px;
   height: 550px;
-  background: radial-gradient(circle, rgba(37, 99, 235, 0.05) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(0, 163, 158, 0.07) 0%, transparent 70%);
   pointer-events: none;
   filter: blur(60px);
 }
@@ -99,7 +119,7 @@
   position: absolute;
   width: 500px;
   height: 500px;
-  background: radial-gradient(circle, rgba(124, 58, 237, 0.05) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(2, 132, 199, 0.06) 0%, transparent 70%);
   pointer-events: none;
   filter: blur(60px);
 }
