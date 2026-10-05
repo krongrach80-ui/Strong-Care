@@ -1,0 +1,2 @@
+*.wasm -filter -text -diff
+*.task -filter -text -diff

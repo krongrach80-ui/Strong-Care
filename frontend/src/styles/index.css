@@ -1,0 +1,179 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply min-h-screen antialiased;
+    color: #1F2937;
+    background-color: #F8FAF9;
+    font-family: 'Noto Sans Thai', 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+/* Custom modern light green scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #F8FAF9;
+}
+::-webkit-scrollbar-thumb {
+  background: #6FCF97;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3FAF70;
+}
+
+/* Animations */
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(111, 207, 151, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(111, 207, 151, 0.55);
+  }
+}
+
+.glow-active {
+  animation: pulseGlow 2s infinite ease-in-out;
+}
+
+/* Responsive fluid containers and safe area insets */
+.responsive-container {
+  width: 100%;
+  max-width: 1400px;
+  margin-inline: auto;
+  padding-inline: clamp(16px, 4vw, 48px);
+}
+
+/* Hero section responsive layout (v1.0 Responsive Hardening) */
+.hero {
+  width: 100%;
+  max-width: 1400px;
+  margin-inline: auto;
+  padding-inline: clamp(16px, 4vw, 48px);
+}
+
+.hero-content {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1.15fr)
+    minmax(min(100%, 360px), 0.85fr);
+  gap: clamp(24px, 4vw, 48px);
+}
+
+@media (max-width: 1199px) {
+  .hero-content {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 767px) {
+  .hero {
+    padding-inline: 16px;
+  }
+}
+
+/* Safe Area Inset Support for Notch / Mobile Navigation Bars */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+}
+
+.safe-area-top {
+  padding-top: max(0.5rem, env(safe-area-inset-top, 0px));
+}
+.safe-area-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+.safe-area-left {
+  padding-left: max(0.5rem, env(safe-area-inset-left, 0px));
+}
+.safe-area-right {
+  padding-right: max(0.5rem, env(safe-area-inset-right, 0px));
+}
+
+/* Prevent accidental horizontal overflow across all screens */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Fluid Typography & Prevent Text Clipping across Thai/English */
+h1, h2, h3, h4, h5, h6, p, span, div, button, a {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Touch target accessibility for mobile (minimum 44px) */
+@media (max-width: 768px) {
+  button, a, input, select, textarea {
+    min-height: 44px;
+  }
+}
+
+/* Standardized Modal Constraint Utility */
+.modal-standard {
+  width: 100%;
+  max-width: min(95vw, 900px);
+  max-height: 90dvh;
+  overflow-y: auto;
+}
+
+/* Camera Container Responsive Height Constraint */
+.camera-responsive-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4/3;
+  max-height: min(75vh, 640px);
+  overflow: hidden;
+}
+
+@media (min-width: 640px) {
+  .camera-responsive-frame {
+    aspect-ratio: 16/9;
+  }
+}
+
+/* Glassmorphism helpers for white/green theme */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(229, 231, 235, 0.9);
+}
+
+.glass-panel-subtle {
+  background: rgba(232, 248, 239, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(111, 207, 151, 0.4);
+}
+
+/* Senior Mode: Accessible typography, large buttons, ultra high contrast */
+.senior-mode {
+  font-size: 1.2rem;
+  line-height: 1.65;
+}
+
+.senior-mode button {
+  min-height: 52px;
+  font-size: 1.1rem;
+}
+
+.senior-mode h1 {
+  font-size: 2.35rem !important;
+}
+
+.senior-mode h2 {
+  font-size: 1.95rem !important;
+}
+
+.senior-mode h3 {
+  font-size: 1.55rem !important;
+}
