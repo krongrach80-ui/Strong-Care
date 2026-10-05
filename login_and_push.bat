@@ -31,8 +31,8 @@ echo [2/3] Configuring Git with GitHub credentials...
 gh auth setup-git
 
 echo.
-echo [3/3] Pushing Strong Care repository to GitHub main branch...
-git push -u origin main
+echo [3/3] Pushing Strong Care repository to GitHub main branch (overwrite)...
+git push -f -u origin main
 
 if %ERRORLEVEL% equ 0 (
     echo.
