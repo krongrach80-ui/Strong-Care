@@ -31,32 +31,67 @@ export function useCamera() {
         throw new Error('อุปกรณ์หรือเบราว์เซอร์นี้ไม่รองรับการเข้าถึงกล้องเว็บแคม (WebRTC MediaDevices)');
       }
 
-      let mediaStream: MediaStream;
+      let mediaStream: MediaStream | null = null;
       try {
-        // Preferred resolution for high-framerate pose tracking
+        // Tier 1: Preferred resolution with facingMode preference
         mediaStream = await navigator.mediaDevices.getUserMedia({
           video: {
-            width: { ideal: 640 },
-            height: { ideal: 480 },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
             facingMode: isFrontCamera ? 'user' : 'environment',
           },
           audio: false,
         });
-      } catch (constraintErr) {
-        console.warn('Fallback to basic video constraint:', constraintErr);
-        // Fallback to generic video constraint if device cannot fulfill dimensions
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: false,
-        });
+      } catch (err1) {
+        console.warn('Tier 1 constraint failed, trying standard 640x480:', err1);
+        try {
+          // Tier 2: Standard definition with facingMode
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: 640 },
+              height: { ideal: 480 },
+              facingMode: isFrontCamera ? 'user' : 'environment',
+            },
+            audio: false,
+          });
+        } catch (err2) {
+          console.warn('Tier 2 constraint failed, trying without facingMode (Desktop/USB webcam):', err2);
+          try {
+            // Tier 3: Without facingMode (essential for Windows desktop USB webcams & virtual cams)
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                width: { ideal: 640 },
+                height: { ideal: 480 },
+              },
+              audio: false,
+            });
+          } catch (err3) {
+            console.warn('Tier 3 constraint failed, falling back to minimal video:true:', err3);
+            // Tier 4: Basic video fallback
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false,
+            });
+          }
+        }
+      }
+
+      if (!mediaStream) {
+        throw new Error('ไม่สามารถรับสัญญาณภาพจากกล้องเว็บแคมได้');
       }
 
       streamRef.current = mediaStream;
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
+      const video = videoRef.current;
+      if (video) {
+        video.srcObject = mediaStream;
+        video.muted = true;
+        video.playsInline = true;
+        video.setAttribute('playsinline', 'true');
+        video.setAttribute('muted', 'true');
+        video.setAttribute('autoplay', 'true');
         try {
-          await videoRef.current.play();
+          await video.play();
         } catch (playErr) {
           console.warn('Video play warning:', playErr);
         }
@@ -100,25 +135,28 @@ export function useCamera() {
     setIsFrontCamera((prev) => !prev);
   };
 
-  // Sync stream to video element whenever videoRef or streamRef is available
+  // Continuously sync stream to video element whenever videoRef or streamRef is available
   useEffect(() => {
-    if (isCameraReady && videoRef.current && streamRef.current) {
-      if (videoRef.current.srcObject !== streamRef.current) {
-        videoRef.current.srcObject = streamRef.current;
-        videoRef.current.play().catch((e) => console.warn('Video play warning:', e));
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    if (isCameraReady && video && stream) {
+      if (video.srcObject !== stream) {
+        video.srcObject = stream;
+      }
+      video.muted = true;
+      video.playsInline = true;
+      if (video.paused) {
+        video.play().catch((e) => console.warn('Video play sync warning:', e));
       }
     }
-  }, [isCameraReady]);
+  });
 
   // Only cleanup on unmount
   useEffect(() => {
     return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-      }
+      stopCamera();
     };
-  }, []);
+  }, [stopCamera]);
 
   return {
     videoRef,

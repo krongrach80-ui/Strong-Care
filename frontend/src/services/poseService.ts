@@ -10,6 +10,14 @@ import {
 import { PoseLandmarks, HolisticDetectionResult } from '../types/pose';
 import { LandmarkSmoother } from '../algorithms/smoothing';
 
+function resolveAssetUrl(relPath: string): string {
+  if (relPath.startsWith('http://') || relPath.startsWith('https://')) return relPath;
+  const baseUrl = (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.BASE_URL) || './';
+  const cleanBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+  const cleanRel = relPath.startsWith('/') ? relPath.slice(1) : relPath;
+  return `${cleanBase}${cleanRel}`;
+}
+
 export class PoseService {
   private static instance: PoseService;
   private landmarker: PoseLandmarker | null = null;
@@ -25,6 +33,10 @@ export class PoseService {
   private lastFaceResult: PoseLandmarks | null = null;
   private frameCount: number = 0;
 
+  private lastPoseTimestamp: number = 0;
+  private lastHandTimestamp: number = 0;
+  private lastFaceTimestamp: number = 0;
+
   public static getInstance(): PoseService {
     if (!PoseService.instance) {
       PoseService.instance = new PoseService();
@@ -38,101 +50,101 @@ export class PoseService {
 
     this.isInitializing = true;
     try {
-      // 100% Offline: use local wasm in /models/pose/wasm
-      const vision = await FilesetResolver.forVisionTasks('/models/pose/wasm');
+      let vision: any;
+      try {
+        const localWasm = resolveAssetUrl('models/pose/wasm');
+        vision = await FilesetResolver.forVisionTasks(localWasm);
+      } catch (eLocal) {
+        console.warn('⚠️ Local WASM failed, falling back to CDN:', eLocal);
+        vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+      }
+
+      const initModel = async <T>(
+        createFn: (v: any, opts: any) => Promise<T>,
+        localPath: string,
+        cdnPath: string,
+        extraOptions: Record<string, any> = {}
+      ): Promise<T> => {
+        const paths = [resolveAssetUrl(localPath), cdnPath];
+        const delegates: ('GPU' | 'CPU')[] = ['GPU', 'CPU'];
+
+        for (const modelPath of paths) {
+          for (const delegate of delegates) {
+            try {
+              const model = await createFn(vision, {
+                baseOptions: { modelAssetPath: modelPath, delegate },
+                runningMode: 'VIDEO',
+                ...extraOptions,
+              });
+              return model;
+            } catch (err) {
+              // Try next delegate or path
+            }
+          }
+        }
+        throw new Error(`Failed to load model from both ${localPath} and CDN`);
+      };
 
       // 1. Initialize Pose Landmarker (Body & Joint Biomechanics)
       try {
-        this.landmarker = await PoseLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: '/models/pose/pose_landmarker_lite.task',
-            delegate: 'GPU',
-          },
-          runningMode: 'VIDEO',
-          numPoses: 1,
-          minPoseDetectionConfidence: 0.5,
-          minPosePresenceConfidence: 0.5,
-          minTrackingConfidence: 0.5,
-        });
-        console.log('✅ Offline MediaPipe PoseLandmarker initialized successfully');
+        this.landmarker = await initModel(
+          (v, opts) => PoseLandmarker.createFromOptions(v, opts),
+          'models/pose/pose_landmarker_lite.task',
+          'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+          {
+            numPoses: 1,
+            minPoseDetectionConfidence: 0.5,
+            minPosePresenceConfidence: 0.5,
+            minTrackingConfidence: 0.5,
+          }
+        );
+        console.log('✅ MediaPipe PoseLandmarker initialized successfully');
       } catch (err) {
-        console.warn('⚠️ MediaPipe Pose GPU init fell back to CPU:', err);
-        this.landmarker = await PoseLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: '/models/pose/pose_landmarker_lite.task',
-            delegate: 'CPU',
-          },
-          runningMode: 'VIDEO',
-          numPoses: 1,
-        });
+        console.warn('⚠️ PoseLandmarker initialization failed:', err);
       }
 
       // 2. Initialize Hand Landmarker (Full 21-point 5-finger skeleton)
       try {
-        this.handLandmarker = await HandLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: '/models/hand_landmarker.task',
-            delegate: 'GPU',
-          },
-          runningMode: 'VIDEO',
-          numHands: 2,
-          minHandDetectionConfidence: 0.35,
-          minHandPresenceConfidence: 0.35,
-          minTrackingConfidence: 0.35,
-        });
-        console.log('✅ Offline MediaPipe HandLandmarker initialized (21-joint 5 fingers)');
-      } catch (handErr) {
-        console.warn('⚠️ HandLandmarker GPU fallback to CPU:', handErr);
-        try {
-          this.handLandmarker = await HandLandmarker.createFromOptions(vision, {
-            baseOptions: {
-              modelAssetPath: '/models/hand_landmarker.task',
-              delegate: 'CPU',
-            },
-            runningMode: 'VIDEO',
+        this.handLandmarker = await initModel(
+          (v, opts) => HandLandmarker.createFromOptions(v, opts),
+          'models/hand_landmarker.task',
+          'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+          {
             numHands: 2,
-          });
-        } catch (e2) {
-          console.warn('HandLandmarker load warning:', e2);
-        }
+            minHandDetectionConfidence: 0.35,
+            minHandPresenceConfidence: 0.35,
+            minTrackingConfidence: 0.35,
+          }
+        );
+        console.log('✅ MediaPipe HandLandmarker initialized successfully');
+      } catch (handErr) {
+        console.warn('⚠️ HandLandmarker load warning:', handErr);
       }
 
       // 3. Initialize Face Landmarker (Full 478-point facial mesh & symmetry contours)
       try {
-        this.faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: '/models/face_landmarker.task',
-            delegate: 'GPU',
-          },
-          runningMode: 'VIDEO',
-          numFaces: 1,
-          minFaceDetectionConfidence: 0.35,
-          minFacePresenceConfidence: 0.35,
-          minTrackingConfidence: 0.35,
-          outputFacialTransformationMatrixes: false,
-        });
-        console.log('✅ Offline MediaPipe FaceLandmarker initialized (Face mesh & proportions)');
-      } catch (faceErr) {
-        console.warn('⚠️ FaceLandmarker GPU fallback to CPU:', faceErr);
-        try {
-          this.faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
-            baseOptions: {
-              modelAssetPath: '/models/face_landmarker.task',
-              delegate: 'CPU',
-            },
-            runningMode: 'VIDEO',
+        this.faceLandmarker = await initModel(
+          (v, opts) => FaceLandmarker.createFromOptions(v, opts),
+          'models/face_landmarker.task',
+          'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+          {
             numFaces: 1,
-          });
-        } catch (e3) {
-          console.warn('FaceLandmarker load warning:', e3);
-        }
+            minFaceDetectionConfidence: 0.35,
+            minFacePresenceConfidence: 0.35,
+            minTrackingConfidence: 0.35,
+            outputFacialTransformationMatrixes: false,
+          }
+        );
+        console.log('✅ MediaPipe FaceLandmarker initialized successfully');
+      } catch (faceErr) {
+        console.warn('⚠️ FaceLandmarker load warning:', faceErr);
       }
 
       this.isInitializing = false;
-      this.isMockMode = false;
+      this.isMockMode = !this.landmarker;
       return true;
     } catch (err) {
-      console.warn('⚠️ Enabling synthetic rehab vision simulation for zero-camera/headless mode:', err);
+      console.warn('⚠️ MediaPipe Vision initialization fallback:', err);
       this.isInitializing = false;
       this.isMockMode = true;
       return true;
@@ -164,7 +176,7 @@ export class PoseService {
       };
     }
 
-    if (!this.landmarker || video.readyState < 2) {
+    if (!this.landmarker || !video || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0 || video.paused) {
       return null;
     }
 
@@ -173,8 +185,14 @@ export class PoseService {
     // 1. Pose detection (Runs every frame for real-time exercise state machine & repetition tracking)
     let poseLandmarks: PoseLandmarks | null = null;
     try {
-      const result: PoseLandmarkerResult = this.landmarker.detectForVideo(video, timestamp);
-      if (result.landmarks && result.landmarks.length > 0) {
+      let poseTime = timestamp;
+      if (poseTime <= this.lastPoseTimestamp) {
+        poseTime = this.lastPoseTimestamp + 1;
+      }
+      this.lastPoseTimestamp = poseTime;
+
+      const result: PoseLandmarkerResult = this.landmarker.detectForVideo(video, poseTime);
+      if (result && result.landmarks && result.landmarks.length > 0) {
         const rawLandmarks = result.landmarks[0] as PoseLandmarks;
         poseLandmarks = this.smoother.smooth(rawLandmarks);
       }
@@ -186,8 +204,14 @@ export class PoseService {
     let handLandmarks: PoseLandmarks[] | null = this.lastHandResult;
     if (this.handLandmarker) {
       try {
-        const handRes: HandLandmarkerResult = this.handLandmarker.detectForVideo(video, timestamp);
-        if (handRes.landmarks && handRes.landmarks.length > 0) {
+        let handTime = timestamp;
+        if (handTime <= this.lastHandTimestamp) {
+          handTime = this.lastHandTimestamp + 1;
+        }
+        this.lastHandTimestamp = handTime;
+
+        const handRes: HandLandmarkerResult = this.handLandmarker.detectForVideo(video, handTime);
+        if (handRes && handRes.landmarks && handRes.landmarks.length > 0) {
           handLandmarks = handRes.landmarks as PoseLandmarks[];
           this.lastHandResult = handLandmarks;
         } else {
@@ -204,8 +228,14 @@ export class PoseService {
     let faceLandmarks: PoseLandmarks | null = this.lastFaceResult;
     if (this.faceLandmarker && (this.frameCount % 2 === 0 || !this.lastFaceResult)) {
       try {
-        const faceRes: FaceLandmarkerResult = this.faceLandmarker.detectForVideo(video, timestamp);
-        if (faceRes.faceLandmarks && faceRes.faceLandmarks.length > 0) {
+        let faceTime = timestamp;
+        if (faceTime <= this.lastFaceTimestamp) {
+          faceTime = this.lastFaceTimestamp + 1;
+        }
+        this.lastFaceTimestamp = faceTime;
+
+        const faceRes: FaceLandmarkerResult = this.faceLandmarker.detectForVideo(video, faceTime);
+        if (faceRes && faceRes.faceLandmarks && faceRes.faceLandmarks.length > 0) {
           faceLandmarks = faceRes.faceLandmarks[0] as PoseLandmarks;
           this.lastFaceResult = faceLandmarks;
         } else {

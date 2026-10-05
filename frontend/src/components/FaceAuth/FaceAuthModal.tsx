@@ -69,7 +69,7 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
   const [enrollGender, setEnrollGender] = useState<'male' | 'female'>('male');
   const [isSavingEnroll, setIsSavingEnroll] = useState<boolean>(false);
 
-  // Start Camera
+  // Start Camera with resilient fallbacks
   const startCamera = async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -81,21 +81,63 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
         return;
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-        audio: false,
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-        setCameraActive(true);
+      let stream: MediaStream | null = null;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+          audio: false,
+        });
+      } catch (err1) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 640 }, height: { ideal: 480 } },
+            audio: false,
+          });
+        } catch (err2) {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
       }
+
+      if (!stream) {
+        setVerifyMessage('ไม่สามารถเชื่อมต่อสัญญาณกล้องได้');
+        return;
+      }
+
+      streamRef.current = stream;
+      setCameraActive(true);
+
+      const attach = () => {
+        const v = videoRef.current;
+        if (v && streamRef.current) {
+          v.srcObject = streamRef.current;
+          v.muted = true;
+          v.playsInline = true;
+          v.play().catch(() => {});
+        }
+      };
+
+      attach();
+      setTimeout(attach, 100);
+      setTimeout(attach, 300);
     } catch (err) {
       console.warn('Camera access error:', err);
       setVerifyMessage('ไม่สามารถเปิดกล้องได้ กรุณาตรวจสอบการอนุญาตใช้งานกล้อง');
     }
   };
+
+  // Ensure stream is bound to video element whenever active
+  useEffect(() => {
+    if (cameraActive && streamRef.current && videoRef.current) {
+      if (videoRef.current.srcObject !== streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+      }
+      videoRef.current.muted = true;
+      videoRef.current.playsInline = true;
+      if (videoRef.current.paused) {
+        videoRef.current.play().catch(() => {});
+      }
+    }
+  });
 
   // Stop Camera
   const stopCamera = () => {

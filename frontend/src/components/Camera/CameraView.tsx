@@ -109,12 +109,15 @@ export const CameraView: React.FC<CameraViewProps> = ({
         playsInline
         muted
         autoPlay
-        onLoadedMetadata={syncResolution}
+        onLoadedMetadata={() => {
+          syncResolution();
+          videoRef.current?.play().catch(() => {});
+        }}
         onPlaying={syncResolution}
         className={`absolute inset-0 w-full h-full ${
           fitMode === 'contain' ? 'object-contain' : 'object-cover'
-        } ${isMirrored ? 'transform -scale-x-100' : ''} ${
-          isCameraReady ? 'block' : 'hidden'
+        } ${isMirrored ? 'transform -scale-x-100' : ''} transition-opacity duration-300 ${
+          isCameraReady ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         style={{
           position: 'absolute',
