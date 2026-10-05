@@ -21,7 +21,7 @@ if %ERRORLEVEL% neq 0 (
     echo   3. Paste the code and click 'Authorize'.
     echo --------------------------------------------------------
     echo.
-    gh auth login --web --git-protocol https
+    gh auth login --web --clipboard --git-protocol https
 ) else (
     echo [OK] Already logged into GitHub CLI!
 )
