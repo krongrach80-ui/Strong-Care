@@ -640,7 +640,17 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
                 <span>Hospital & RBAC Portal</span>
               </div>
               <p className="text-slate-600 text-[11px] leading-relaxed">
-                ระบบจัดการ 3 บทบาท (ผอรพ / นักกายภาพ / คนไข้) จัดการผู้ใช้ แผนการรักษา Activity Log และตั้งค่า AI
+                แดชบอร์ดตามบทบาท (ผอรพ / นักกายภาพ / คนไข้) จัดการผู้ใช้ แผนการรักษา Activity Log และตั้งค่าระบบ AI
+              </p>
+            </div>
+
+            <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1">
+              <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
+                <span>📋</span>
+                <span>Role-Based Account Form</span>
+              </div>
+              <p className="text-slate-600 text-[11px] leading-relaxed">
+                ฟอร์มเพิ่มบัญชีแยกสิทธิ์: Admin เพิ่มได้ทั้งคนไข้และนักกายภาพ, Physio เพิ่มได้เฉพาะคนไข้ พร้อมสร้าง Username/PIN และ Real-time Validation
               </p>
             </div>
 
@@ -674,13 +684,13 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
               </p>
             </div>
 
-            <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1">
+            <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1 sm:col-span-2">
               <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
                 <span>🛡️</span>
-                <span>Safety Watchdog & Symptoms</span>
+                <span>Safety Watchdog & Secure Kiosk</span>
               </div>
               <p className="text-slate-600 text-[11px] leading-relaxed">
-                ตรวจจับ Over-ROM, ลำตัวเอียง (Trunk Lean), กล่องรับแจ้งอาการปวด (1-5) พร้อมเสียงโค้ชชิ่ง AI
+                ตรวจจับ Over-ROM, ลำตัวเอียง (Trunk Lean), ป้องกันข้อมูลคนไข้หน้าตู้ (เฉพาะ Face/PIN ไม่แสดงดรอปดาวน์สาธารณะ) พร้อมเสียง AI
               </p>
             </div>
 
