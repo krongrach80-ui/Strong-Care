@@ -1,5 +1,6 @@
 import { ExerciseDefinition, RepState } from '../types/exercise';
 import { RepetitionTelemetry } from './types';
+import { getPoseSpec, PoseSpec } from './poseSpecs';
 
 export interface RepTransitionEvent {
   fromState: RepState;
@@ -12,9 +13,16 @@ export interface RepTransitionEvent {
  * Sub-engine running a 5-State Automaton with Hysteresis to count repetitions,
  * prevent bouncing/fluttering, enforce isometric hold at peak ROM, and capture
  * phase durations (concentric, hold, eccentric).
+ *
+ * Clinical enhancements:
+ * - Timeout and abort when returning to rest before reaching target
+ * - Per-exercise hysteresis and threshold envelopes from PoseSpec
+ * - Minimum rep duration gate (1.2s) to prevent false flutter counts
+ * - Continuous target envelope requirement for isometric hold timer
  */
 export class RepetitionEngine {
   private exercise: ExerciseDefinition;
+  private spec: PoseSpec;
   private state: RepState = 'START';
   private repCount: number = 0;
   private correctReps: number = 0;
@@ -32,11 +40,15 @@ export class RepetitionEngine {
   private holdDurationRequiredMs: number = 600; // Clinical hold at apex
   private isDecreasingTarget: boolean;
   private outOfZoneSince: number | null = null;
+  private continuousHoldDurationMs: number = 0;
+  private lastHoldTimestamp: number = 0;
+  private minRepDurationMs: number = 1200; // Minimum duration per rep (1.2s)
 
   constructor(exercise: ExerciseDefinition, holdDurationMs: number = 600) {
     this.exercise = exercise;
+    this.spec = getPoseSpec(exercise.slug);
     this.holdDurationRequiredMs = holdDurationMs;
-    this.isDecreasingTarget = exercise.slug === 'bicep_curl' || exercise.slug === 'knee_squat';
+    this.isDecreasingTarget = this.spec.isDecreasingTarget;
     this.stateEnteredTime = Date.now();
   }
 
@@ -47,6 +59,8 @@ export class RepetitionEngine {
     this.stateEnteredTime = Date.now();
     this.repStartTime = 0;
     this.outOfZoneSince = null;
+    this.continuousHoldDurationMs = 0;
+    this.lastHoldTimestamp = 0;
   }
 
   public getRepCount(): number {
@@ -76,7 +90,8 @@ export class RepetitionEngine {
     phaseDurations: { concentricSec: number; holdSec: number; eccentricSec: number; totalSec: number };
     feedback: string;
   } {
-    const { target_angle, min_angle, max_angle } = this.exercise;
+    const targetAngle = this.spec.targetAngleDeg || this.exercise.target_angle;
+    const tolerance = this.spec.toleranceDeg || 15;
     let isRepJustCompleted = false;
     let feedback = '';
     let holdProgressPercent = 0;
@@ -98,19 +113,9 @@ export class RepetitionEngine {
       };
     }
 
-    // Resting threshold definitions with hysteresis (Dynamically adapted per exercise)
-    let restAngleThreshold = this.isDecreasingTarget ? 135 : 45;
-    let triggerMotionThreshold = this.isDecreasingTarget ? 125 : 50;
-
-    if (this.exercise.slug === 'elbow_extension') {
-      // Elbow extension: starts with elbow bent ~80°-90° and extends up towards ~165°-180°
-      restAngleThreshold = 95;
-      triggerMotionThreshold = 105;
-    } else if (this.exercise.slug === 'knee_squat' || this.exercise.slug === 'chair_squat') {
-      // Squat: starts standing ~160°-175° and descends towards ~90°-100°
-      restAngleThreshold = 155;
-      triggerMotionThreshold = 145;
-    }
+    // Dynamic resting and triggering thresholds from PoseSpec
+    const restAngleThreshold = this.spec.restAngleDeg;
+    const triggerMotionThreshold = this.spec.triggerMotionDeg;
 
     switch (this.state) {
       case 'START':
@@ -125,7 +130,7 @@ export class RepetitionEngine {
           }
           feedback = 'พร้อมแล้ว เริ่มขยับเข้าสู่ท่าทาง';
         } else {
-          feedback = this.isDecreasingTarget ? 'ยืดข้อต่อกลับสู่ท่าเริ่มต้น' : 'วางแขนลงข้างลำตัวเพื่อเริ่ม';
+          feedback = this.isDecreasingTarget ? 'ยืดข้อต่อกลับสู่ท่าเริ่มต้น' : 'วางแขนหรือขากลับสู่ท่าเริ่มต้น';
         }
 
         // Trigger motion start
@@ -144,16 +149,37 @@ export class RepetitionEngine {
 
       case 'UP':
       case 'DOWN': {
-        // Concentric movement towards target
+        // 1. Concentric abort check: if user returned back to rest without reaching target
+        const returnedToRest = this.isDecreasingTarget
+          ? currentAngle >= restAngleThreshold - 4
+          : currentAngle <= restAngleThreshold + 4;
+
+        if (returnedToRest) {
+          this.transitionTo('READY', timestamp);
+          feedback = 'กลับสู่ท่าเริ่มต้นก่อนถึงเป้าหมาย กรุณาเริ่มรอบใหม่';
+          break;
+        }
+
+        // 2. Timeout check: if concentric movement takes > 7.0 seconds without reaching target
+        if (timestamp - this.stateEnteredTime > 7000) {
+          this.transitionTo('READY', timestamp);
+          feedback = 'หมดเวลาขยับท่าทาง กรุณาเริ่มใหม่อีกครั้ง';
+          break;
+        }
+
+        // 3. Concentric target check: reached within tolerance zone
         const reachedTarget = this.isDecreasingTarget
-          ? currentAngle <= target_angle + 10
-          : currentAngle >= target_angle - 10;
+          ? currentAngle <= targetAngle + tolerance
+          : currentAngle >= targetAngle - tolerance;
 
         if (reachedTarget) {
           this.concentricEndTime = timestamp;
           this.holdStartTime = timestamp;
+          this.lastHoldTimestamp = timestamp;
+          this.continuousHoldDurationMs = 0;
+          this.outOfZoneSince = null;
           this.transitionTo('HOLD', timestamp);
-          feedback = 'ดีมาก! ค้างไว้สักครู่...';
+          feedback = 'ดีมาก! ค้างไว้ในโซนเป้าหมาย...';
         } else {
           feedback = 'เคลื่อนไหวอย่างต่อเนื่อง เข้าสู่มุมเป้าหมาย';
         }
@@ -161,35 +187,48 @@ export class RepetitionEngine {
       }
 
       case 'HOLD': {
-        // Shallow check: moving back towards resting position rather than holding target
-        const shallow = this.isDecreasingTarget
-          ? currentAngle > max_angle + 8
-          : currentAngle < min_angle - 8;
+        // Continuous target zone envelope check
+        const inTargetZone = this.isDecreasingTarget
+          ? currentAngle <= targetAngle + tolerance && currentAngle >= targetAngle - tolerance - 15
+          : currentAngle >= targetAngle - tolerance && currentAngle <= targetAngle + tolerance + 15;
 
-        if (shallow) {
+        if (inTargetZone) {
+          // Accumulate continuous hold time
+          if (this.lastHoldTimestamp > 0) {
+            const dt = Math.max(0, Math.min(250, timestamp - this.lastHoldTimestamp));
+            this.continuousHoldDurationMs += dt;
+          }
+          this.lastHoldTimestamp = timestamp;
+          this.outOfZoneSince = null;
+
+          holdProgressPercent = Math.min(
+            100,
+            Math.round((this.continuousHoldDurationMs / this.holdDurationRequiredMs) * 100)
+          );
+
+          if (this.continuousHoldDurationMs >= this.holdDurationRequiredMs) {
+            this.holdEndTime = timestamp;
+            this.eccentricStartTime = timestamp;
+            this.transitionTo('COMPLETE', timestamp);
+            feedback = 'ยอดเยี่ยม! ค่อยๆ คลายท่ากลับสู่จุดเริ่มต้น';
+          } else {
+            const secLeft = Math.max(0.1, (this.holdDurationRequiredMs - this.continuousHoldDurationMs) / 1000).toFixed(1);
+            feedback = `ค้างท่าไว้ในโซน... ${secLeft} วินาที`;
+          }
+        } else {
+          // Out of target envelope: pause hold progress
+          this.lastHoldTimestamp = timestamp;
           this.outOfZoneSince ??= timestamp;
+
+          // Grace period: if out of target zone for > 700ms, abort back to concentric
           if (timestamp - this.outOfZoneSince > 700) {
             this.outOfZoneSince = null;
+            this.continuousHoldDurationMs = 0;
             this.transitionTo(this.isDecreasingTarget ? 'DOWN' : 'UP', timestamp);
+            feedback = 'หลุดออกจากโซนเป้าหมาย กรุณาขยับเข้าสู่มุมเป้าหมายอีกครั้ง';
+          } else {
+            feedback = 'พยายามรักษาระดับองศาให้อยู่ในโซนเป้าหมาย';
           }
-          feedback = 'พยายามรักษาระดับองศาให้อยู่ในโซนเป้าหมาย';
-          break;
-        }
-
-        // Deep/over-target or within target envelope: counts as holding target!
-        this.outOfZoneSince = null;
-        const elapsedHold = timestamp - this.holdStartTime;
-
-        holdProgressPercent = Math.min(100, Math.round((elapsedHold / this.holdDurationRequiredMs) * 100));
-
-        if (elapsedHold >= this.holdDurationRequiredMs) {
-          this.holdEndTime = timestamp;
-          this.eccentricStartTime = timestamp;
-          this.transitionTo('COMPLETE', timestamp);
-          feedback = 'ยอดเยี่ยม! ค่อยๆ คลายท่ากลับสู่จุดเริ่มต้น';
-        } else {
-          const secLeft = Math.max(0.1, (this.holdDurationRequiredMs - elapsedHold) / 1000).toFixed(1);
-          feedback = `ค้างท่าไว้... ${secLeft} วินาที`;
         }
         break;
       }
@@ -201,15 +240,29 @@ export class RepetitionEngine {
           : currentAngle <= restAngleThreshold + 5;
 
         if (returnedToRest) {
-          this.eccentricEndTime = timestamp;
-          this.repCount++;
-          if (isPostureValid) this.correctReps++;
-          isRepJustCompleted = true;
+          const totalDuration = timestamp - (this.repStartTime || timestamp);
 
-          this.transitionTo('READY', timestamp);
-          feedback = `นับแล้ว ครั้งที่ ${this.repCount}! เตรียมเริ่มครั้งถัดไป`;
+          // Clinical gate: must satisfy minimum rep duration to avoid false flutter counts
+          if (totalDuration >= this.minRepDurationMs) {
+            this.eccentricEndTime = timestamp;
+            this.repCount++;
+            if (isPostureValid) this.correctReps++;
+            isRepJustCompleted = true;
+
+            this.transitionTo('READY', timestamp);
+            feedback = `นับแล้ว ครั้งที่ ${this.repCount}! เตรียมเริ่มครั้งถัดไป`;
+          } else {
+            // Rep completed too quickly (< 1.2s), treated as false flutter
+            this.transitionTo('READY', timestamp);
+            feedback = 'ขยับเร็วเกินไป ไม่นับรอบ กรุณาขยับอย่างช้าๆ มั่นคง';
+          }
         } else {
-          feedback = 'ค่อยๆ คลายท่ากลับสู่จุดเริ่มต้นอย่างควบคุม';
+          // Timeout in eccentric phase (e.g. resting halfway)
+          if (timestamp - this.stateEnteredTime > 8000) {
+            this.transitionTo('READY', timestamp);
+          } else {
+            feedback = 'ค่อยๆ คลายท่ากลับสู่จุดเริ่มต้นอย่างควบคุม';
+          }
         }
         break;
       }
@@ -231,7 +284,7 @@ export class RepetitionEngine {
 
     const holdSec = this.holdEndTime > this.holdStartTime
       ? (this.holdEndTime - this.holdStartTime) / 1000
-      : (phase === 'apex_hold' ? (timestamp - this.holdStartTime) / 1000 : 0);
+      : (phase === 'apex_hold' ? (this.continuousHoldDurationMs) / 1000 : 0);
 
     const eccentricSec = this.eccentricEndTime > this.eccentricStartTime
       ? (this.eccentricEndTime - this.eccentricStartTime) / 1000

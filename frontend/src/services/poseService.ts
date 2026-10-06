@@ -288,10 +288,12 @@ export class PoseService {
       const result: PoseLandmarkerResult = this.landmarker.detectForVideo(video, poseTime);
       if (result && result.landmarks && result.landmarks.length > 0) {
         const rawLandmarks = result.landmarks[0] as PoseLandmarks;
-        poseLandmarks = this.smoother.smooth(rawLandmarks);
+        poseLandmarks = this.smoother.smooth(rawLandmarks, poseTime);
+      } else {
+        this.smoother.reset();
       }
     } catch (e) {
-      // ignore frame error
+      this.smoother.reset();
     }
 
     // 2. Hand detection (โหลดและรันเฉพาะเมื่อเปิด options?.enableHands ป้องกันเฟรมเรตตกบนมือถือ)

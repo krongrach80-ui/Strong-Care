@@ -1,6 +1,7 @@
 import { PoseLandmarks, POSE_LANDMARKS } from '../types/pose';
 import { ExerciseDefinition } from '../types/exercise';
 import { BiomechanicsFrame } from './types';
+import { getPoseSpec } from './poseSpecs';
 
 export type SafetySeverity = 'NORMAL' | 'CAUTION' | 'CRITICAL_STOP';
 
@@ -71,6 +72,9 @@ export class SafetyEngine {
   ): SafetyTelemetry {
     const violations: SafetyViolation[] = [];
     const now = Date.now();
+    const spec = getPoseSpec(exercise.slug);
+    const maxLeanAllowed = spec.allowedPostures.maxAllowableSpineLeanDeg ?? this.config.maxTrunkLeanDeg;
+    const allowShoulderTilt = spec.allowedPostures.allowShoulderTilt ?? false;
 
     // Check key joint visibilities & compute confidence score
     let confidenceScore = 0;
@@ -95,7 +99,10 @@ export class SafetyEngine {
       const lh = landmarks[POSE_LANDMARKS.LEFT_HIP];
       const rh = landmarks[POSE_LANDMARKS.RIGHT_HIP];
 
-      const keyJoints = [ls, rs, le, re, lh, rh].filter(Boolean);
+      const keyJoints = (spec.landmarksUsed && spec.landmarksUsed.length > 0)
+        ? spec.landmarksUsed.map((idx) => landmarks[idx]).filter(Boolean)
+        : [ls, rs, le, re, lh, rh].filter(Boolean);
+
       const avgVisibility = keyJoints.length > 0
         ? keyJoints.reduce((acc, j) => acc + (j?.visibility ?? 1), 0) / keyJoints.length
         : 0;
@@ -127,7 +134,7 @@ export class SafetyEngine {
         severity: 'CRITICAL_STOP',
         title: 'มุมข้อต่อเกินพิกัดปลอดภัย',
         message: `มุมปัจจุบัน ${Math.round(frame.angle.currentAngle)}° เกินเกณฑ์ปลอดภัยสูงสุด (${maxSafeRom}°)`,
-        voiceMessage: 'กรุณาหยุดก่อนครับ ยกแขนสูงเกินช่วงปลอดภัยแล้วครับ ค่อยๆ ลดระดับลงนะครับ',
+        voiceMessage: 'กรุณาหยุดก่อนครับ มุมข้อต่อสูงเกินช่วงปลอดภัยแล้วครับ ค่อยๆ ลดระดับลงนะครับ',
         timestamp: now,
         value: Math.round(frame.angle.currentAngle),
         threshold: maxSafeRom,
@@ -135,18 +142,18 @@ export class SafetyEngine {
     }
 
     // 3. Check Severe Spinal Trunk Lean (Dangerous Compensation)
-    if (frame.posture.spineAngle > this.config.maxTrunkLeanDeg) {
+    if (frame.posture.spineAngle > maxLeanAllowed) {
       violations.push({
         code: 'EXTREME_TRUNK_LEAN',
         severity: 'CRITICAL_STOP',
         title: 'ลำตัวเอียงมากเกินไป',
-        message: `ลำตัวเอียง ${Math.round(frame.posture.spineAngle)}° อาจทำให้กล้ามเนื้อหลังบาดเจ็บ`,
+        message: `ลำตัวเอียง ${Math.round(frame.posture.spineAngle)}° เกินพิกัดปลอดภัยสำหรับท่านี้ (${maxLeanAllowed}°)`,
         voiceMessage: 'ระวังลำตัวเอียงมากเกินไปครับ รักษาสันหลังให้ตรงนะครับ',
         timestamp: now,
         value: Math.round(frame.posture.spineAngle),
-        threshold: this.config.maxTrunkLeanDeg,
+        threshold: maxLeanAllowed,
       });
-    } else if (frame.posture.spineAngle > 14) {
+    } else if (frame.posture.spineAngle > Math.max(14, maxLeanAllowed - 8) && !spec.allowedPostures.allowTorsoTwist) {
       violations.push({
         code: 'EXTREME_TRUNK_LEAN',
         severity: 'CAUTION',
@@ -155,12 +162,12 @@ export class SafetyEngine {
         voiceMessage: 'รักษาสันหลังให้ตรงครับ อย่าเอียงตัวช่วยนะครับ',
         timestamp: now,
         value: Math.round(frame.posture.spineAngle),
-        threshold: 14,
+        threshold: Math.max(14, maxLeanAllowed - 8),
       });
     }
 
     // 4. Check Severe Shoulder Hiking (Trapezius compensation)
-    if (frame.posture.shoulderTilt > this.config.maxShoulderHikingDeg) {
+    if (!allowShoulderTilt && frame.posture.shoulderTilt > this.config.maxShoulderHikingDeg) {
       violations.push({
         code: 'SEVERE_SHOULDER_HIKE',
         severity: 'CAUTION',

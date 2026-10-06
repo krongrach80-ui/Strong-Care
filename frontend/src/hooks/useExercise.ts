@@ -9,7 +9,8 @@ import { useSessionStore } from '../store/sessionStore';
 export function useExercise(
   exercise: ExerciseDefinition | null,
   landmarks: PoseLandmarks | null,
-  isEmergencyStop: boolean = false
+  isEmergencyStop: boolean = false,
+  dimensions?: { width: number; height: number }
 ) {
   const analyzerRef = useRef<ExerciseAnalyzer | null>(null);
   const [analysis, setAnalysis] = useState<LiveAnalysisFrame | null>(null);
@@ -58,7 +59,7 @@ export function useExercise(
   useEffect(() => {
     if (!analyzerRef.current || !landmarks || !exercise) return;
 
-    const result = analyzerRef.current.analyze(landmarks);
+    const result = analyzerRef.current.analyze(landmarks, dimensions);
     setAnalysis(result.frame);
     setBiomechanics(result.biomechanicsFrame);
     setPrimaryJoint(result.primaryJointPoint);

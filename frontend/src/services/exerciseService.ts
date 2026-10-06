@@ -49,12 +49,12 @@ export class ExerciseAnalyzer {
   /**
    * Process landmarks through the Biomechanics Engine
    */
-  public analyze(landmarks: PoseLandmarks): {
+  public analyze(landmarks: PoseLandmarks, dimensions?: { width: number; height: number }): {
     frame: LiveAnalysisFrame;
     biomechanicsFrame: BiomechanicsFrame;
     primaryJointPoint: { x: number; y: number } | null;
   } {
-    const bioFrame = this.biomechanics.processFrame(landmarks);
+    const bioFrame = this.biomechanics.processFrame(landmarks, Date.now(), dimensions);
 
     const frame: LiveAnalysisFrame = {
       currentAngle: bioFrame.angle.currentAngle,

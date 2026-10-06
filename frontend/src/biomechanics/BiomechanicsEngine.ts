@@ -71,9 +71,13 @@ export class BiomechanicsEngine {
   /**
    * Process a single video frame with raw landmarks through all 5 biomechanical layers
    */
-  public processFrame(landmarks: PoseLandmarks, timestamp: number = Date.now()): BiomechanicsFrame {
+  public processFrame(
+    landmarks: PoseLandmarks,
+    timestamp: number = Date.now(),
+    dimensions?: { width: number; height: number }
+  ): BiomechanicsFrame {
     // Layer 1: Angle calculation & spatial smoothing
-    const angleTelemetry = this.angleEngine.process(landmarks, this.exercise, timestamp);
+    const angleTelemetry = this.angleEngine.process(landmarks, this.exercise, timestamp, dimensions);
 
     // Layer 2: Posture & kinetic compensation analysis
     const postureTelemetry = this.postureEngine.process(landmarks, this.exercise);

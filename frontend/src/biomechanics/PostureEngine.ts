@@ -2,6 +2,7 @@ import { PoseLandmarks, POSE_LANDMARKS } from '../types/pose';
 import { ExerciseDefinition } from '../types/exercise';
 import { AngleEngine } from './AngleEngine';
 import { PostureTelemetry } from './types';
+import { getPoseSpec } from './poseSpecs';
 
 /**
  * PostureEngine
@@ -25,6 +26,7 @@ export class PostureEngine {
   public process(landmarks: PoseLandmarks, exercise: ExerciseDefinition): PostureTelemetry {
     const feedback: string[] = [];
     const compensations: string[] = [];
+    const spec = getPoseSpec(exercise.slug);
 
     const leftShoulder = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
     const rightShoulder = landmarks[POSE_LANDMARKS.RIGHT_SHOULDER];
@@ -35,9 +37,12 @@ export class PostureEngine {
     const leftAnkle = landmarks[POSE_LANDMARKS.LEFT_ANKLE];
     const rightAnkle = landmarks[POSE_LANDMARKS.RIGHT_ANKLE];
 
-    const isLowerBody = exercise.slug === 'knee_squat' || exercise.slug === 'chair_squat' || exercise.slug === 'alternating-knee-raise';
+    const isLowerBody = spec.allowedPostures.requireKnees ?? (exercise.slug === 'knee_squat' || exercise.slug === 'chair_squat' || exercise.slug === 'alternating-knee-raise');
+    const requireHips = spec.allowedPostures.requireHips ?? true;
+    const maxSpineAngleAllowed = spec.allowedPostures.maxAllowableSpineLeanDeg ?? 14;
+    const allowShoulderTilt = spec.allowedPostures.allowShoulderTilt ?? false;
 
-    // Check visibility based on exercise type
+    // Check visibility based on exercise type (unified 0.35 threshold)
     const shouldersVisible = Boolean(
       leftShoulder && rightShoulder &&
       (leftShoulder.visibility === undefined || leftShoulder.visibility > 0.35) &&
@@ -50,7 +55,9 @@ export class PostureEngine {
       (rightHip.visibility === undefined || rightHip.visibility > 0.35)
     );
 
-    const isInFrame = isLowerBody ? (hipsVisible || Boolean(leftKnee && rightKnee)) : shouldersVisible;
+    const isInFrame = isLowerBody
+      ? (hipsVisible || Boolean(leftKnee && rightKnee))
+      : (requireHips ? (shouldersVisible && hipsVisible) : shouldersVisible);
 
     if (!isInFrame) {
       return {
@@ -66,7 +73,7 @@ export class PostureEngine {
       };
     }
 
-    // 1. Spine Verticality: Only evaluate if hips are in frame; otherwise skip (supplementary)
+    // 1. Spine Verticality: Respect per-exercise max allowable lean (e.g. side bend allows up to 36°)
     let spineAngle = 0;
     let isUpright = true;
 
@@ -81,25 +88,27 @@ export class PostureEngine {
       };
 
       spineAngle = this.angleEngine.calculateVerticalAngle(midShoulder, midHip);
-      isUpright = spineAngle <= 14; // Spine should stay within 14° of vertical
+      isUpright = spineAngle <= maxSpineAngleAllowed;
 
       if (!isUpright) {
         compensations.push('Trunk Lean Compensation');
         if (exercise.slug === 'shoulder_raise') {
           feedback.push('อย่าเอียงลำตัวช่วยยกแขน รักษาสันหลังให้ตรง');
+        } else if (exercise.slug === 'stretch_side_bend' || exercise.slug === 'side_bend') {
+          feedback.push('เอียงลำตัวมากเกินช่วงปลอดภัย ค่อยๆ ลดระดับลง');
         } else {
           feedback.push('รักษาสันหลังให้ตรง อย่าเอียงลำตัว');
         }
       }
     }
 
-    // 2. Shoulder Balance (Horizontal Tilt & Hiking)
+    // 2. Shoulder Balance (Horizontal Tilt & Hiking): Relaxed if exercise allows natural tilt
     let shoulderTilt = 0;
     let isShouldersBalanced = true;
 
     if (shouldersVisible && leftShoulder && rightShoulder) {
       shoulderTilt = Math.abs(this.angleEngine.calculateHorizontalTilt(leftShoulder, rightShoulder));
-      isShouldersBalanced = shoulderTilt <= 10; // Shoulders should be within 10°
+      isShouldersBalanced = allowShoulderTilt || shoulderTilt <= 10;
 
       if (!isShouldersBalanced) {
         compensations.push('Shoulder Hiking Compensation');

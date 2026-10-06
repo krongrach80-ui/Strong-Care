@@ -1,4 +1,5 @@
 import { Landmark, PoseLandmarks } from '../types/pose';
+import { getPoseSpec } from '../biomechanics/poseSpecs';
 
 /**
  * Confidence & Visibility Fail-Safe Algorithm
@@ -36,7 +37,7 @@ export function evaluateLandmarkConfidence(
   }
 
   const indices: number[] = typeof exerciseOrIndices === 'string'
-    ? (EXERCISE_REQUIRED_LANDMARKS[exerciseOrIndices] || [11, 12, 13, 14])
+    ? (getPoseSpec(exerciseOrIndices)?.landmarksUsed || EXERCISE_REQUIRED_LANDMARKS[exerciseOrIndices] || [11, 12, 13, 14])
     : exerciseOrIndices;
 
   const occluded: string[] = [];

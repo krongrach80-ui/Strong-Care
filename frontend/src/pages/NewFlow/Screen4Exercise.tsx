@@ -142,10 +142,18 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
   } = useCamera();
 
   // Pose Detection Hook
-  const { landmarks, fps, modelError } = usePose(videoRef, isCameraReady, currentExerciseConfig?.targetPose || 'shoulder_raise');
+  const { landmarks, fps, modelError, isMockMode } = usePose(videoRef, isCameraReady, currentExerciseConfig?.targetPose || 'shoulder_raise');
+
+  const videoDimensions = useMemo(() => {
+    const video = videoRef.current;
+    if (video && video.videoWidth > 0 && video.videoHeight > 0) {
+      return { width: video.videoWidth, height: video.videoHeight };
+    }
+    return undefined;
+  }, [videoRef, isCameraReady]);
 
   // Biomechanics Analysis Hook
-  const { analysis, biomechanics } = useExercise(selectedExercise, landmarks, isSafetyHalted);
+  const { analysis, biomechanics } = useExercise(selectedExercise, landmarks, isSafetyHalted, videoDimensions);
 
   // Canvas overlay for real-time skeletal drawing
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -254,8 +262,10 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
   // Evaluate stretch posture adherence in real-time
   const stretchEval = useMemo(() => {
     if (!isStretchMode || !currentStretch) return null;
-    return evaluateStretchPose(landmarks, currentStretch, currentSide);
-  }, [isStretchMode, landmarks, currentStretch, currentSide]);
+    const video = videoRef.current;
+    const ar = (video && video.videoHeight > 0) ? (video.videoWidth / video.videoHeight) : 1.0;
+    return evaluateStretchPose(landmarks, currentStretch, currentSide, ar);
+  }, [isStretchMode, landmarks, currentStretch, currentSide, videoRef]);
 
   // Real-time posture status computation
   const realtimeStatus: 'ready' | 'adjust' | 'stop' | 'preparing' = useMemo(() => {
@@ -548,18 +558,25 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     handlePhaseFinish,
   ]);
 
-  // Calculate live score from landmarks or stretch evaluator
+  // Calculate live score from landmarks or stretch evaluator using dynamic target and tolerance
   useEffect(() => {
     if (isCameraReady && landmarks && landmarks.length > 0) {
       if (isStretchMode && stretchEval) {
-        setLiveScore(stretchEval.isHoldingPose ? stretchEval.score : Math.max(40, stretchEval.score - 20));
+        setLiveScore(stretchEval.isHoldingPose ? stretchEval.score : Math.max(30, stretchEval.score - 20));
       } else if (currentExerciseConfig && analysis) {
         const target = currentExerciseConfig.targetAngle || 90;
-        const tol = 15;
+        const tol = (currentExerciseConfig as any).toleranceDeg ?? (currentExerciseConfig as any).tolerance_angle ?? 15;
         const measuredAngle = analysis?.currentAngle ?? target;
         const diff = Math.abs(measuredAngle - target);
 
-        let calculatedScore = Math.max(0, Math.min(100, Math.round(100 - (diff / tol) * 15)));
+        let calculatedScore = 100;
+        if (diff <= tol) {
+          calculatedScore = Math.round(100 - (diff / Math.max(1, tol)) * 10);
+        } else {
+          const excess = (diff - tol) / Math.max(1, tol);
+          calculatedScore = Math.max(0, Math.round(90 - excess * 45));
+        }
+
         if (isNaN(calculatedScore)) {
           calculatedScore = 0;
         }
@@ -888,6 +905,14 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
         <div className="w-full bg-amber-500/90 text-white text-xs sm:text-sm font-semibold px-3 py-1.5 rounded-xl mb-1 flex items-center justify-center gap-2 z-20">
           <AlertTriangle className="w-4 h-4 text-white flex-shrink-0" />
           <span>{modelError}</span>
+        </div>
+      )}
+
+      {/* Prominent Mock Mode Warning Banner */}
+      {isMockMode && (
+        <div className="w-full bg-amber-600/95 text-white text-xs sm:text-sm font-bold px-3 py-2 rounded-xl mb-1 flex items-center justify-center gap-2 z-20 shadow-md border border-amber-300">
+          <AlertTriangle className="w-5 h-5 text-amber-200 flex-shrink-0 animate-bounce" />
+          <span>⚠️ กำลังใช้งานในโหมดจำลองท่าทาง (Mock Mode) - ข้อมูลไม่ใช่การตรวจจับจากร่างกายจริง</span>
         </div>
       )}
 
