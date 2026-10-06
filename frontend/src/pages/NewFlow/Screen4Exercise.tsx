@@ -49,7 +49,7 @@ import { SafetyEngine, SafetyTelemetry } from '../../biomechanics/SafetyEngine';
 
 interface Screen4ExerciseProps {
   onBack: () => void;
-  onOpenTherapistModal: (score: number, poseName: string, romAngle: number) => void;
+  onOpenTherapistModal: (score: number | null, poseName: string, romAngle: number | null) => void;
   selectedExercise: ExerciseDefinition | null;
   stretchQueue?: StretchExerciseItem[];
   customHoldTimes?: Record<string, number>;
@@ -112,8 +112,13 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
   const initialSeconds = currentStretch ? getPoseHoldSeconds(currentStretch) : 20;
   const [timeLeft, setTimeLeft] = useState<number>(initialSeconds);
   const [totalElapsedTimeSec, setTotalElapsedTimeSec] = useState<number>(0);
-  const [poseScores, setPoseScores] = useState<Record<string, number>>({});
-  const [liveScore, setLiveScore] = useState<number>(88);
+  const [poseScores, setPoseScores] = useState<Record<string, number | null>>({});
+  const [liveScore, setLiveScore] = useState<number | null>(null);
+  const [completedPoseIds, setCompletedPoseIds] = useState<string[]>([]);
+  const [skippedPoseIds, setSkippedPoseIds] = useState<string[]>([]);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
+  const hasSavedSessionRef = useRef<boolean>(false);
 
   // Preparation & Countdown State Machine
   const [exercisePhase, setExercisePhase] = useState<ExercisePhase>('PREPARING');
@@ -136,7 +141,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
   } = useCamera();
 
   // Pose Detection Hook
-  const { landmarks, fps } = usePose(videoRef, isCameraReady, currentExerciseConfig?.targetPose || 'shoulder_raise');
+  const { landmarks, fps, modelError } = usePose(videoRef, isCameraReady, currentExerciseConfig?.targetPose || 'shoulder_raise');
 
   // Biomechanics Analysis Hook
   const { analysis, biomechanics } = useExercise(selectedExercise, landmarks, isSafetyHalted);
@@ -274,6 +279,9 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
       return 'จัดตำแหน่งร่างกายให้ตรงหน้ากล้อง';
     }
     if (exercisePhase === 'READY') return 'เริ่มได้เลย!';
+    if (isCameraReady && (!landmarks || landmarks.length === 0) && exercisePhase === 'ACTIVE') {
+      return 'กรุณาเข้ามายืนในกรอบกล้องเพื่อเริ่มจับเวลา';
+    }
     if (realtimeStatus === 'adjust') {
       if (analysis && analysis.feedback && analysis.feedback.length > 0) {
         return analysis.feedback[0];
@@ -281,7 +289,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
       return 'กรุณาปรับท่าทางให้ตรงตามคำแนะนำ';
     }
     return 'ทำท่าได้ถูกต้อง รักษาระดับไว้';
-  }, [exercisePhase, safetyTelemetry, realtimeStatus, analysis]);
+  }, [exercisePhase, safetyTelemetry, realtimeStatus, analysis, isCameraReady, landmarks]);
 
   // Total elapsed workout timer
   useEffect(() => {
@@ -292,34 +300,114 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     return () => clearInterval(interval);
   }, [isCompletedAll, isPaused, isSafetyHalted]);
 
-  // Main countdown timer for hold phase (strictly paused during preparation / countdown!)
-  useEffect(() => {
-    if (!isStretchMode || isPaused || isCompletedAll || isSwitchingSide || exercisePhase !== 'ACTIVE' || isSafetyHalted) return;
+  // Auto-save summary to backend (IndexedDB first, then server sync)
+  const handleAutoSaveSummary = useCallback(
+    async (
+      customPoseScores?: Record<string, number | null>,
+      customCompleted?: string[],
+      customSkipped?: string[]
+    ) => {
+      if (hasSavedSessionRef.current) return;
 
-    if (timeLeft <= 0) {
-      handlePhaseFinish();
-      return;
-    }
+      if (poseService.getIsMockMode()) {
+        console.info('ℹ️ เซสชันมาจากโหมดจำลอง (Mock Mode) - ข้ามการบันทึกข้อมูล');
+        return;
+      }
 
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => Math.max(0, prev - 1));
-    }, 1000);
+      const scoresToUse = customPoseScores || poseScores;
+      const completedToUse = customCompleted || completedPoseIds;
+      const skippedToUse = customSkipped || skippedPoseIds;
 
-    return () => clearInterval(timer);
-  }, [timeLeft, isPaused, isCompletedAll, isSwitchingSide, isStretchMode, exercisePhase, isSafetyHalted]);
+      const validScores = Object.values(scoresToUse).filter(
+        (s): s is number => typeof s === 'number' && !isNaN(s)
+      );
+      const calculatedAvgScore =
+        validScores.length > 0
+          ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length)
+          : null;
+
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const toLocalDT = (d: Date) =>
+        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+
+      const totalCount = unifiedQueue.length;
+      const completedCount = completedToUse.length;
+      const skippedCount = skippedToUse.length;
+
+      const realExerciseId =
+        selectedExercise && typeof selectedExercise.id === 'number' && selectedExercise.id > 0
+          ? selectedExercise.id
+          : 1;
+
+      const sessionPayload: Session = {
+        id: Date.now(),
+        patient_id: patientId ?? 1,
+        exercise_id: realExerciseId,
+        started_at: toLocalDT(new Date(Date.now() - totalElapsedTimeSec * 1000)),
+        ended_at: toLocalDT(new Date()),
+        total_reps: totalCount,
+        correct_reps: completedCount,
+        accuracy: calculatedAvgScore ?? 0,
+        avg_duration_per_rep: Math.round(totalElapsedTimeSec / Math.max(1, totalCount)),
+        status: 'completed',
+        notes: `ทำครบ ${completedCount} จาก ${totalCount} ท่า (ข้าม ${skippedCount} ท่า) เวลา ${Math.round(totalElapsedTimeSec / 60)} นาที ${calculatedAvgScore !== null ? `คะแนนเฉลี่ย ${calculatedAvgScore}%` : 'ไม่มีคะแนน (โหมดจับเวลา)'}`,
+      };
+
+      const safetyLogs = safetyEngineRef.current ? safetyEngineRef.current.getViolationLog() : [];
+      hasSavedSessionRef.current = true;
+
+      // 1. บันทึกลง IndexedDB (Local Offline-First) ก่อนเสมอ
+      try {
+        OfflineStorageService.saveLocalSession(sessionPayload, safetyLogs);
+      } catch (dbErr) {
+        console.error('IndexedDB save failed:', dbErr);
+        setSaveErrorMessage(
+          'เกิดข้อผิดพลาดในการบันทึกผลลง IndexedDB: ' +
+            (dbErr instanceof Error ? dbErr.message : String(dbErr))
+        );
+        return;
+      }
+
+      // 2. ลองส่งขึ้นเซิร์ฟเวอร์
+      try {
+        await api.saveSession(sessionPayload);
+        setSaveSuccessMessage('บันทึกผลการฝึกขึ้นเซิร์ฟเวอร์สำเร็จ');
+      } catch (serverErr) {
+        console.warn('Auto save session to server failed, queued for sync:', serverErr);
+        OfflineStorageService.addToSyncQueue(sessionPayload);
+        setSaveErrorMessage(
+          'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ ผลการฝึกถูกบันทึกในเครื่อง (IndexedDB) แล้ว และจะซิงก์อัตโนมัติเมื่อออนไลน์'
+        );
+      }
+    },
+    [
+      poseScores,
+      completedPoseIds,
+      skippedPoseIds,
+      unifiedQueue.length,
+      selectedExercise,
+      patientId,
+      totalElapsedTimeSec,
+    ]
+  );
 
   // Handle phase completion (Switch Side or Proceed to Next Pose)
   const handlePhaseFinish = useCallback(() => {
-    if (!currentStretch) return;
+    const poseKey = currentStretch ? currentStretch.id : currentExerciseConfig.id;
 
     // Record score for this pose
-    setPoseScores((prev) => ({
-      ...prev,
-      [currentStretch.id]: liveScore,
-    }));
+    const updatedScores: Record<string, number | null> = {
+      ...poseScores,
+      [poseKey]: liveScore,
+    };
+    setPoseScores(updatedScores);
+
+    // Record as completed
+    const updatedCompleted = Array.from(new Set([...completedPoseIds, poseKey]));
+    setCompletedPoseIds(updatedCompleted);
 
     // If pose has 2 sides and currently on 'left', switch to 'right'
-    if (currentStretch.sides === 'both_sides' && currentSide === 'left') {
+    if (currentStretch && currentStretch.sides === 'both_sides' && currentSide === 'left') {
       setIsSwitchingSide(true);
       setSwitchCountdown(3);
 
@@ -346,7 +434,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     }
 
     // Finished this pose (or finished both sides)
-    voiceAssistant.speakExercise(`ดีมากครับ ทำท่า ${currentStretch.name} ครบแล้วครับ`, {
+    voiceAssistant.speakExercise(`ดีมากครับ ทำท่า ${currentExerciseConfig.name} ครบแล้วครับ`, {
       priority: 'success',
       cooldown: 1500,
     });
@@ -367,34 +455,93 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
         });
       } catch (_) {}
 
-      voiceAssistant.speakResult(
-        'ยอดเยี่ยมมากครับ คุณทำกายภาพบำบัดครบทุกท่าแล้วครับ วันนี้ทำได้ดีเยี่ยมมากครับ',
-        {
-          key: 'stretch_complete_all',
-          priority: 'success',
-          force: true,
-        }
-      );
+      if (updatedCompleted.length === unifiedQueue.length) {
+        voiceAssistant.speakResult(
+          'ยอดเยี่ยมมากครับ คุณทำกายภาพบำบัดครบทุกท่าแล้วครับ วันนี้ทำได้ดีเยี่ยมมากครับ',
+          {
+            key: 'stretch_complete_all',
+            priority: 'success',
+            force: true,
+          }
+        );
+      } else {
+        voiceAssistant.speakResult(
+          `การฝึกเสร็จสิ้น ทำครบ ${updatedCompleted.length} จาก ${unifiedQueue.length} ท่าครับ`,
+          {
+            key: 'stretch_complete_partial',
+            priority: 'success',
+            force: true,
+          }
+        );
+      }
 
-      // Auto-save session to backend
-      handleAutoSaveSummary();
+      // Auto-save session to backend with finalized scores (including this last pose!)
+      handleAutoSaveSummary(updatedScores, updatedCompleted, skippedPoseIds);
     }
-  }, [currentStretch, currentSide, currentIndex, unifiedQueue, liveScore, getPoseHoldSeconds]);
+  }, [
+    currentStretch,
+    currentExerciseConfig,
+    currentSide,
+    currentIndex,
+    unifiedQueue.length,
+    liveScore,
+    poseScores,
+    completedPoseIds,
+    skippedPoseIds,
+    getPoseHoldSeconds,
+    handleAutoSaveSummary,
+  ]);
+
+  // Main countdown timer for hold phase (strictly paused during preparation / countdown!)
+  useEffect(() => {
+    if (!isStretchMode || isPaused || isCompletedAll || isSwitchingSide || exercisePhase !== 'ACTIVE' || isSafetyHalted) return;
+
+    // ถ้าเปิดกล้องอยู่ ให้เริ่มนับเวลาค้างเมื่อตรวจพบท่า/คนเท่านั้น
+    if (isCameraReady && (!landmarks || landmarks.length === 0)) {
+      return;
+    }
+
+    if (timeLeft <= 0) {
+      handlePhaseFinish();
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => Math.max(0, prev - 1));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [
+    timeLeft,
+    isPaused,
+    isCompletedAll,
+    isSwitchingSide,
+    isStretchMode,
+    exercisePhase,
+    isSafetyHalted,
+    isCameraReady,
+    landmarks,
+    handlePhaseFinish,
+  ]);
 
   // Calculate live score from landmarks if available
   useEffect(() => {
-    if (isCameraReady && landmarks && landmarks.length > 0 && currentExerciseConfig) {
+    if (isCameraReady && landmarks && landmarks.length > 0 && currentExerciseConfig && analysis) {
       const target = currentExerciseConfig.targetAngle || 90;
       const tol = 15;
-      const measuredAngle = analysis?.currentAngle || target;
+      const measuredAngle = analysis?.currentAngle ?? target;
       const diff = Math.abs(measuredAngle - target);
 
-      let calculatedScore = Math.max(70, Math.min(100, Math.round(100 - (diff / tol) * 15)));
-      if (isNaN(calculatedScore)) calculatedScore = 88;
+      // Score strictly between 0 and 100 based on clinical diff - no artificial floor of 70!
+      let calculatedScore = Math.max(0, Math.min(100, Math.round(100 - (diff / tol) * 15)));
+      if (isNaN(calculatedScore)) {
+        calculatedScore = 0;
+      }
 
       setLiveScore(calculatedScore);
-    } else if (!isCameraReady) {
-      setLiveScore(90);
+    } else {
+      // No camera or no landmarks or no analysis => null (โหมดจับเวลา)
+      setLiveScore(null);
     }
   }, [landmarks, isCameraReady, currentExerciseConfig, analysis]);
 
@@ -464,69 +611,40 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     };
   }, [stopCamera]);
 
-  // Compute average score
+  // Compute average score (excluding null timer-only scores)
   const averageScore = useMemo(() => {
-    const scores = Object.values(poseScores);
-    if (scores.length === 0) return liveScore;
+    const scores = Object.values(poseScores).filter(
+      (s): s is number => typeof s === 'number' && !isNaN(s)
+    );
+    if (scores.length === 0) return null;
     const sum = scores.reduce((a, b) => a + b, 0);
     return Math.round(sum / scores.length);
-  }, [poseScores, liveScore]);
-
-  // Auto-save summary to backend (ห้ามบันทึกเซสชันที่มาจาก mock)
-  const handleAutoSaveSummary = async () => {
-    if (poseService.getIsMockMode()) {
-      console.info('ℹ️ เซสชันมาจากโหมดจำลอง (Mock Mode) - ข้ามการบันทึกข้อมูล');
-      return;
-    }
-
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const toLocalDT = (d: Date) =>
-      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-
-    const totalCount = unifiedQueue.length;
-    const sessionPayload: Session = {
-      id: Date.now(),
-      patient_id: patientId ?? 1,
-      exercise_id: 1,
-      started_at: toLocalDT(new Date(Date.now() - totalElapsedTimeSec * 1000)),
-      ended_at: toLocalDT(new Date()),
-      total_reps: totalCount,
-      correct_reps: totalCount,
-      accuracy: averageScore,
-      avg_duration_per_rep: Math.round(totalElapsedTimeSec / Math.max(1, totalCount)),
-      status: 'completed',
-      notes: `ฝึกสำเร็จครบ ${totalCount} ท่า เวลา ${Math.round(totalElapsedTimeSec / 60)} นาที คะแนนเฉลี่ย ${averageScore}%`,
-    };
-
-    const safetyLogs = safetyEngineRef.current ? safetyEngineRef.current.getViolationLog() : [];
-    let serverFailed = false;
-
-    try {
-      await api.saveSession(sessionPayload);
-    } catch (e) {
-      serverFailed = true;
-      console.warn('Auto save session to server failed, saving locally:', e);
-    }
-
-    try {
-      OfflineStorageService.saveLocalSession(sessionPayload, safetyLogs);
-      if (serverFailed) {
-        OfflineStorageService.addToSyncQueue(sessionPayload);
-      }
-    } catch (err) {
-      console.warn('Offline storage error:', err);
-    }
-  };
+  }, [poseScores]);
 
   // Skip to next exercise
-  const handleSkipNext = () => {
+  const handleSkipNext = useCallback(() => {
+    const poseKey = currentStretch ? currentStretch.id : currentExerciseConfig.id;
+    const updatedSkipped = Array.from(new Set([...skippedPoseIds, poseKey]));
+    setSkippedPoseIds(updatedSkipped);
+
     if (currentIndex < unifiedQueue.length - 1) {
       setCurrentIndex((i) => i + 1);
       setCurrentSide('left');
     } else {
       setIsCompletedAll(true);
+      setExercisePhase('COMPLETED');
+      handleAutoSaveSummary(poseScores, completedPoseIds, updatedSkipped);
     }
-  };
+  }, [
+    currentStretch,
+    currentExerciseConfig,
+    currentIndex,
+    unifiedQueue.length,
+    skippedPoseIds,
+    completedPoseIds,
+    poseScores,
+    handleAutoSaveSummary,
+  ]);
 
   // Back to previous exercise
   const handlePrevious = () => {
@@ -535,6 +653,14 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
       setCurrentSide('left');
     }
   };
+
+  // Safe exit and save handler
+  const handleExit = useCallback(async () => {
+    if (!hasSavedSessionRef.current && totalElapsedTimeSec > 5) {
+      await handleAutoSaveSummary();
+    }
+    onBack();
+  }, [handleAutoSaveSummary, onBack, totalElapsedTimeSec]);
 
   // Resume after safety stop
   const handleResumeAfterSafety = () => {
@@ -555,6 +681,9 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
   if (isCompletedAll) {
     const totalMinutes = Math.floor(totalElapsedTimeSec / 60);
     const totalSeconds = totalElapsedTimeSec % 60;
+    const completedCount = completedPoseIds.length;
+    const skippedCount = skippedPoseIds.length;
+    const totalCount = unifiedQueue.length;
 
     return (
       <div className="w-full max-w-[540px] mx-auto flex flex-col items-center animate-fadeIn relative z-10 py-4 px-2">
@@ -565,21 +694,43 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
 
           <div className="space-y-1.5">
             <h2 className="text-2xl sm:text-3xl font-extrabold text-[#0B2B2B]">
-              ฝึกกายภาพสำเร็จครบทุกท่า!
+              {completedCount === totalCount
+                ? 'ฝึกกายภาพสำเร็จครบทุกท่า!'
+                : completedCount === 0
+                ? 'ข้ามการฝึกทุกท่า'
+                : `ทำครบ ${completedCount} จาก ${totalCount} ท่า`}
             </h2>
             <p className="text-sm sm:text-base font-semibold text-emerald-800">
-              ยอดเยี่ยมมากครับ กล้ามเนื้อได้รับการฟื้นฟูและยืดคลายอย่างสมบูรณ์
+              {completedCount === totalCount
+                ? 'ยอดเยี่ยมมากครับ กล้ามเนื้อได้รับการฟื้นฟูและยืดคลายอย่างสมบูรณ์'
+                : `ทำครบ ${completedCount} จาก ${totalCount} ท่า ข้าม ${skippedCount} ท่า`}
             </p>
           </div>
+
+          {/* Error / Success Alerts */}
+          {saveErrorMessage && (
+            <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 text-amber-900 text-xs sm:text-sm font-semibold flex items-center gap-2 text-left">
+              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+              <span>{saveErrorMessage}</span>
+            </div>
+          )}
+          {saveSuccessMessage && (
+            <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-3 text-emerald-800 text-xs sm:text-sm font-semibold flex items-center gap-2 text-left">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+              <span>{saveSuccessMessage}</span>
+            </div>
+          )}
 
           {/* Stats Grid */}
           <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
             <div className="bg-[#E9FCEB] border border-emerald-200 rounded-2xl p-3 flex flex-col items-center">
-              <span className="text-xs font-bold text-emerald-800">ทำครบ</span>
+              <span className="text-xs font-bold text-emerald-800">ผลการฝึก</span>
               <span className="text-xl sm:text-2xl font-extrabold text-[#0B2B2B] mt-0.5">
-                {unifiedQueue.length}
+                {completedCount}/{totalCount}
               </span>
-              <span className="text-[11px] font-medium text-emerald-700">ท่า</span>
+              <span className="text-[11px] font-medium text-emerald-700">
+                ข้าม {skippedCount} ท่า
+              </span>
             </div>
 
             <div className="bg-[#E9FCEB] border border-emerald-200 rounded-2xl p-3 flex flex-col items-center">
@@ -593,15 +744,17 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
             <div className="bg-[#E9FCEB] border border-emerald-200 rounded-2xl p-3 flex flex-col items-center">
               <span className="text-xs font-bold text-emerald-800">คะแนนเฉลี่ย</span>
               <span className="text-xl sm:text-2xl font-extrabold text-[#1E8A4C] mt-0.5">
-                {averageScore}%
+                {averageScore !== null ? `${averageScore}%` : 'ไม่มีคะแนน'}
               </span>
-              <span className="text-[11px] font-medium text-emerald-700">ความแม่นยำ</span>
+              <span className="text-[11px] font-medium text-emerald-700">
+                {averageScore !== null ? 'ความแม่นยำ' : 'โหมดจับเวลา'}
+              </span>
             </div>
           </div>
 
           <div className="pt-2">
             <button
-              onClick={onBack}
+              onClick={handleExit}
               className="btn-primary-capsule !w-full !max-w-none shadow-lg text-base sm:text-lg min-h-[52px]"
             >
               เสร็จสิ้น กลับสู่เมนู
@@ -626,7 +779,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
       <div className="w-full flex items-center justify-between py-1 px-1 flex-shrink-0 h-10 sm:h-11 border-b border-emerald-100/60 mb-0.5">
         {/* Left: Back to menu */}
         <button
-          onClick={onBack}
+          onClick={handleExit}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/95 backdrop-blur-md border border-emerald-300 text-xs sm:text-sm font-bold text-[#0B2B2B] hover:bg-emerald-50 transition active:scale-95 shadow-2xs cursor-pointer"
           aria-label="กลับสู่เมนูผู้ใช้"
         >
@@ -702,6 +855,14 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
           )}
         </div>
       </div>
+
+      {/* Model Loading Error Warning Banner if any */}
+      {modelError && (
+        <div className="w-full bg-amber-500/90 text-white text-xs sm:text-sm font-semibold px-3 py-1.5 rounded-xl mb-1 flex items-center justify-center gap-2 z-20">
+          <AlertTriangle className="w-4 h-4 text-white flex-shrink-0" />
+          <span>{modelError}</span>
+        </div>
+      )}
 
       {/* 2. FULLSCREEN VERTICAL SMART-MIRROR CAMERA (With Inset PiP Clip inside!) */}
       <div className="w-full flex-1 min-h-0 bg-stone-950 rounded-[28px] overflow-hidden relative border-2 border-emerald-400 shadow-xl flex items-center justify-center my-1 sm:my-1.5">
@@ -837,7 +998,9 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
           {isCameraReady && (
             <div className="bg-black/80 backdrop-blur-md border border-emerald-400/50 text-white px-3 py-1 rounded-full flex items-center gap-2 text-xs font-bold shadow-md">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-emerald-300 font-mono">ความถูกต้อง: {liveScore}%</span>
+              <span className="text-emerald-300 font-mono">
+                {liveScore !== null ? `ความถูกต้อง: ${liveScore}%` : 'ไม่มีคะแนน (โหมดจับเวลา)'}
+              </span>
               <span className="text-stone-400 font-normal">|</span>
               <span className="text-stone-300">{fps || 30} FPS</span>
             </div>
@@ -965,7 +1128,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
               </span>
             </div>
             <span className="text-[11px] text-emerald-300 font-bold bg-white/10 px-2 py-0.5 rounded-full flex-shrink-0 ml-2">
-              ความถูกต้อง: {liveScore}%
+              {liveScore !== null ? `ความถูกต้อง: ${liveScore}%` : 'ไม่มีคะแนน (โหมดจับเวลา)'}
             </span>
           </div>
 
@@ -1021,7 +1184,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
           aria-label="ย้อนกลับไปท่าก่อนหน้า"
         >
           <SkipBack className="w-4 h-4 flex-shrink-0" />
-          <span className="hidden xs:inline">ท่าก่อนหน้า</span>
+          <span className="text-[11px] sm:text-xs font-bold">ท่าก่อนหน้า</span>
         </button>
 
         {/* 2) Pause / Resume Button */}
@@ -1053,14 +1216,16 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
           className="h-full rounded-2xl bg-white border border-emerald-300 text-[#0B2B2B] font-bold text-xs sm:text-sm hover:bg-emerald-50 transition active:scale-95 shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer"
           aria-label="ข้ามไปท่าถัดไป"
         >
-          <span className="hidden xs:inline">ข้ามท่า</span>
+          <span className="text-[11px] sm:text-xs font-bold">ข้ามท่า</span>
           <SkipForward className="w-4 h-4 flex-shrink-0" />
         </button>
 
         {/* 4) Tell Therapist Action Button */}
         <button
           onClick={() => {
-            const rom = analysis?.currentAngle ? Math.round(analysis.currentAngle) : 88;
+            const rom = (analysis && typeof analysis.currentAngle === 'number' && !isNaN(analysis.currentAngle))
+              ? Math.round(analysis.currentAngle)
+              : null;
             const poseName = `ท่าที่ ${currentIndex + 1}: ${currentExerciseConfig.name}`;
             onOpenTherapistModal(liveScore, poseName, rom);
           }}

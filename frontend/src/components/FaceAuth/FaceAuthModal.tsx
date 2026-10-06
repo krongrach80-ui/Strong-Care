@@ -68,6 +68,8 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
   const [enrollAge, setEnrollAge] = useState<number>(65);
   const [enrollGender, setEnrollGender] = useState<'male' | 'female'>('male');
   const [isSavingEnroll, setIsSavingEnroll] = useState<boolean>(false);
+  const [hasBiometricConsent, setHasBiometricConsent] = useState<boolean>(false);
+  const [consentTimestamp, setConsentTimestamp] = useState<string | null>(null);
 
   // Start Camera with resilient fallbacks
   const startCamera = async () => {
@@ -196,8 +198,11 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
         setDetection(res);
 
         if (res && res.detected) {
-          const liveness = faceService.getLivenessState();
-          setLivenessStatus(liveness.currentPrompt);
+          if (res.faceCentered) {
+            setLivenessStatus('ตรวจพบใบหน้าพร้อมสแกน');
+          } else {
+            setLivenessStatus('กรุณาขยับหน้าให้อยู่กึ่งกลางกรอบวงรี');
+          }
         } else {
           setLivenessStatus('กรุณาขยับหน้าให้อยู่ในกรอบวงรี');
         }
@@ -392,6 +397,10 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
       setVerifyMessage('กรุณาระบุชื่อ-นามสกุลของผู้ป่วย');
       return;
     }
+    if (!hasBiometricConsent) {
+      setVerifyMessage('กรุณาติ๊กยอมรับการเก็บและประมวลผลข้อมูลชีวมิติ (PDPA Consent) ก่อนลงทะเบียน');
+      return;
+    }
 
     setIsSavingEnroll(true);
     setVerifyMessage('กำลังบันทึกข้อมูลใบหน้าและลงทะเบียน...');
@@ -423,7 +432,7 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
         name: enrollName.trim(),
         age: enrollAge,
         gender: enrollGender,
-        notes: 'ลงทะเบียนด้วยระบบใบหน้าอัจฉริยะ (Face Enrollment)',
+        notes: `ลงทะเบียนด้วยระบบใบหน้าอัจฉริยะ (Face Enrollment) • ยินยอม PDPA: ${consentTimestamp || new Date().toISOString()}`,
         embeddings: embeddingsList,
       });
 
@@ -589,7 +598,7 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
               </div>
 
               <div className="px-2.5 py-1 rounded-full text-[10px] font-mono bg-black/60 backdrop-blur-md text-emerald-300 border border-emerald-500/30">
-                100% OFFLINE AI
+                Edge AI โมเดลประมวลผลบนเครื่อง
               </div>
             </div>
 
@@ -843,10 +852,35 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
                     </div>
                   </div>
 
+                  {/* Biometric Data Consent Checkbox (PDPA Compliance) */}
+                  <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3 space-y-1.5">
+                    <label className="flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        required
+                        checked={hasBiometricConsent}
+                        onChange={(e) => {
+                          setHasBiometricConsent(e.target.checked);
+                          setConsentTimestamp(e.target.checked ? new Date().toISOString() : null);
+                        }}
+                        className="mt-0.5 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-emerald-300 cursor-pointer"
+                        id="biometricConsentCheckbox"
+                      />
+                      <span className="text-xs text-slate-800 leading-snug font-medium select-none">
+                        ข้าพเจ้ายินยอมให้ประมวลผลและจัดเก็บข้อมูลลักษณะใบหน้า (Biometric Data) เพื่อใช้สำหรับยืนยันตัวตนในการฝึกกายภาพบำบัดตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล (PDPA)
+                      </span>
+                    </label>
+                    {consentTimestamp && (
+                      <div className="text-[10px] text-emerald-700 font-mono pl-6">
+                        บันทึกความยินยอม: {new Date(consentTimestamp).toLocaleTimeString('th-TH')} น.
+                      </div>
+                    )}
+                  </div>
+
                   <button
                     type="submit"
-                    disabled={isSavingEnroll}
-                    className="w-full mt-2 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition disabled:opacity-50"
+                    disabled={isSavingEnroll || !hasBiometricConsent}
+                    className="w-full mt-2 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                   >
                     {isSavingEnroll ? (
                       <>

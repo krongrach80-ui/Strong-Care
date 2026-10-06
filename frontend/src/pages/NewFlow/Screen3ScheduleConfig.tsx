@@ -41,6 +41,7 @@ import { ExerciseVideoModal } from '../../components/VideoPlayer/ExerciseVideoMo
 
 interface Screen3ScheduleConfigProps {
   mode: TherapyMode; // 'physio' | 'minigame'
+  patientId?: number;
   onBack: () => void;
   onStartNow: (config: TherapyScheduleConfig) => void;
   onScheduleSaved: (config: TherapyScheduleConfig, message: string) => void;
@@ -48,6 +49,7 @@ interface Screen3ScheduleConfigProps {
 
 export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
   mode,
+  patientId,
   onBack,
   onStartNow,
   onScheduleSaved,
@@ -66,13 +68,15 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
   const [customHoldTimes, setCustomHoldTimes] = useState<Record<string, number>>({});
   const [videoModalExercise, setVideoModalExercise] = useState<StretchExerciseItem | null>(null);
   const [isVideoModalOpen, setIsVideoModalOpen] = useState<boolean>(false);
+  const [timeError, setTimeError] = useState<string | null>(null);
+  const [categoryNotice, setCategoryNotice] = useState<string | null>(null);
 
   const todayStr = getTodayDateString();
   const defaultDateStr = getDefaultDateString();
 
   // Load saved config on mount
   useEffect(() => {
-    const saved = getSavedTherapyConfig(mode);
+    const saved = getSavedTherapyConfig(mode, patientId);
     setTimeMode(saved.timeMode);
     setScheduledDate(saved.scheduledDate || defaultDateStr);
     setScheduledTime(saved.scheduledTime || getDefaultTimeString());
@@ -89,7 +93,7 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
     if (saved.customHoldTimes) {
       setCustomHoldTimes(saved.customHoldTimes);
     }
-  }, [mode, todayStr]);
+  }, [mode, patientId, todayStr]);
 
   // Stretch exercise selection handlers
   const handleToggleStretch = (id: string) => {
@@ -130,6 +134,11 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
     setCategory(cat);
     if (cat === 'custom') {
       setIsBottomSheetOpen(true);
+      setCategoryNotice('หมวดหมู่ส่วนอื่นๆ อยู่ระหว่างจัดเตรียมชุดท่าทางเฉพาะบุคคล กรุณาเลือก "กายภาพยืดเส้น" สำหรับการฝึกในปัจจุบัน');
+    } else if (cat !== 'stretch') {
+      setCategoryNotice(`หมวดหมู่${cat === 'recovery' ? 'กายภาพฟื้นฟู' : 'กายภาพบำบัด'} อยู่ระหว่างจัดเตรียมชุดท่าทางเฉพาะบุคคล กรุณาเลือก "กายภาพยืดเส้น" สำหรับการฝึกในปัจจุบัน`);
+    } else {
+      setCategoryNotice(null);
     }
   };
 
@@ -174,7 +183,26 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
 
   // Submit action
   const handlePrimaryAction = () => {
-    // Validation: If stretch category is chosen, must have at least 1 exercise selected
+    setTimeError(null);
+    setCategoryNotice(null);
+
+    // 1. Validation: Scheduled date and time must not be in the past
+    if (timeMode === 'schedule') {
+      const selectedDateTime = new Date(`${scheduledDate}T${scheduledTime}:00`);
+      const now = new Date();
+      if (isNaN(selectedDateTime.getTime()) || selectedDateTime <= now) {
+        setTimeError('ไม่สามารถเลือกเวลาในอดีตได้ กรุณาเลือกวันและเวลาที่เป็นปัจจุบันหรือในอนาคต');
+        return;
+      }
+    }
+
+    // 2. Validation: If category does not have stretch queue, warn user
+    if (category !== 'stretch') {
+      setCategoryNotice('หมวดหมู่นี้ยังไม่มีชุดท่ากายภาพเฉพาะบุคคล กรุณาเลือก "กายภาพยืดเส้น" เพื่อเริ่มฝึก');
+      return;
+    }
+
+    // 3. Validation: If stretch category is chosen, must have at least 1 exercise selected
     if (category === 'stretch' && selectedStretchIds.length === 0) {
       return;
     }
@@ -186,13 +214,13 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
       scheduledTime,
       category,
       categoryTitle: getCategoryTitle(),
-      customArea: category === 'custom' ? customArea : undefined,
-      selectedStretchIds: category === 'stretch' ? selectedStretchIds : undefined,
-      customHoldTimes: category === 'stretch' ? customHoldTimes : undefined,
+      selectedStretchIds,
+      customHoldTimes,
+      patientId,
     };
 
-    // Save to persistent storage
-    saveTherapyConfig(config);
+    // Save to persistent storage with patientId
+    saveTherapyConfig(config, patientId);
 
     if (timeMode === 'now') {
       // Start immediately -> Screen 4
@@ -267,9 +295,9 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
                   setTimeMode('now');
                 }
               }}
-              className={`relative rounded-2xl p-4 sm:p-5 flex items-center gap-3.5 cursor-pointer transition-all duration-200 min-h-[96px] text-left select-none outline-none focus-visible:ring-3 focus-visible:ring-emerald-500 ${
+              className={`relative rounded-2xl p-4 sm:p-5 flex items-center gap-3.5 cursor-pointer transition-all duration-200 min-h-[96px] text-left select-none outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                 timeMode === 'now'
-                  ? 'border-2.5 border-[#1E8A4C] bg-[#E9FCEB] shadow-md shadow-emerald-500/10'
+                  ? 'border-[2.5px] border-[#1E8A4C] bg-[#E9FCEB] shadow-md shadow-emerald-500/10'
                   : 'border border-emerald-200/90 bg-white/80 hover:bg-white hover:border-emerald-300'
               }`}
             >
@@ -319,9 +347,9 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
                   setTimeMode('schedule');
                 }
               }}
-              className={`relative rounded-2xl p-4 sm:p-5 flex items-center gap-3.5 cursor-pointer transition-all duration-200 min-h-[96px] text-left select-none outline-none focus-visible:ring-3 focus-visible:ring-emerald-500 ${
+              className={`relative rounded-2xl p-4 sm:p-5 flex items-center gap-3.5 cursor-pointer transition-all duration-200 min-h-[96px] text-left select-none outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                 timeMode === 'schedule'
-                  ? 'border-2.5 border-[#1E8A4C] bg-[#E9FCEB] shadow-md shadow-emerald-500/10'
+                  ? 'border-[2.5px] border-[#1E8A4C] bg-[#E9FCEB] shadow-md shadow-emerald-500/10'
                   : 'border border-emerald-200/90 bg-white/80 hover:bg-white hover:border-emerald-300'
               }`}
             >
@@ -406,6 +434,14 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
                   {formatThaiDateTime(scheduledDate, scheduledTime)}
                 </span>
               </div>
+
+              {/* Past Date & Time Validation Error Alert */}
+              {timeError && (
+                <div className="text-xs sm:text-sm font-bold text-rose-700 bg-rose-50 border border-rose-300 p-3 rounded-xl flex items-center gap-2 animate-fadeIn">
+                  <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                  <span>{timeError}</span>
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -450,9 +486,9 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
                   handleSelectCategory('stretch');
                 }
               }}
-              className={`relative rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 min-h-[110px] sm:min-h-[120px] select-none outline-none focus-visible:ring-3 focus-visible:ring-emerald-500 ${
+              className={`relative rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 min-h-[110px] sm:min-h-[120px] select-none outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                 category === 'stretch'
-                  ? 'border-2.5 border-[#1E8A4C] bg-[#E9FCEB] shadow-md shadow-emerald-500/10'
+                  ? 'border-[2.5px] border-[#1E8A4C] bg-[#E9FCEB] shadow-md shadow-emerald-500/10'
                   : 'border border-emerald-200/90 bg-white/80 hover:bg-white hover:border-emerald-300'
               }`}
             >
@@ -516,9 +552,9 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
                   handleSelectCategory('recovery');
                 }
               }}
-              className={`relative rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 min-h-[110px] sm:min-h-[120px] select-none outline-none focus-visible:ring-3 focus-visible:ring-emerald-500 ${
+              className={`relative rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 min-h-[110px] sm:min-h-[120px] select-none outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                 category === 'recovery'
-                  ? 'border-2.5 border-[#1E8A4C] bg-[#E9FCEB] shadow-md shadow-emerald-500/10'
+                  ? 'border-[2.5px] border-[#1E8A4C] bg-[#E9FCEB] shadow-md shadow-emerald-500/10'
                   : 'border border-emerald-200/90 bg-white/80 hover:bg-white hover:border-emerald-300'
               }`}
             >
@@ -574,9 +610,9 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
                   handleSelectCategory('therapy');
                 }
               }}
-              className={`relative rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 min-h-[110px] sm:min-h-[120px] select-none outline-none focus-visible:ring-3 focus-visible:ring-emerald-500 ${
+              className={`relative rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 min-h-[110px] sm:min-h-[120px] select-none outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                 category === 'therapy'
-                  ? 'border-2.5 border-[#1E8A4C] bg-[#E9FCEB] shadow-md shadow-emerald-500/10'
+                  ? 'border-[2.5px] border-[#1E8A4C] bg-[#E9FCEB] shadow-md shadow-emerald-500/10'
                   : 'border border-emerald-200/90 bg-white/80 hover:bg-white hover:border-emerald-300'
               }`}
             >
@@ -633,9 +669,9 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
                   handleSelectCategory('custom');
                 }
               }}
-              className={`relative rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 min-h-[110px] sm:min-h-[120px] select-none outline-none focus-visible:ring-3 focus-visible:ring-emerald-500 ${
+              className={`relative rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 min-h-[110px] sm:min-h-[120px] select-none outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                 category === 'custom'
-                  ? 'border-2.5 border-[#1E8A4C] bg-[#E9FCEB] shadow-md shadow-emerald-500/10'
+                  ? 'border-[2.5px] border-[#1E8A4C] bg-[#E9FCEB] shadow-md shadow-emerald-500/10'
                   : 'border border-emerald-200/90 bg-white/80 hover:bg-white hover:border-emerald-300'
               }`}
             >
@@ -668,6 +704,14 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
               </span>
             </div>
           </div>
+
+          {/* Category Notice Alert if non-stretch category is chosen */}
+          {categoryNotice && (
+            <div className="text-xs sm:text-sm font-bold text-amber-900 bg-amber-50 border border-amber-300 p-3 rounded-xl flex items-center gap-2 mt-3 animate-fadeIn">
+              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <span>{categoryNotice}</span>
+            </div>
+          )}
         </section>
 
         {/* ------------------------------------------------------------- */}

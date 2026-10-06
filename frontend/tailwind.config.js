@@ -47,6 +47,16 @@ export default {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         'glow': 'glow 2s ease-in-out infinite alternate',
       },
+      screens: {
+        'xs': '420px',
+      },
+      borderWidth: {
+        '2.5': '2.5px',
+      },
+      boxShadow: {
+        '2xs': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+        'xs': '0 1px 3px 0 rgba(0, 0, 0, 0.08)',
+      },
       keyframes: {
         glow: {
           '0%': { boxShadow: '0 0 10px rgba(111, 207, 151, 0.3)' },

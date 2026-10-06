@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { ArrowLeft, User, Lock, LogIn, UserPlus, Camera, KeyRound, Sparkles } from 'lucide-react';
+import { ArrowLeft, User, LogIn, UserPlus, Camera, AlertCircle, Sparkles } from 'lucide-react';
 import { Patient } from '../../types/patient';
 
 interface Screen2LoginProps {
   onBack: () => void;
-  onLoginSuccess: (userName: string) => void;
+  onLoginSuccess: (patient: Patient) => void;
   onOpenFaceLogin: () => void;
   onRegister: () => void;
   patients: Patient[];
@@ -17,11 +17,8 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
   onRegister,
   patients,
 }) => {
-  const [userName, setUserName] = useState<string>('คุณสมชาย ใจดี');
-  const [password, setPassword] = useState<string>('••••••••');
-  const [authType, setAuthType] = useState<'password' | 'pin'>('password');
-  const [pin, setPin] = useState<string>('');
-  const [pinError, setPinError] = useState<string | null>(null);
+  const [selectedPatientId, setSelectedPatientId] = useState<number | ''>('');
+  const [selectionError, setSelectionError] = useState<string | null>(null);
 
   // สแกนใบหน้าถูกซ่อนไว้เป็นค่าเริ่มต้นเพื่อความปลอดภัยของข้อมูลจริง
   // เปิดใช้งานเมื่อตั้งค่า VITE_ENABLE_FACE_LOGIN=true หรือเพิ่ม ?face_login=1 ใน URL
@@ -29,21 +26,20 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
     import.meta.env.VITE_ENABLE_FACE_LOGIN === 'true' ||
     (typeof window !== 'undefined' && window.location.search.includes('face_login=1'));
 
+  const selectedPatient = patients.find((p) => p.id === Number(selectedPatientId));
+
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (authType === 'pin') {
-      if (pin.trim().length !== 6) {
-        setPinError('กรุณากรอกรหัส PIN ตัวเลขให้ครบ 6 หลัก');
-        return;
-      }
+    if (!selectedPatientId || !selectedPatient) {
+      setSelectionError('กรุณาเลือกโปรไฟล์ผู้ป่วยก่อนเข้าสู่ระบบ');
+      return;
     }
-    setPinError(null);
-    onLoginSuccess(userName.trim() || 'คุณสมชาย ใจดี');
+    setSelectionError(null);
+    onLoginSuccess(selectedPatient);
   };
 
   return (
     <div className="w-full max-w-[480px] mx-auto flex flex-col animate-fadeIn relative z-10 py-4 sm:py-8">
-      
       {/* Top Back Navigation Header */}
       <div className="flex items-center justify-between w-full mb-4">
         <button
@@ -57,130 +53,82 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
         <span className="text-xs font-semibold text-emerald-800">ขั้นตอนที่ 2 จาก 4</span>
       </div>
 
-      {/* Main Login Card (Glassmorphism & Crisp borders) */}
+      {/* Main Login Card */}
       <div className="bg-white/85 backdrop-blur-xl border border-emerald-200/90 rounded-[32px] p-6 sm:p-8 shadow-xl shadow-emerald-700/5 space-y-6">
-        
         {/* Avatar Header */}
         <div className="flex flex-col items-center text-center">
           <div className="w-20 h-20 rounded-full bg-white border-2 border-[#1E8A4C] flex items-center justify-center text-[#1E8A4C] shadow-md shadow-emerald-500/15 mb-3">
             <User className="w-10 h-10" />
           </div>
-          
-          <h2 className="heading-underline !mb-2">เข้าสู่ระบบ</h2>
+
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold mb-2">
+            <span>โหมดสาธิต (Demo Mode)</span>
+          </div>
+
+          <h2 className="heading-underline !mb-2">เข้าสู่ระบบผู้ป่วย</h2>
           <p className="text-xs sm:text-sm text-slate-600 font-medium">
-            ยินดีต้อนรับเข้าสู่ระบบ STRONG CARE
+            กรุณาเลือกโปรไฟล์ผู้ป่วยเพื่อเข้าใช้งานระบบ
           </p>
         </div>
 
-        {/* Auth Method Tabs: รหัสผ่าน vs รหัส PIN */}
-        <div className="flex bg-emerald-50/80 p-1 rounded-2xl border border-emerald-100">
-          <button
-            type="button"
-            onClick={() => {
-              setAuthType('password');
-              setPinError(null);
-            }}
-            className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
-              authType === 'password'
-                ? 'bg-white text-[#1E8A4C] shadow-sm'
-                : 'text-slate-600 hover:text-slate-800'
-            }`}
-          >
-            รหัสผ่าน (Password)
-          </button>
-          <button
-            type="button"
-            onClick={() => setAuthType('pin')}
-            className={`flex-1 py-2 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 ${
-              authType === 'pin'
-                ? 'bg-white text-[#1E8A4C] shadow-sm'
-                : 'text-slate-600 hover:text-slate-800'
-            }`}
-          >
-            <span>รหัส PIN 6 หลัก</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-normal">
-              โหมดสาธิต
-            </span>
-          </button>
+        {/* Notice Banner */}
+        <div className="text-[12px] text-amber-900 bg-amber-50/90 border border-amber-200 rounded-2xl p-3 leading-relaxed">
+          <span className="font-bold">⚠️ หมายเหตุความปลอดภัย:</span> เนื่องจากระบบยังไม่มี Server-side Authentication สำหรับตรวจรหัสผ่านหรือ PIN ในโหมดสาธิตนี้จึงให้เลือกโปรไฟล์ผู้ป่วยที่ลงทะเบียนไว้โดยตรงเพื่อความถูกต้องของข้อมูลฝึก
         </div>
 
-        {/* Inputs Stack */}
-        <form onSubmit={handleSubmit} className="space-y-3.5">
-          <div className="bg-white rounded-2xl border border-emerald-200 p-3 sm:p-3.5 flex items-center gap-3 shadow-sm focus-within:border-[#1E8A4C] focus-within:ring-2 focus-within:ring-emerald-200 transition">
-            <User className="w-5 h-5 text-[#1E8A4C] flex-shrink-0" />
-            <input
-              type="text"
-              value={userName}
-              onChange={(e) => setUserName(e.target.value)}
-              placeholder="กรอกชื่อผู้ใช้งาน หรือ เบอร์โทร"
-              className="w-full bg-transparent text-sm font-medium text-[#0B2B2B] outline-none"
-              aria-label="ชื่อผู้ใช้งาน"
-            />
-          </div>
-
-          {authType === 'password' ? (
-            <div className="bg-white rounded-2xl border border-emerald-200 p-3 sm:p-3.5 flex items-center gap-3 shadow-sm focus-within:border-[#1E8A4C] focus-within:ring-2 focus-within:ring-emerald-200 transition">
-              <Lock className="w-5 h-5 text-[#1E8A4C] flex-shrink-0" />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="รหัสผ่าน"
-                className="w-full bg-transparent text-sm font-medium text-[#0B2B2B] outline-none"
-                aria-label="รหัสผ่าน"
-              />
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <div className={`bg-white rounded-2xl border p-3 sm:p-3.5 flex items-center gap-3 shadow-sm transition ${
-                pinError ? 'border-rose-400 ring-2 ring-rose-200' : 'border-emerald-200 focus-within:border-[#1E8A4C] focus-within:ring-2 focus-within:ring-emerald-200'
-              }`}>
-                <KeyRound className="w-5 h-5 text-[#1E8A4C] flex-shrink-0" />
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={6}
-                  value={pin}
-                  onChange={(e) => {
-                    setPin(e.target.value.replace(/\D/g, '').slice(0, 6));
-                    if (pinError) setPinError(null);
-                  }}
-                  placeholder="กรอกรหัส PIN ตัวเลข 6 หลัก (เช่น 123456)"
-                  className="w-full bg-transparent text-sm font-mono tracking-widest text-[#0B2B2B] outline-none placeholder:font-sans placeholder:tracking-normal"
-                  aria-label="รหัส PIN"
-                />
-              </div>
-              {pinError && (
-                <p className="text-xs text-rose-600 font-semibold pl-1">{pinError}</p>
-              )}
-              <div className="text-[11px] text-amber-800 bg-amber-50/90 border border-amber-200 rounded-xl p-2.5 leading-relaxed">
-                <span className="font-bold">⚠️ หมายเหตุความปลอดภัย [โหมดสาธิต]:</span>{' '}
-                การเข้าสู่ระบบด้วย PIN ในหน้านี้เป็นระบบจำลองฝั่งเบราว์เซอร์ หากใช้งานกับข้อมูลผู้ป่วยจริงต้องตรวจและแฮชรหัสผ่านที่เซิร์ฟเวอร์ Backend
-              </div>
-            </div>
-          )}
-
-          {/* Quick Pre-select Patient Profiles for convenience */}
-          {patients.length > 0 && (
-            <div className="pt-1">
-              <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                หรือเลือกโปรไฟล์ที่มีในระบบ:
-              </label>
+        {/* Selection Form */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              เลือกรายชื่อผู้ป่วยในระบบ:
+            </label>
+            <div className={`bg-white rounded-2xl border p-2.5 sm:p-3 flex items-center gap-2.5 shadow-sm transition ${
+              selectionError ? 'border-rose-400 ring-2 ring-rose-200' : 'border-emerald-200 focus-within:border-[#1E8A4C] focus-within:ring-2 focus-within:ring-emerald-200'
+            }`}>
+              <User className="w-5 h-5 text-[#1E8A4C] flex-shrink-0" />
               <select
+                id="patientSelectDropdown"
+                value={selectedPatientId}
                 onChange={(e) => {
-                  const p = patients.find((x) => x.id === Number(e.target.value));
-                  if (p) setUserName(p.name);
+                  setSelectedPatientId(e.target.value ? Number(e.target.value) : '');
+                  setSelectionError(null);
                 }}
-                className="w-full text-xs p-2 rounded-xl border border-emerald-100 bg-white/90 text-slate-700 outline-none"
+                className="w-full bg-transparent text-sm font-semibold text-[#0B2B2B] outline-none cursor-pointer"
               >
-                <option value="">-- เลือกรายชื่อผู้ป่วย --</option>
+                <option value="">-- กรุณาเลือกโปรไฟล์ผู้ป่วย --</option>
                 {patients.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.patient_code})
                   </option>
                 ))}
               </select>
+            </div>
+            {selectionError && (
+              <p className="text-xs text-rose-600 font-semibold mt-1.5 pl-1 flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5" />
+                <span>{selectionError}</span>
+              </p>
+            )}
+          </div>
+
+          {/* Patient Details Preview if selected */}
+          {selectedPatient && (
+            <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3.5 space-y-1.5 animate-fadeIn">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-900">{selectedPatient.name}</span>
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-white text-emerald-800 border border-emerald-200 font-bold">
+                  {selectedPatient.patient_code}
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-600 flex gap-3">
+                <span>อายุ: {selectedPatient.age} ปี</span>
+                <span>เพศ: {selectedPatient.gender === 'male' ? 'ชาย' : selectedPatient.gender === 'female' ? 'หญิง' : 'อื่นๆ'}</span>
+              </div>
+              {selectedPatient.notes && (
+                <p className="text-[11px] text-slate-600 border-t border-emerald-100 pt-1 mt-1">
+                  อาการ/บันทึก: {selectedPatient.notes}
+                </p>
+              )}
             </div>
           )}
 
@@ -201,8 +149,8 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
             </div>
           )}
 
-          {/* Buttons: Primary "เข้าสู่ระบบ", ~16px gap, Secondary "สมัครสมาชิก" */}
-          <div className="flex flex-col gap-4 pt-3">
+          {/* Action Buttons */}
+          <div className="flex flex-col gap-3 pt-2">
             <button
               type="submit"
               className="btn-primary-capsule !w-full"
@@ -219,11 +167,10 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
               id="btnRegister"
             >
               <UserPlus className="w-5 h-5" />
-              <span>สมัครสมาชิก</span>
+              <span>สมัครสมาชิกผู้ป่วยใหม่</span>
             </button>
           </div>
         </form>
-
       </div>
     </div>
   );

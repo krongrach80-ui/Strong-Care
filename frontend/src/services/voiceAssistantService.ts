@@ -1,5 +1,5 @@
 import { asset } from '../utils/asset';
-import { API_BASE_URL } from '../config/apiConfig';
+import { API_BASE_URL, IS_STATIC_MODE } from '../config/apiConfig';
 import { audioFeedback } from './audioService';
 
 export type VoicePriority = 'emergency' | 'critical' | 'warning' | 'instruction' | 'success' | 'info';
@@ -73,6 +73,18 @@ const STATIC_SOUNDS_MAP: Record<string, string> = {
   stretch_pose_9: asset('sounds/stretch_pose_9.mp3'),
   stretch_pose_10: asset('sounds/stretch_pose_10.mp3'),
   stretch_pose_11: asset('sounds/stretch_pose_11.mp3'),
+  // Countdown audio mappings (Thai voice)
+  count_3: asset('sounds/count_3.mp3'),
+  count_2: asset('sounds/count_2.mp3'),
+  count_1: asset('sounds/count_1.mp3'),
+  count_ready: asset('sounds/count_ready.mp3'),
+  'สาม': asset('sounds/count_3.mp3'),
+  'สอง': asset('sounds/count_2.mp3'),
+  'หนึ่ง': asset('sounds/count_1.mp3'),
+  '3': asset('sounds/count_3.mp3'),
+  '2': asset('sounds/count_2.mp3'),
+  '1': asset('sounds/count_1.mp3'),
+  'เริ่มได้เลย': asset('sounds/count_ready.mp3'),
 };
 
 class VoiceAssistantService {
@@ -192,9 +204,12 @@ class VoiceAssistantService {
    * Resolve an audio URL for a given key or text
    */
   private resolveAudioUrl(key: string, text: string): string | null {
-    // 1. Check exact key match
+    // 1. Check exact key or text match
     if (STATIC_SOUNDS_MAP[key]) {
       return STATIC_SOUNDS_MAP[key];
+    }
+    if (STATIC_SOUNDS_MAP[text]) {
+      return STATIC_SOUNDS_MAP[text];
     }
 
     // 2. Check rep counter pattern (e.g. rep_complete_5)
@@ -223,7 +238,12 @@ class VoiceAssistantService {
     if (text.includes('ย่อเข่าลงอีก')) return asset('sounds/squat_more.mp3');
     if (text.includes('ยกขาขึ้นอีก')) return asset('sounds/leg_more.mp3');
 
-    // 4. Dynamic TTS via backend proxy cache
+    // 4. In static demo mode or when offline, bypass /api/tts entirely and fallback directly to Web Speech Synthesis
+    if (IS_STATIC_MODE || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+      return null;
+    }
+
+    // 5. Dynamic TTS via backend proxy cache
     return `${API_BASE_URL || '/api'}/tts?text=${encodeURIComponent(text)}`;
   }
 

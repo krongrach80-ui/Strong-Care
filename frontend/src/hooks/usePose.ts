@@ -15,6 +15,7 @@ export function usePose(videoRef: React.RefObject<HTMLVideoElement>, isCameraAct
   const animationFrameId = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(performance.now());
   const frameCountRef = useRef<number>(0);
+  const noPoseFrameCountRef = useRef<number>(0);
 
   // Initialize offline models (Pose, Hands, Face)
   useEffect(() => {
@@ -76,10 +77,18 @@ export function usePose(videoRef: React.RefObject<HTMLVideoElement>, isCameraAct
       setFaceLandmarks(null);
     } else if (videoRef.current && isCameraActive && videoRef.current.readyState >= 2) {
       const results = poseService.detectHolistic(videoRef.current, now);
-      if (results) {
-        if (results.poseLandmarks) setLandmarks(results.poseLandmarks);
+      if (results && results.poseLandmarks) {
+        noPoseFrameCountRef.current = 0;
+        setLandmarks(results.poseLandmarks);
         setHandLandmarks(results.handLandmarks || null);
         setFaceLandmarks(results.faceLandmarks || null);
+      } else {
+        noPoseFrameCountRef.current++;
+        if (noPoseFrameCountRef.current >= 15) {
+          setLandmarks(null);
+          setHandLandmarks(null);
+          setFaceLandmarks(null);
+        }
       }
     }
 

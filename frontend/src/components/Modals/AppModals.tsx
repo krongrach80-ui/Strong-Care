@@ -405,9 +405,9 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
 interface TherapistReportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  score: number;
+  score: number | null;
   poseName: string;
-  romAngle: number;
+  romAngle: number | null;
   onSubmit: (note: string) => void;
 }
 
@@ -460,7 +460,9 @@ export const TherapistReportModal: React.FC<TherapistReportModalProps> = ({
         <div className="p-4 rounded-2xl bg-[#F4FAF5] border border-emerald-100 space-y-2 text-sm text-[#0B2B2B]">
           <div className="flex items-center justify-between">
             <span className="font-bold">คะแนนการทำกายภาพ:</span>
-            <span className="text-xl font-extrabold text-[#1E8A4C]">{score} / 100</span>
+            <span className="text-base sm:text-lg font-extrabold text-[#1E8A4C]">
+              {score !== null ? `${score} / 100` : 'ไม่มีคะแนน (โหมดจับเวลา)'}
+            </span>
           </div>
           <div className="flex items-center justify-between text-xs text-slate-600">
             <span>ท่าที่บันทึก:</span>
@@ -468,7 +470,9 @@ export const TherapistReportModal: React.FC<TherapistReportModalProps> = ({
           </div>
           <div className="flex items-center justify-between text-xs text-slate-600">
             <span>องศาการเคลื่อนไหว (ROM):</span>
-            <span className="font-bold text-[#1E8A4C]">เฉลี่ย {romAngle}° (ตามเป้าหมาย)</span>
+            <span className="font-bold text-[#1E8A4C]">
+              {romAngle !== null ? `เฉลี่ย ${romAngle}° (ตามเป้าหมาย)` : 'ไม่มีข้อมูลวัด'}
+            </span>
           </div>
           <div className="flex items-center justify-between text-xs text-slate-600">
             <span>เวลาบันทึก:</span>

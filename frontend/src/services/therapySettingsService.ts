@@ -22,12 +22,14 @@ export interface TherapyScheduleConfig {
   customArea?: string; // e.g. 'คอ', 'บ่า', 'ไหล่', 'หลัง'
   selectedStretchIds?: string[]; // IDs of selected 11 stretching exercises
   customHoldTimes?: Record<string, number>; // Custom duration per pose (seconds) e.g. { stretch_neck_lateral: 25 }
+  patientId?: number;
   savedAt?: string;
   notes?: string;
 }
 
 const STORAGE_KEY_PREFIX = 'strongcare_therapy_settings_';
-const REMINDER_KEY = 'strongcare_scheduled_reminders';
+const REMINDER_KEY_PREFIX = 'strongcare_scheduled_reminders_';
+const LEGACY_REMINDER_KEY = 'strongcare_scheduled_reminders';
 
 /**
  * Get formatted today and tomorrow ISO strings (YYYY-MM-DD)
@@ -104,10 +106,13 @@ export function formatThaiDateTime(dateStr: string, timeStr: string): string {
 }
 
 /**
- * Retrieve saved configuration with sensible defaults
+ * Retrieve saved configuration with sensible defaults, partitioned per patientId
  */
-export function getSavedTherapyConfig(mode: TherapyMode = 'physio'): TherapyScheduleConfig {
-  const key = `${STORAGE_KEY_PREFIX}${mode}`;
+export function getSavedTherapyConfig(mode: TherapyMode = 'physio', patientId?: number): TherapyScheduleConfig {
+  const pId = patientId ?? 1;
+  const key = `${STORAGE_KEY_PREFIX}p${pId}_${mode}`;
+  const legacyKey = `${STORAGE_KEY_PREFIX}${mode}`;
+
   const defaultSchedule = getDefaultScheduleDateTime();
   const defaultToday = defaultSchedule.date;
   const defaultTime = defaultSchedule.time;
@@ -120,6 +125,7 @@ export function getSavedTherapyConfig(mode: TherapyMode = 'physio'): TherapySche
     category: 'stretch',
     categoryTitle: 'กายภาพยืดเส้น',
     customArea: '',
+    patientId: pId,
     selectedStretchIds: [
       'stretch_neck_lateral',
       'stretch_neck_flexion',
@@ -136,13 +142,14 @@ export function getSavedTherapyConfig(mode: TherapyMode = 'physio'): TherapySche
   };
 
   try {
-    const raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(key) || localStorage.getItem(legacyKey);
     if (!raw) return defaultConfig;
     const parsed: Partial<TherapyScheduleConfig> = JSON.parse(raw);
     return {
       ...defaultConfig,
       ...parsed,
       mode, // preserve current mode
+      patientId: pId,
       // If saved date is in the past, reset to today
       scheduledDate: parsed.scheduledDate && parsed.scheduledDate >= defaultToday
         ? parsed.scheduledDate
@@ -155,12 +162,14 @@ export function getSavedTherapyConfig(mode: TherapyMode = 'physio'): TherapySche
 }
 
 /**
- * Save configuration to localStorage and schedule reminder
+ * Save configuration to localStorage partitioned by patientId and schedule reminder
  */
-export function saveTherapyConfig(config: TherapyScheduleConfig): void {
-  const key = `${STORAGE_KEY_PREFIX}${config.mode}`;
+export function saveTherapyConfig(config: TherapyScheduleConfig, patientId?: number): void {
+  const pId = patientId ?? config.patientId ?? 1;
+  const key = `${STORAGE_KEY_PREFIX}p${pId}_${config.mode}`;
   const record: TherapyScheduleConfig = {
     ...config,
+    patientId: pId,
     savedAt: new Date().toISOString(),
   };
 
@@ -168,13 +177,13 @@ export function saveTherapyConfig(config: TherapyScheduleConfig): void {
     localStorage.setItem(key, JSON.stringify(record));
 
     if (config.timeMode === 'schedule') {
-      // Register in reminders list
-      const existingReminders: TherapyScheduleConfig[] = getSavedReminders();
+      const reminderKey = `${REMINDER_KEY_PREFIX}p${pId}`;
+      const existingReminders: TherapyScheduleConfig[] = getSavedReminders(pId);
       const filtered = existingReminders.filter(
         (r) => !(r.mode === config.mode && r.scheduledDate === config.scheduledDate)
       );
       filtered.push(record);
-      localStorage.setItem(REMINDER_KEY, JSON.stringify(filtered));
+      localStorage.setItem(reminderKey, JSON.stringify(filtered));
     }
   } catch (e) {
     console.error('[therapySettingsService] Failed to save config:', e);
@@ -182,11 +191,13 @@ export function saveTherapyConfig(config: TherapyScheduleConfig): void {
 }
 
 /**
- * Get all scheduled reminders
+ * Get all scheduled reminders for a specific patientId
  */
-export function getSavedReminders(): TherapyScheduleConfig[] {
+export function getSavedReminders(patientId?: number): TherapyScheduleConfig[] {
   try {
-    const raw = localStorage.getItem(REMINDER_KEY);
+    const pId = patientId ?? 1;
+    const reminderKey = `${REMINDER_KEY_PREFIX}p${pId}`;
+    const raw = localStorage.getItem(reminderKey) || localStorage.getItem(LEGACY_REMINDER_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch (e) {
     return [];
@@ -194,10 +205,10 @@ export function getSavedReminders(): TherapyScheduleConfig[] {
 }
 
 /**
- * Check if any reminder is due right now
+ * Check if any reminder is due right now for a specific patientId
  */
-export function checkDueReminder(): TherapyScheduleConfig | null {
-  const reminders = getSavedReminders();
+export function checkDueReminder(patientId?: number): TherapyScheduleConfig | null {
+  const reminders = getSavedReminders(patientId);
   if (!reminders.length) return null;
 
   const now = new Date();

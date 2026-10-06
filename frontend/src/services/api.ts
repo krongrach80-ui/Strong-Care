@@ -55,28 +55,16 @@ export const api = {
       };
     }
 
-    try {
-      const res = await fetch(`${API_BASE}/patients`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patient),
-      });
-      if (!res.ok) {
-        throw new Error(`สร้างโปรไฟล์ไม่สำเร็จ HTTP ${res.status}: ${res.statusText}`);
-      }
-      const json = await res.json();
-      return json.data;
-    } catch (err) {
-      console.warn('API createPatient fallback to demo mode:', err);
-      return {
-        id: Date.now(),
-        patient_code: patient.patient_code ?? `PT-DEMO-${Math.floor(Math.random() * 1000)}`,
-        name: `${patient.name ?? 'ผู้ป่วยใหม่'} [โหมดสาธิต]`,
-        age: patient.age ?? 60,
-        gender: patient.gender ?? 'other',
-        notes: `${patient.notes ?? ''} [โหมดสาธิต fallback]`.trim(),
-      };
+    const res = await fetch(`${API_BASE}/patients`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patient),
+    });
+    if (!res.ok) {
+      throw new Error(`สร้างโปรไฟล์ไม่สำเร็จ HTTP ${res.status}: ${res.statusText}`);
     }
+    const json = await res.json();
+    return json.data;
   },
 
   /**

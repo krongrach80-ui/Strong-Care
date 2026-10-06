@@ -26,6 +26,7 @@ import { usePatientStore } from '../store/patientStore';
 import { useExerciseStore } from '../store/exerciseStore';
 import { useSessionStore } from '../store/sessionStore';
 import { api } from '../services/api';
+import { Patient } from '../types/patient';
 import { CheckCircle2 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -46,10 +47,10 @@ export const App: React.FC = () => {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
   const [isTherapistReportOpen, setIsTherapistReportOpen] = useState<boolean>(false);
   const [therapistReportData, setTherapistReportData] = useState<{
-    score: number;
+    score: number | null;
     poseName: string;
-    romAngle: number;
-  }>({ score: 85, poseName: 'ท่าที่ 1: กางแขนข้างลำตัว', romAngle: 88 });
+    romAngle: number | null;
+  }>({ score: null, poseName: 'ท่าที่ 1: กางแขนข้างลำตัว', romAngle: null });
 
   // Toast notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -155,7 +156,7 @@ export const App: React.FC = () => {
   // Scheduled Reminder Notification Poller
   useEffect(() => {
     const checkReminder = () => {
-      const due = checkDueReminder();
+      const due = checkDueReminder(selectedPatient?.id);
       if (due) {
         showToast(`⏰ ถึงเวลาฝึกกายภาพตามที่นัดหมายไว้: ${due.categoryTitle}!`);
       }
@@ -163,16 +164,13 @@ export const App: React.FC = () => {
     checkReminder();
     const interval = setInterval(checkReminder, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [selectedPatient?.id]);
 
   // Login handler
-  const handleLoginSuccess = (name: string) => {
-    setCurrentUserName(name);
-    const matched = patients.find((p) => p.name.includes(name) || name.includes(p.name));
-    if (matched) {
-      selectPatient(matched);
-    }
-    showToast(`เข้าสู่ระบบสำเร็จ ยินดีต้อนรับ ${name}`);
+  const handleLoginSuccess = (patient: Patient) => {
+    setCurrentUserName(patient.name);
+    selectPatient(patient);
+    showToast(`เข้าสู่ระบบสำเร็จ ยินดีต้อนรับ ${patient.name}`);
     setTimeout(() => {
       handleNavigate(3);
     }, 350);
@@ -199,12 +197,12 @@ export const App: React.FC = () => {
       await api.saveSession({
         patient_id: selectedPatient?.id || 1,
         exercise_id: selectedExercise?.id || 1,
-        total_reps: 10,
-        correct_reps: 9,
-        accuracy: therapistReportData.score,
+        total_reps: 1,
+        correct_reps: therapistReportData.score !== null && therapistReportData.score >= 70 ? 1 : 0,
+        accuracy: therapistReportData.score ?? 0,
         avg_duration_per_rep: 6.0,
         status: 'completed',
-        notes: note || `บันทึกผลท่า ${therapistReportData.poseName} องศา ROM ${therapistReportData.romAngle}°`,
+        notes: note || `บันทึกผลท่า ${therapistReportData.poseName} ${therapistReportData.romAngle !== null ? `ROM ${therapistReportData.romAngle}°` : 'ไม่มีข้อมูลวัด'}`,
       });
       showToast('ส่งผลการฝึกให้นักกายภาพบำบัดเรียบร้อยแล้ว!');
     } catch (e) {
@@ -292,6 +290,7 @@ export const App: React.FC = () => {
           screen3SubView === 'config' ? (
             <Screen3ScheduleConfig
               mode={configMode}
+              patientId={selectedPatient?.id}
               onBack={handleBackToMenu}
               onStartNow={handleStartNowFromConfig}
               onScheduleSaved={handleScheduleSaved}
@@ -302,7 +301,7 @@ export const App: React.FC = () => {
               patient={selectedPatient}
               onBack={() => handleNavigate(2)}
               onStartTherapy={() => {
-                const savedConfig = getSavedTherapyConfig('physio');
+                const savedConfig = getSavedTherapyConfig('physio', selectedPatient?.id);
                 if (savedConfig.category === 'stretch') {
                   const selectedIds = savedConfig.selectedStretchIds && savedConfig.selectedStretchIds.length > 0
                     ? savedConfig.selectedStretchIds

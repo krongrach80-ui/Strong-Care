@@ -80,6 +80,7 @@ export function getStretchVideoWatchUrl(startSeconds: number = 0): string {
   return `https://youtu.be/${videoId}?t=${startSeconds}`;
 }
 
+// TODO: ตรวจสอบ videoStartSeconds ของ 11 ท่ายืดกับคลิปวิดีโอจริง (3vOTTj_X3kQ) อย่างละเอียดก่อนใช้งานจริง
 export const STRETCH_EXERCISES: StretchExerciseItem[] = [
   {
     id: 'stretch_neck_lateral',
@@ -567,7 +568,7 @@ export const PHYSIO_EXERCISES_CONFIG: Record<string, PhysioExerciseConfig> = {
     name: 'กางแขนยกด้านข้าง',
     englishName: 'Shoulder Lateral Raise',
     description: 'กางแขนยกขึ้นด้านข้างระดับไหล่ ช่วยเพิ่มช่วงการเคลื่อนไหวข้อไหล่และความแข็งแรงของกล้ามเนื้อเดลทอยด์',
-    demoVideoUrl: 'https://www.youtube.com/embed/3vOTTj_X3kQ?start=225',
+    // TODO: กำหนดคลิปวิดีโอสาธิตท่ายกแขนด้านข้างที่ตรงกับท่าทาง (ปัจจุบันใช้ภาพประกอบ/Stick Figure)
     thumbnailUrl: asset('images/poses/shoulder_raise.png'),
     targetPose: 'shoulder_raise',
     targetAngle: 90,
@@ -585,7 +586,7 @@ export const PHYSIO_EXERCISES_CONFIG: Record<string, PhysioExerciseConfig> = {
     name: 'งอข้อศอกฟื้นฟูแขน',
     englishName: 'Bicep Curl',
     description: 'พับงอข้อศอกขึ้นและเหยียดตรง ช่วยฟื้นฟูกำลังแขนท่อนบนและข้อศอก',
-    demoVideoUrl: 'https://www.youtube.com/embed/3vOTTj_X3kQ?start=280',
+    // TODO: กำหนดคลิปวิดีโอสาธิตท่างอข้อศอกที่ตรงกับท่าทาง (ปัจจุบันใช้ภาพประกอบ/Stick Figure)
     thumbnailUrl: asset('images/poses/bicep_curl.png'),
     targetPose: 'bicep_curl',
     targetAngle: 50,
@@ -602,7 +603,7 @@ export const PHYSIO_EXERCISES_CONFIG: Record<string, PhysioExerciseConfig> = {
     name: 'ย่อเข่าเก้าอี้',
     englishName: 'Chair Squat',
     description: 'ย่อสะโพกและเข่าลงเบาๆ เสริมกำลังขาและการทรงตัวสำหรับผู้สูงอายุ',
-    demoVideoUrl: 'https://www.youtube.com/embed/3vOTTj_X3kQ?start=500',
+    // TODO: กำหนดคลิปวิดีโอสาธิตท่าย่อเข่าเก้าอี้ที่ตรงกับท่าทาง (ปัจจุบันใช้ภาพประกอบ/Stick Figure)
     thumbnailUrl: asset('images/poses/knee_squat.png'),
     targetPose: 'knee_squat',
     targetAngle: 90,
