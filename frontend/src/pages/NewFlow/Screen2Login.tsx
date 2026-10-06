@@ -196,22 +196,21 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
             </div>
           )}
 
-          {/* Face Login Fast-Action: แสดงเฉพาะเมื่อเปิด VITE_ENABLE_FACE_LOGIN=true หรือ ?face_login=1 */}
-          {isFaceLoginEnabled && (
-            <div className="pt-1 text-center">
-              <button
-                type="button"
-                onClick={onOpenFaceLogin}
-                className="inline-flex items-center gap-2 text-xs font-bold text-[#1E8A4C] hover:text-[#156C3B] p-1.5 transition"
-              >
-                <Camera className="w-4 h-4 text-[#1E8A4C]" />
-                <span>หรือ สแกนใบหน้าเข้าสู่ระบบ (Face Login)</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
-                  ทดลอง (Beta)
-                </span>
-              </button>
-            </div>
-          )}
+          {/* Face Login Fast-Action: สแกนใบหน้าเข้าใช้งานตู้ทันที */}
+          <div className="pt-1 text-center">
+            <button
+              type="button"
+              onClick={onOpenFaceLogin}
+              className="w-full py-2.5 px-4 rounded-2xl bg-emerald-50 hover:bg-emerald-100/90 border border-emerald-300 text-xs sm:text-sm font-bold text-[#1E8A4C] hover:text-[#156C3B] transition flex items-center justify-center gap-2 shadow-sm active:scale-98"
+              id="btnFaceLoginKiosk"
+            >
+              <Camera className="w-4 h-4 text-[#1E8A4C]" />
+              <span>สแกนใบหน้าเข้าใช้งานตู้ (Kiosk Face Login)</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900 border border-emerald-300">
+                ชีวมิติ AI
+              </span>
+            </button>
+          </div>
 
           {/* Action Buttons */}
           <div className="flex flex-col gap-3 pt-2">
@@ -222,7 +221,7 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
               id="btnLoginSubmit"
             >
               <LogIn className="w-5 h-5" />
-              <span>{isSubmitting ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}</span>
+              <span>{isSubmitting ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบด้วย PIN'}</span>
             </button>
 
             <button
@@ -232,7 +231,7 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
               id="btnRegister"
             >
               <UserPlus className="w-5 h-5" />
-              <span>สมัครสมาชิกผู้ป่วยใหม่</span>
+              <span>ต้อนรับ & ลงทะเบียนคนไข้ใหม่ (กรอกข้อมูลก่อนสแกนหน้า)</span>
             </button>
           </div>
         </form>

@@ -23,6 +23,8 @@ import {
   AboutModal,
 } from '../components/Modals/AppModals';
 import { FaceAuthModal } from '../components/FaceAuth/FaceAuthModal';
+import { HospitalPortal } from '../pages/Hospital/HospitalPortal';
+import { ReceptionOnboardingModal } from '../components/Reception/ReceptionOnboardingModal';
 import { usePatientStore } from '../store/patientStore';
 import { useExerciseStore } from '../store/exerciseStore';
 import { useSessionStore } from '../store/sessionStore';
@@ -30,7 +32,7 @@ import { api } from '../services/api';
 import { OfflineStorageService } from '../services/offlineStorageService';
 import { IS_STATIC_MODE } from '../config/apiConfig';
 import { Patient } from '../types/patient';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Shield } from 'lucide-react';
 
 export const App: React.FC = () => {
   // Navigation Flow State: 1 -> 2 -> 3 -> 4
@@ -45,6 +47,8 @@ export const App: React.FC = () => {
 
   // Modal States
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
+  const [isHospitalPortalOpen, setIsHospitalPortalOpen] = useState<boolean>(false);
+  const [isReceptionOpen, setIsReceptionOpen] = useState<boolean>(false);
   const [isTherapySettingsOpen, setIsTherapySettingsOpen] = useState<boolean>(false);
   const [isMiniGameSettingsOpen, setIsMiniGameSettingsOpen] = useState<boolean>(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
@@ -265,7 +269,7 @@ export const App: React.FC = () => {
 
       {/* 2. Top Screen Switcher for Testing & Demonstration */}
       <nav
-        className={`fixed z-40 bg-[#0B2B2B]/85 backdrop-blur-md border border-emerald-400/35 rounded-full px-2 py-0.5 sm:py-1 flex items-center gap-1 shadow-lg max-w-[calc(100vw-24px)] overflow-x-auto transition-all ${
+        className={`fixed z-40 bg-[#0B2B2B]/90 backdrop-blur-md border border-emerald-400/35 rounded-full px-2.5 py-1 flex items-center gap-1.5 shadow-xl max-w-[calc(100vw-24px)] overflow-x-auto transition-all ${
           currentScreen === 4 ? 'top-1 sm:top-1.5 opacity-80 hover:opacity-100 scale-90 sm:scale-95' : 'top-2 sm:top-3'
         }`}
         aria-label="แถบสลับหน้าทดสอบ"
@@ -288,6 +292,27 @@ export const App: React.FC = () => {
             {tab.label}
           </button>
         ))}
+
+        <div className="w-px h-4 bg-emerald-500/40 mx-0.5" />
+
+        {/* Quick Shortcut: Reception Onboarding */}
+        <button
+          onClick={() => setIsReceptionOpen(true)}
+          className="text-xs font-bold px-3 py-1.5 rounded-full text-emerald-200 hover:text-white hover:bg-emerald-700/40 transition whitespace-nowrap flex items-center gap-1"
+          title="ต้อนรับและลงทะเบียนคนไข้ใหม่"
+        >
+          <span>✨ ต้อนรับ & สแกนหน้า</span>
+        </button>
+
+        {/* Quick Shortcut: Hospital Portal */}
+        <button
+          onClick={() => setIsHospitalPortalOpen(true)}
+          className="text-xs font-extrabold px-3.5 py-1.5 rounded-full bg-emerald-500/25 border border-emerald-400/50 text-[#6FD67F] hover:bg-[#10B981] hover:text-[#0B2B2B] transition whitespace-nowrap flex items-center gap-1.5 shadow-sm"
+          title="ระบบบุคลากรและโรงพยาบาล (ผอรพ / นักกายภาพ)"
+        >
+          <Shield className="w-3.5 h-3.5" />
+          <span>🏥 ระบบบุคลากร & รพ.</span>
+        </button>
       </nav>
 
       {/* 3. Toast Notification Banner */}
@@ -313,8 +338,9 @@ export const App: React.FC = () => {
         {currentScreen === 1 && (
           <Screen1Home
             onStart={() => handleNavigate(2)}
-            onOpenAdmin={() => setIsAdminOpen(true)}
+            onOpenAdmin={() => setIsHospitalPortalOpen(true)}
             onOpenAbout={() => setIsAboutOpen(true)}
+            onOpenReception={() => setIsReceptionOpen(true)}
           />
         )}
 
@@ -324,7 +350,7 @@ export const App: React.FC = () => {
             onBack={() => handleNavigate(1)}
             onLoginSuccess={handleLoginSuccess}
             onOpenFaceLogin={() => openFaceAuth('login')}
-            onRegister={() => openFaceAuth('enroll')}
+            onRegister={() => setIsReceptionOpen(true)}
             patients={patients}
           />
         )}
@@ -429,6 +455,35 @@ export const App: React.FC = () => {
         poseName={therapistReportData.poseName}
         romAngle={therapistReportData.romAngle}
         onSubmit={handleSubmitReport}
+      />
+
+      {/* Hospital Director & Clinical RBAC Portal (ผอรพ / นักกายภาพ / คนไข้) */}
+      {isHospitalPortalOpen && (
+        <HospitalPortal
+          onClose={() => setIsHospitalPortalOpen(false)}
+          onLaunchKioskExercise={(exerciseId) => {
+            setIsHospitalPortalOpen(false);
+            handleNavigate(4);
+          }}
+          onSelectPatientForKiosk={(patient) => {
+            selectPatient(patient);
+            setCurrentUserName(patient.name);
+            setIsHospitalPortalOpen(false);
+            handleNavigate(3);
+          }}
+        />
+      )}
+
+      {/* Reception Onboarding Modal (กรอกข้อมูลคนไข้ก่อนแล้วค่อยสแกนหน้า) */}
+      <ReceptionOnboardingModal
+        isOpen={isReceptionOpen}
+        onClose={() => setIsReceptionOpen(false)}
+        onSuccessNavigateToKiosk={(patient) => {
+          selectPatient(patient);
+          setCurrentUserName(patient.name);
+          showToast(`ยินดีต้อนรับ ${patient.name} เข้าสู่ระบบตู้กายภาพบำบัด`);
+          handleNavigate(3);
+        }}
       />
 
       {/* Face Authentication Modal (Face Login & Face Enrollment) */}

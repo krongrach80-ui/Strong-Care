@@ -6,9 +6,15 @@ interface Screen1HomeProps {
   onStart: () => void;
   onOpenAdmin: () => void;
   onOpenAbout?: () => void;
+  onOpenReception?: () => void;
 }
 
-export const Screen1Home: React.FC<Screen1HomeProps> = ({ onStart, onOpenAdmin, onOpenAbout }) => {
+export const Screen1Home: React.FC<Screen1HomeProps> = ({
+  onStart,
+  onOpenAdmin,
+  onOpenAbout,
+  onOpenReception,
+}) => {
   const [thaiDate, setThaiDate] = useState<string>('');
   const [thaiTime, setThaiTime] = useState<string>('');
 
@@ -91,9 +97,20 @@ export const Screen1Home: React.FC<Screen1HomeProps> = ({ onStart, onOpenAdmin, 
           className="btn-primary-capsule !w-full"
           id="btnStartApp"
         >
-          <span>เริ่มต้นการใช้งาน</span>
+          <span>เริ่มต้นการใช้งานตู้</span>
           <ArrowRight className="w-5 h-5 flex-shrink-0" />
         </button>
+
+        {onOpenReception && (
+          <button
+            onClick={onOpenReception}
+            className="w-full py-2.5 px-4 rounded-full bg-white/90 hover:bg-emerald-50 border border-emerald-300 text-xs sm:text-sm font-bold text-[#1E8A4C] shadow-sm flex items-center justify-center gap-2 transition active:scale-95"
+            id="btnReceptionOnboardingHome"
+          >
+            <Sparkles className="w-4 h-4 text-emerald-600" />
+            <span>ต้อนรับคนไข้ใหม่ & ลงทะเบียนใบหน้า</span>
+          </button>
+        )}
 
         {onOpenAbout && (
           <button
@@ -120,17 +137,16 @@ export const Screen1Home: React.FC<Screen1HomeProps> = ({ onStart, onOpenAdmin, 
         </button>
       )}
 
-      {/* มุมขวาล่าง: ปุ่ม Admin แสดงเฉพาะในโหมดสาธิต (เมื่อไม่ใช่โหมดสาธิต ต้องผ่าน auth ของ admin ก่อน) */}
-      {IS_STATIC_MODE && (
-        <button
-          onClick={onOpenAdmin}
-          className="fixed bottom-5 right-5 sm:bottom-7 sm:right-7 bg-white hover:bg-emerald-50 border-1.5 border-[#1E8A4C] text-[#1E8A4C] font-sans font-bold text-sm px-4 py-2 rounded-full shadow-md hover:shadow-lg flex items-center gap-1.5 transition active:scale-95 z-30"
-          aria-label="เข้าสู่หน้าผู้ดูแลระบบ Admin"
-        >
-          <Shield className="w-4 h-4" />
-          <span>Admin</span>
-        </button>
-      )}
+      {/* มุมขวาล่าง: ปุ่ม Portal บุคลากร & ผู้บริหารโรงพยาบาล */}
+      <button
+        onClick={onOpenAdmin}
+        className="fixed bottom-5 right-5 sm:bottom-7 sm:right-7 bg-white/95 hover:bg-emerald-50 border-1.5 border-[#1E8A4C] text-[#1E8A4C] font-sans font-bold text-xs sm:text-sm px-4 py-2 rounded-full shadow-md hover:shadow-lg flex items-center gap-1.5 transition active:scale-95 z-30"
+        aria-label="เข้าสู่ระบบบุคลากรและโรงพยาบาล"
+        id="btnHospitalPortalHome"
+      >
+        <Shield className="w-4 h-4 text-emerald-600" />
+        <span>ระบบบุคลากร / รพ.</span>
+      </button>
     </div>
   );
 };
