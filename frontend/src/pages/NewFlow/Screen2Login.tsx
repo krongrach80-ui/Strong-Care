@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, User, Lock, LogIn, UserPlus, Camera, Sparkles } from 'lucide-react';
+import { ArrowLeft, User, Lock, LogIn, UserPlus, Camera, KeyRound, Sparkles } from 'lucide-react';
 import { Patient } from '../../types/patient';
 
 interface Screen2LoginProps {
@@ -19,6 +19,8 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
 }) => {
   const [userName, setUserName] = useState<string>('คุณสมชาย ใจดี');
   const [password, setPassword] = useState<string>('••••••••');
+  const [authType, setAuthType] = useState<'password' | 'pin'>('password');
+  const [pin, setPin] = useState<string>('');
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -56,6 +58,32 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
           </p>
         </div>
 
+        {/* Auth Method Tabs: รหัสผ่าน vs รหัส PIN */}
+        <div className="flex bg-emerald-50/80 p-1 rounded-2xl border border-emerald-100">
+          <button
+            type="button"
+            onClick={() => setAuthType('password')}
+            className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
+              authType === 'password'
+                ? 'bg-white text-[#1E8A4C] shadow-sm'
+                : 'text-slate-600 hover:text-slate-800'
+            }`}
+          >
+            รหัสผ่าน (Password)
+          </button>
+          <button
+            type="button"
+            onClick={() => setAuthType('pin')}
+            className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
+              authType === 'pin'
+                ? 'bg-white text-[#1E8A4C] shadow-sm'
+                : 'text-slate-600 hover:text-slate-800'
+            }`}
+          >
+            รหัส PIN 6 หลัก
+          </button>
+        </div>
+
         {/* Inputs Stack */}
         <form onSubmit={handleSubmit} className="space-y-3.5">
           <div className="bg-white rounded-2xl border border-emerald-200 p-3 sm:p-3.5 flex items-center gap-3 shadow-sm focus-within:border-[#1E8A4C] focus-within:ring-2 focus-within:ring-emerald-200 transition">
@@ -70,17 +98,34 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
             />
           </div>
 
-          <div className="bg-white rounded-2xl border border-emerald-200 p-3 sm:p-3.5 flex items-center gap-3 shadow-sm focus-within:border-[#1E8A4C] focus-within:ring-2 focus-within:ring-emerald-200 transition">
-            <Lock className="w-5 h-5 text-[#1E8A4C] flex-shrink-0" />
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="รหัสผ่าน"
-              className="w-full bg-transparent text-sm font-medium text-[#0B2B2B] outline-none"
-              aria-label="รหัสผ่าน"
-            />
-          </div>
+          {authType === 'password' ? (
+            <div className="bg-white rounded-2xl border border-emerald-200 p-3 sm:p-3.5 flex items-center gap-3 shadow-sm focus-within:border-[#1E8A4C] focus-within:ring-2 focus-within:ring-emerald-200 transition">
+              <Lock className="w-5 h-5 text-[#1E8A4C] flex-shrink-0" />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="รหัสผ่าน"
+                className="w-full bg-transparent text-sm font-medium text-[#0B2B2B] outline-none"
+                aria-label="รหัสผ่าน"
+              />
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-emerald-200 p-3 sm:p-3.5 flex items-center gap-3 shadow-sm focus-within:border-[#1E8A4C] focus-within:ring-2 focus-within:ring-emerald-200 transition">
+              <KeyRound className="w-5 h-5 text-[#1E8A4C] flex-shrink-0" />
+              <input
+                type="password"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="กรอกรหัส PIN ตัวเลข 6 หลัก (เช่น 123456)"
+                className="w-full bg-transparent text-sm font-mono tracking-widest text-[#0B2B2B] outline-none placeholder:font-sans placeholder:tracking-normal"
+                aria-label="รหัส PIN"
+              />
+            </div>
+          )}
 
           {/* Quick Pre-select Patient Profiles for convenience */}
           {patients.length > 0 && (
@@ -105,7 +150,7 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
             </div>
           )}
 
-          {/* Face Login Fast-Action */}
+          {/* Face Login Fast-Action With Beta Badge */}
           <div className="pt-1 text-center">
             <button
               type="button"
@@ -114,6 +159,9 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
             >
               <Camera className="w-4 h-4 text-[#1E8A4C]" />
               <span>หรือ สแกนใบหน้าเข้าสู่ระบบ (Face Login)</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                ทดลอง (Beta)
+              </span>
             </button>
           </div>
 

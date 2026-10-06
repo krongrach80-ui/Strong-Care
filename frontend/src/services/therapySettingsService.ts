@@ -40,12 +40,39 @@ export function getTodayDateString(): string {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * คำนวณวันและเวลาเริ่มต้นที่เหมาะสม:
+ * - บวกเวลาล่วงหน้าอย่างน้อย 30 นาที
+ * - ปัดเศษนาทีขึ้น (Round up) ไปที่รอบ 15 นาทีถัดไปเสมอ ไม่ให้ตกเป็นอดีต
+ * - หากเวลาข้ามเที่ยงคืน จะเลื่อนวันที่ไปยังวันถัดไปให้อัตโนมัติ
+ */
+export function getDefaultScheduleDateTime(): { date: string; time: string } {
+  const target = new Date();
+  target.setMinutes(target.getMinutes() + 30);
+  const remainder = target.getMinutes() % 15;
+  if (remainder > 0) {
+    target.setMinutes(target.getMinutes() + (15 - remainder));
+  }
+  target.setSeconds(0, 0);
+
+  const year = target.getFullYear();
+  const month = String(target.getMonth() + 1).padStart(2, '0');
+  const day = String(target.getDate()).padStart(2, '0');
+  const hours = String(target.getHours()).padStart(2, '0');
+  const minutes = String(target.getMinutes()).padStart(2, '0');
+
+  return {
+    date: `${year}-${month}-${day}`,
+    time: `${hours}:${minutes}`,
+  };
+}
+
+export function getDefaultDateString(): string {
+  return getDefaultScheduleDateTime().date;
+}
+
 export function getDefaultTimeString(): string {
-  const now = new Date();
-  now.setMinutes(now.getMinutes() + 30);
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(Math.ceil(now.getMinutes() / 15) * 15 % 60).padStart(2, '0');
-  return `${hours}:${minutes}`;
+  return getDefaultScheduleDateTime().time;
 }
 
 /**
@@ -81,8 +108,9 @@ export function formatThaiDateTime(dateStr: string, timeStr: string): string {
  */
 export function getSavedTherapyConfig(mode: TherapyMode = 'physio'): TherapyScheduleConfig {
   const key = `${STORAGE_KEY_PREFIX}${mode}`;
-  const defaultToday = getTodayDateString();
-  const defaultTime = getDefaultTimeString();
+  const defaultSchedule = getDefaultScheduleDateTime();
+  const defaultToday = defaultSchedule.date;
+  const defaultTime = defaultSchedule.time;
 
   const defaultConfig: TherapyScheduleConfig = {
     mode,

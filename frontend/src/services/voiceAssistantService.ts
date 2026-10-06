@@ -1,3 +1,5 @@
+import { asset } from '../utils/asset';
+import { API_BASE_URL } from '../config/apiConfig';
 import { audioFeedback } from './audioService';
 
 export type VoicePriority = 'emergency' | 'critical' | 'warning' | 'instruction' | 'success' | 'info';
@@ -23,54 +25,54 @@ const PRIORITY_WEIGHTS: Record<VoicePriority, number> = {
 
 // Map of pre-generated native studio-quality Thai speech files
 const STATIC_SOUNDS_MAP: Record<string, string> = {
-  welcome: '/sounds/welcome.mp3',
-  welcome_app: '/sounds/welcome.mp3',
-  face_login_open: '/sounds/face_look.mp3',
-  face_aligned_hold: '/sounds/face_align_hold.mp3',
-  face_enroll_step1: '/sounds/face_look_straight.mp3',
-  face_turn_left: '/sounds/face_turn_left.mp3',
-  face_turn_right: '/sounds/face_turn_right.mp3',
-  face_face_angles_done: '/sounds/face_face_angles_done.mp3',
-  face_saving: '/sounds/face_saving.mp3',
-  face_enrolled: '/sounds/face_enrolled.mp3',
-  welcome_back: '/sounds/welcome_back.mp3',
-  workout_start: '/sounds/workout_start.mp3',
-  good_form: '/sounds/good_form.mp3',
-  good_posture_encourage: '/sounds/good_form.mp3',
-  raise_arm: '/sounds/raise_arm.mp3',
-  rom_insufficient: '/sounds/raise_arm.mp3',
-  squat_more: '/sounds/squat_more.mp3',
-  leg_more: '/sounds/leg_more.mp3',
-  slow_down: '/sounds/slow_down.mp3',
-  speed_warning: '/sounds/slow_down.mp3',
-  adjust_posture: '/sounds/adjust_posture.mp3',
-  posture_lean_warning: '/sounds/adjust_posture.mp3',
-  hold_pose: '/sounds/hold_pose.mp3',
-  hold_phase_instruction: '/sounds/hold_pose.mp3',
-  workout_complete: '/sounds/workout_complete.mp3',
-  guide_home: '/sounds/guide_home.mp3',
-  guide_training: '/sounds/guide_training.mp3',
-  guide_exercises: '/sounds/guide_exercises.mp3',
-  guide_history: '/sounds/guide_history.mp3',
-  guide_patients: '/sounds/guide_patients.mp3',
-  guide_result: '/sounds/guide_result.mp3',
-  test_voice: '/sounds/test_voice.mp3',
-  stretch_start: '/sounds/stretch_start.mp3',
-  stretch_switch_right: '/sounds/stretch_switch_right.mp3',
-  stretch_switch_left: '/sounds/stretch_switch_left.mp3',
-  stretch_hold_begin: '/sounds/stretch_hold_begin.mp3',
-  stretch_complete_all: '/sounds/stretch_complete_all.mp3',
-  stretch_pose_1: '/sounds/stretch_pose_1.mp3',
-  stretch_pose_2: '/sounds/stretch_pose_2.mp3',
-  stretch_pose_3: '/sounds/stretch_pose_3.mp3',
-  stretch_pose_4: '/sounds/stretch_pose_4.mp3',
-  stretch_pose_5: '/sounds/stretch_pose_5.mp3',
-  stretch_pose_6: '/sounds/stretch_pose_6.mp3',
-  stretch_pose_7: '/sounds/stretch_pose_7.mp3',
-  stretch_pose_8: '/sounds/stretch_pose_8.mp3',
-  stretch_pose_9: '/sounds/stretch_pose_9.mp3',
-  stretch_pose_10: '/sounds/stretch_pose_10.mp3',
-  stretch_pose_11: '/sounds/stretch_pose_11.mp3',
+  welcome: asset('sounds/welcome.mp3'),
+  welcome_app: asset('sounds/welcome.mp3'),
+  face_login_open: asset('sounds/face_look.mp3'),
+  face_aligned_hold: asset('sounds/face_align_hold.mp3'),
+  face_enroll_step1: asset('sounds/face_look_straight.mp3'),
+  face_turn_left: asset('sounds/face_turn_left.mp3'),
+  face_turn_right: asset('sounds/face_turn_right.mp3'),
+  face_face_angles_done: asset('sounds/face_face_angles_done.mp3'),
+  face_saving: asset('sounds/face_saving.mp3'),
+  face_enrolled: asset('sounds/face_enrolled.mp3'),
+  welcome_back: asset('sounds/welcome_back.mp3'),
+  workout_start: asset('sounds/workout_start.mp3'),
+  good_form: asset('sounds/good_form.mp3'),
+  good_posture_encourage: asset('sounds/good_form.mp3'),
+  raise_arm: asset('sounds/raise_arm.mp3'),
+  rom_insufficient: asset('sounds/raise_arm.mp3'),
+  squat_more: asset('sounds/squat_more.mp3'),
+  leg_more: asset('sounds/leg_more.mp3'),
+  slow_down: asset('sounds/slow_down.mp3'),
+  speed_warning: asset('sounds/slow_down.mp3'),
+  adjust_posture: asset('sounds/adjust_posture.mp3'),
+  posture_lean_warning: asset('sounds/adjust_posture.mp3'),
+  hold_pose: asset('sounds/hold_pose.mp3'),
+  hold_phase_instruction: asset('sounds/hold_pose.mp3'),
+  workout_complete: asset('sounds/workout_complete.mp3'),
+  guide_home: asset('sounds/guide_home.mp3'),
+  guide_training: asset('sounds/guide_training.mp3'),
+  guide_exercises: asset('sounds/guide_exercises.mp3'),
+  guide_history: asset('sounds/guide_history.mp3'),
+  guide_patients: asset('sounds/guide_patients.mp3'),
+  guide_result: asset('sounds/guide_result.mp3'),
+  test_voice: asset('sounds/test_voice.mp3'),
+  stretch_start: asset('sounds/stretch_start.mp3'),
+  stretch_switch_right: asset('sounds/stretch_switch_right.mp3'),
+  stretch_switch_left: asset('sounds/stretch_switch_left.mp3'),
+  stretch_hold_begin: asset('sounds/stretch_hold_begin.mp3'),
+  stretch_complete_all: asset('sounds/stretch_complete_all.mp3'),
+  stretch_pose_1: asset('sounds/stretch_pose_1.mp3'),
+  stretch_pose_2: asset('sounds/stretch_pose_2.mp3'),
+  stretch_pose_3: asset('sounds/stretch_pose_3.mp3'),
+  stretch_pose_4: asset('sounds/stretch_pose_4.mp3'),
+  stretch_pose_5: asset('sounds/stretch_pose_5.mp3'),
+  stretch_pose_6: asset('sounds/stretch_pose_6.mp3'),
+  stretch_pose_7: asset('sounds/stretch_pose_7.mp3'),
+  stretch_pose_8: asset('sounds/stretch_pose_8.mp3'),
+  stretch_pose_9: asset('sounds/stretch_pose_9.mp3'),
+  stretch_pose_10: asset('sounds/stretch_pose_10.mp3'),
+  stretch_pose_11: asset('sounds/stretch_pose_11.mp3'),
 };
 
 class VoiceAssistantService {
@@ -199,30 +201,30 @@ class VoiceAssistantService {
     if (key.startsWith('rep_complete_')) {
       const repNum = parseInt(key.replace('rep_complete_', ''), 10);
       if (repNum >= 1 && repNum <= 20) {
-        return `/sounds/rep_${repNum}.mp3`;
+        return asset(`sounds/rep_${repNum}.mp3`);
       }
     }
 
     // 3. Check for specific keywords in text
-    if (text.includes('ยินดีต้อนรับกลับมา')) return '/sounds/welcome_back.mp3';
-    if (text.includes('มองตรงมาที่กล้อง')) return '/sounds/face_look_straight.mp3';
-    if (text.includes('หันหน้าไปทางซ้าย') || text.includes('ขยับใบหน้าไปทางซ้าย')) return '/sounds/face_turn_left.mp3';
-    if (text.includes('หันหน้าไปทางขวา') || text.includes('ขยับใบหน้าไปทางขวา')) return '/sounds/face_turn_right.mp3';
-    if (text.includes('บันทึกข้อมูลใบหน้า')) return '/sounds/face_saving.mp3';
-    if (text.includes('สมัครสมาชิกเรียบร้อย')) return '/sounds/face_enrolled.mp3';
-    if (text.includes('มองกล้องเพื่อเข้าสู่ระบบ')) return '/sounds/face_look.mp3';
-    if (text.includes('จัดใบหน้าตรงแล้ว')) return '/sounds/face_align_hold.mp3';
-    if (text.includes('ทำได้ถูกต้อง')) return '/sounds/good_form.mp3';
-    if (text.includes('ปรับท่าทางก่อน')) return '/sounds/adjust_posture.mp3';
-    if (text.includes('ค่อย ๆ ยก')) return '/sounds/slow_down.mp3';
-    if (text.includes('ค้างท่าไว้นิ่งๆ')) return '/sounds/hold_pose.mp3';
-    if (text.includes('ทำครบตามเป้าหมาย')) return '/sounds/workout_complete.mp3';
-    if (text.includes('ยกแขนขึ้นอีก')) return '/sounds/raise_arm.mp3';
-    if (text.includes('ย่อเข่าลงอีก')) return '/sounds/squat_more.mp3';
-    if (text.includes('ยกขาขึ้นอีก')) return '/sounds/leg_more.mp3';
+    if (text.includes('ยินดีต้อนรับกลับมา')) return asset('sounds/welcome_back.mp3');
+    if (text.includes('มองตรงมาที่กล้อง')) return asset('sounds/face_look_straight.mp3');
+    if (text.includes('หันหน้าไปทางซ้าย') || text.includes('ขยับใบหน้าไปทางซ้าย')) return asset('sounds/face_turn_left.mp3');
+    if (text.includes('หันหน้าไปทางขวา') || text.includes('ขยับใบหน้าไปทางขวา')) return asset('sounds/face_turn_right.mp3');
+    if (text.includes('บันทึกข้อมูลใบหน้า')) return asset('sounds/face_saving.mp3');
+    if (text.includes('สมัครสมาชิกเรียบร้อย')) return asset('sounds/face_enrolled.mp3');
+    if (text.includes('มองกล้องเพื่อเข้าสู่ระบบ')) return asset('sounds/face_look.mp3');
+    if (text.includes('จัดใบหน้าตรงแล้ว')) return asset('sounds/face_align_hold.mp3');
+    if (text.includes('ทำได้ถูกต้อง')) return asset('sounds/good_form.mp3');
+    if (text.includes('ปรับท่าทางก่อน')) return asset('sounds/adjust_posture.mp3');
+    if (text.includes('ค่อย ๆ ยก')) return asset('sounds/slow_down.mp3');
+    if (text.includes('ค้างท่าไว้นิ่งๆ')) return asset('sounds/hold_pose.mp3');
+    if (text.includes('ทำครบตามเป้าหมาย')) return asset('sounds/workout_complete.mp3');
+    if (text.includes('ยกแขนขึ้นอีก')) return asset('sounds/raise_arm.mp3');
+    if (text.includes('ย่อเข่าลงอีก')) return asset('sounds/squat_more.mp3');
+    if (text.includes('ยกขาขึ้นอีก')) return asset('sounds/leg_more.mp3');
 
     // 4. Dynamic TTS via backend proxy cache
-    return `/api/tts?text=${encodeURIComponent(text)}`;
+    return `${API_BASE_URL || '/api'}/tts?text=${encodeURIComponent(text)}`;
   }
 
   /**

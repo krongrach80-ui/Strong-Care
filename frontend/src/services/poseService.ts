@@ -24,7 +24,8 @@ export class PoseService {
   private handLandmarker: HandLandmarker | null = null;
   private faceLandmarker: FaceLandmarker | null = null;
 
-  private isInitializing: boolean = false;
+  private initPromise: Promise<boolean> | null = null;
+  private errorMessage: string | null = null;
   private smoother = new LandmarkSmoother(0.7);
   private isMockMode: boolean = false;
   private mockTime: number = 0;
@@ -44,20 +45,29 @@ export class PoseService {
     return PoseService.instance;
   }
 
-  public async initialize(): Promise<boolean> {
-    if (this.landmarker) return true;
-    if (this.isInitializing) return false;
+  private isDevOrDemo(): boolean {
+    return (
+      Boolean(import.meta.env.DEV) ||
+      (typeof window !== 'undefined' &&
+        (new URLSearchParams(window.location.search).get('demo') === '1' ||
+         window.location.search.includes('mock=1')))
+    );
+  }
 
-    this.isInitializing = true;
-    try {
-      let vision: any;
+  public initialize(): Promise<boolean> {
+    if (this.landmarker) return Promise.resolve(true);
+    if (this.initPromise) return this.initPromise;
+
+    this.initPromise = (async () => {
       try {
-        const localWasm = resolveAssetUrl('models/pose/wasm');
-        vision = await FilesetResolver.forVisionTasks(localWasm);
-      } catch (eLocal) {
-        console.warn('⚠️ Local WASM failed, falling back to CDN:', eLocal);
-        vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
-      }
+        let vision: any;
+        try {
+          const localWasm = resolveAssetUrl('models/pose/wasm');
+          vision = await FilesetResolver.forVisionTasks(localWasm);
+        } catch (eLocal) {
+          console.warn('⚠️ Local WASM failed, falling back to CDN:', eLocal);
+          vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+        }
 
       const initModel = async <T>(
         createFn: (v: any, opts: any) => Promise<T>,
@@ -140,27 +150,53 @@ export class PoseService {
         console.warn('⚠️ FaceLandmarker load warning:', faceErr);
       }
 
-      this.isInitializing = false;
-      this.isMockMode = !this.landmarker;
-      return true;
-    } catch (err) {
-      console.warn('⚠️ MediaPipe Vision initialization fallback:', err);
-      this.isInitializing = false;
-      this.isMockMode = true;
-      return true;
-    }
+        if (!this.landmarker) {
+          if (this.isDevOrDemo()) {
+            this.isMockMode = true;
+            console.info('ℹ️ เข้าสู่โหมดจำลองท่าทาง (Mock Mode) สำหรับ Dev หรือ ?demo=1');
+          } else {
+            this.isMockMode = false;
+            this.errorMessage = 'ไม่สามารถดาวน์โหลดโมเดลตรวจจับท่าทาง (MediaPipe) ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต';
+            console.warn('⚠️ ' + this.errorMessage);
+          }
+        } else {
+          this.isMockMode = false;
+          this.errorMessage = null;
+        }
+        return true;
+      } catch (err) {
+        console.warn('⚠️ MediaPipe Vision initialization error:', err);
+        if (this.isDevOrDemo()) {
+          this.isMockMode = true;
+        } else {
+          this.isMockMode = false;
+          this.errorMessage = 'ไม่สามารถดาวน์โหลดโมเดลตรวจจับท่าทาง (MediaPipe) ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต';
+        }
+        return true;
+      }
+    })();
+
+    return this.initPromise;
   }
 
   public isReady(): boolean {
     return this.landmarker !== null || this.isMockMode;
   }
 
-  public setMockMode(enabled: boolean) {
+  public setMockMode(enabled: boolean): void {
+    if (enabled && !this.isDevOrDemo()) {
+      console.warn('⚠️ ไม่อนุญาตให้เปิด Mock Mode บน Production เว้นแต่จะมี ?demo=1 ใน URL');
+      return;
+    }
     this.isMockMode = enabled;
   }
 
   public getIsMockMode(): boolean {
     return this.isMockMode;
+  }
+
+  public getErrorMessage(): string | null {
+    return this.errorMessage;
   }
 
   /**

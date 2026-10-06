@@ -27,6 +27,7 @@ import {
 import confetti from 'canvas-confetti';
 import { useCamera } from '../../hooks/useCamera';
 import { usePose } from '../../hooks/usePose';
+import { poseService } from '../../services/poseService';
 import { useExercise } from '../../hooks/useExercise';
 import { ExerciseDefinition, ExercisePhase, ExerciseConfig } from '../../types/exercise';
 import {
@@ -469,8 +470,12 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     return Math.round(sum / scores.length);
   }, [poseScores, liveScore]);
 
-  // Auto-save summary to backend
+  // Auto-save summary to backend (ห้ามบันทึกเซสชันที่มาจาก mock)
   const handleAutoSaveSummary = async () => {
+    if (poseService.getIsMockMode()) {
+      console.info('ℹ️ เซสชันมาจากโหมดจำลอง (Mock Mode) - ข้ามการบันทึกข้อมูล');
+      return;
+    }
     try {
       await api.saveSession({
         patient_id: patientId,

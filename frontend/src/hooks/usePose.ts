@@ -26,13 +26,16 @@ export function usePose(videoRef: React.RefObject<HTMLVideoElement>, isCameraAct
         if (isMounted) {
           setIsModelLoading(false);
           setIsMockModeState(poseService.getIsMockMode());
+          if (poseService.getErrorMessage()) {
+            setModelError(poseService.getErrorMessage());
+          }
         }
       } catch (err: unknown) {
         if (isMounted) {
           console.warn('Pose model loading warning:', err);
           setIsModelLoading(false);
-          setModelError('Using simulation mode');
-          setIsMockModeState(true);
+          setModelError(poseService.getErrorMessage() || 'ไม่สามารถดาวน์โหลดโมเดลตรวจจับท่าทางได้ กรุณาตรวจสอบอินเทอร์เน็ต');
+          setIsMockModeState(poseService.getIsMockMode());
         }
       }
     })();

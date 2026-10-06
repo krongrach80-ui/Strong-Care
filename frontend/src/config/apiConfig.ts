@@ -11,5 +11,5 @@ export const API_BASE_URL: string =
 
 export const IS_STATIC_MODE: boolean =
   import.meta.env.VITE_STATIC_DEMO === 'true' ||
-  (typeof window !== 'undefined' && window.location.hostname.includes('github.io'));
+  (typeof window !== 'undefined' && (window.location.hostname.includes('github.io') || window.location.search.includes('demo=1')));
 

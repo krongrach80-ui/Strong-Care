@@ -25,6 +25,7 @@ import {
   getSavedTherapyConfig,
   saveTherapyConfig,
   getTodayDateString,
+  getDefaultDateString,
   getDefaultTimeString,
   formatThaiDateTime,
 } from '../../services/therapySettingsService';
@@ -53,7 +54,7 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
 }) => {
   // Load initial settings from localStorage / defaults
   const [timeMode, setTimeMode] = useState<TimeSelectionMode>('now');
-  const [scheduledDate, setScheduledDate] = useState<string>(getTodayDateString());
+  const [scheduledDate, setScheduledDate] = useState<string>(getDefaultDateString());
   const [scheduledTime, setScheduledTime] = useState<string>(getDefaultTimeString());
   const [category, setCategory] = useState<ExerciseCategoryType>('stretch');
   const [customArea, setCustomArea] = useState<string>('');
@@ -67,12 +68,13 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
   const [isVideoModalOpen, setIsVideoModalOpen] = useState<boolean>(false);
 
   const todayStr = getTodayDateString();
+  const defaultDateStr = getDefaultDateString();
 
   // Load saved config on mount
   useEffect(() => {
     const saved = getSavedTherapyConfig(mode);
     setTimeMode(saved.timeMode);
-    setScheduledDate(saved.scheduledDate || todayStr);
+    setScheduledDate(saved.scheduledDate || defaultDateStr);
     setScheduledTime(saved.scheduledTime || getDefaultTimeString());
     setCategory(saved.category || 'stretch');
     if (saved.customArea) {

@@ -1,3 +1,4 @@
+import { asset } from '../utils/asset';
 /**
  * Strong Care - 11 Stretch Rehabilitation Exercises Dataset & Exercise Configurations
  * 
@@ -114,7 +115,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     svgType: 'neck_lateral',
     videoStartSeconds: 115, // 1:55
     demoVideoUrl: getStretchVideoEmbedUrl(115, false),
-    thumbnailUrl: '/images/poses/stretch_1.png',
+    thumbnailUrl: asset('images/poses/stretch_1.png'),
     targetPose: 'neck_lateral',
     targetAngle: 28,
     targetRom: 40,
@@ -154,7 +155,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     svgType: 'neck_flexion',
     videoStartSeconds: 175, // 2:55
     demoVideoUrl: getStretchVideoEmbedUrl(175, false),
-    thumbnailUrl: '/images/poses/stretch_2.png',
+    thumbnailUrl: asset('images/poses/stretch_2.png'),
     targetPose: 'neck_flexion',
     targetAngle: 35,
     targetRom: 50,
@@ -194,7 +195,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     svgType: 'shoulder_cross',
     videoStartSeconds: 225, // 3:45
     demoVideoUrl: getStretchVideoEmbedUrl(225, false),
-    thumbnailUrl: '/images/poses/stretch_3.png',
+    thumbnailUrl: asset('images/poses/stretch_3.png'),
     targetPose: 'shoulder_cross',
     targetAngle: 40,
     targetRom: 55,
@@ -234,7 +235,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     svgType: 'triceps_overhead',
     videoStartSeconds: 280, // 4:40
     demoVideoUrl: getStretchVideoEmbedUrl(280, false),
-    thumbnailUrl: '/images/poses/stretch_4.png',
+    thumbnailUrl: asset('images/poses/stretch_4.png'),
     targetPose: 'triceps_overhead',
     targetAngle: 55,
     targetRom: 75,
@@ -274,7 +275,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     svgType: 'chest_open',
     videoStartSeconds: 335, // 5:35
     demoVideoUrl: getStretchVideoEmbedUrl(335, false),
-    thumbnailUrl: '/images/poses/stretch_5.png',
+    thumbnailUrl: asset('images/poses/stretch_5.png'),
     targetPose: 'chest_open',
     targetAngle: 30,
     targetRom: 45,
@@ -314,7 +315,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     svgType: 'side_bend',
     videoStartSeconds: 390, // 6:30
     demoVideoUrl: getStretchVideoEmbedUrl(390, false),
-    thumbnailUrl: '/images/poses/stretch_6.png',
+    thumbnailUrl: asset('images/poses/stretch_6.png'),
     targetPose: 'side_bend',
     targetAngle: 25,
     targetRom: 35,
@@ -354,7 +355,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     svgType: 'torso_twist',
     videoStartSeconds: 445, // 7:25
     demoVideoUrl: getStretchVideoEmbedUrl(445, false),
-    thumbnailUrl: '/images/poses/stretch_7.png',
+    thumbnailUrl: asset('images/poses/stretch_7.png'),
     targetPose: 'torso_twist',
     targetAngle: 30,
     targetRom: 42,
@@ -394,7 +395,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     svgType: 'quadriceps',
     videoStartSeconds: 500, // 8:20
     demoVideoUrl: getStretchVideoEmbedUrl(500, false),
-    thumbnailUrl: '/images/poses/stretch_8.png',
+    thumbnailUrl: asset('images/poses/stretch_8.png'),
     targetPose: 'quadriceps',
     targetAngle: 50,
     targetRom: 75,
@@ -434,7 +435,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     svgType: 'hamstrings',
     videoStartSeconds: 555, // 9:15
     demoVideoUrl: getStretchVideoEmbedUrl(555, false),
-    thumbnailUrl: '/images/poses/stretch_9.png',
+    thumbnailUrl: asset('images/poses/stretch_9.png'),
     targetPose: 'hamstrings',
     targetAngle: 65,
     targetRom: 85,
@@ -474,7 +475,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     svgType: 'calf',
     videoStartSeconds: 615, // 10:15
     demoVideoUrl: getStretchVideoEmbedUrl(615, false),
-    thumbnailUrl: '/images/poses/stretch_10.png',
+    thumbnailUrl: asset('images/poses/stretch_10.png'),
     targetPose: 'calf',
     targetAngle: 75,
     targetRom: 90,
@@ -514,7 +515,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     svgType: 'piriformis_seated',
     videoStartSeconds: 670, // 11:10
     demoVideoUrl: getStretchVideoEmbedUrl(670, false),
-    thumbnailUrl: '/images/poses/stretch_11.png',
+    thumbnailUrl: asset('images/poses/stretch_11.png'),
     targetPose: 'piriformis_seated',
     targetAngle: 60,
     targetRom: 78,
@@ -549,7 +550,7 @@ export const PHYSIO_EXERCISES_CONFIG: Record<string, PhysioExerciseConfig> = {
     englishName: 'Alternating Knee Raise',
     description: 'ยืนตัวตรง ยกเข่าขึ้นสลับซ้าย-ขวา เสริมกำลังกล้ามเนื้อสะโพกและหน้าท้อง',
     demoVideoUrl: 'https://www.youtube.com/embed/1vR_n96sV-k',
-    thumbnailUrl: '/images/poses/alternating_knee_raise.png',
+    thumbnailUrl: asset('images/poses/alternating_knee_raise.png'),
     targetPose: 'alternating_knee_raise',
     targetAngle: 90,
     targetRom: 100,
@@ -567,7 +568,7 @@ export const PHYSIO_EXERCISES_CONFIG: Record<string, PhysioExerciseConfig> = {
     englishName: 'Shoulder Lateral Raise',
     description: 'กางแขนยกขึ้นด้านข้างระดับไหล่ ช่วยเพิ่มช่วงการเคลื่อนไหวข้อไหล่และความแข็งแรงของกล้ามเนื้อเดลทอยด์',
     demoVideoUrl: 'https://www.youtube.com/embed/3vOTTj_X3kQ?start=225',
-    thumbnailUrl: '/images/poses/shoulder_raise.png',
+    thumbnailUrl: asset('images/poses/shoulder_raise.png'),
     targetPose: 'shoulder_raise',
     targetAngle: 90,
     targetRom: 110,
@@ -585,7 +586,7 @@ export const PHYSIO_EXERCISES_CONFIG: Record<string, PhysioExerciseConfig> = {
     englishName: 'Bicep Curl',
     description: 'พับงอข้อศอกขึ้นและเหยียดตรง ช่วยฟื้นฟูกำลังแขนท่อนบนและข้อศอก',
     demoVideoUrl: 'https://www.youtube.com/embed/3vOTTj_X3kQ?start=280',
-    thumbnailUrl: '/images/poses/bicep_curl.png',
+    thumbnailUrl: asset('images/poses/bicep_curl.png'),
     targetPose: 'bicep_curl',
     targetAngle: 50,
     targetRom: 65,
@@ -602,7 +603,7 @@ export const PHYSIO_EXERCISES_CONFIG: Record<string, PhysioExerciseConfig> = {
     englishName: 'Chair Squat',
     description: 'ย่อสะโพกและเข่าลงเบาๆ เสริมกำลังขาและการทรงตัวสำหรับผู้สูงอายุ',
     demoVideoUrl: 'https://www.youtube.com/embed/3vOTTj_X3kQ?start=500',
-    thumbnailUrl: '/images/poses/knee_squat.png',
+    thumbnailUrl: asset('images/poses/knee_squat.png'),
     targetPose: 'knee_squat',
     targetAngle: 90,
     targetRom: 110,

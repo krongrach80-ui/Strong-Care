@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { LiveAnalysisFrame, RepResult } from '../types/exercise';
 import { Session } from '../types/session';
 import { api } from '../services/api';
+import { poseService } from '../services/poseService';
+import { OfflineStorageService } from '../services/offlineStorageService';
 
 interface SessionState {
   isActive: boolean;
@@ -82,11 +84,20 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       results: repResults,
     };
 
+    // ตรวจสอบว่ามาจากโหมดจำลอง (Mock Mode) หรือไม่ ถ้าใช่ห้ามบันทึกเซสชัน
+    if (poseService.getIsMockMode()) {
+      console.info('ℹ️ เซสชันมาจากโหมดจำลอง (Mock Mode) - ข้ามการบันทึกข้อมูล');
+      set({ lastSavedSession: null, isSaving: false });
+      return null as any;
+    }
+
     let finalizedSession: Session;
+    let serverSaveFailed = false;
 
     try {
       finalizedSession = await api.saveSession(sessionPayload);
     } catch (e) {
+      serverSaveFailed = true;
       console.warn('Saving to backend failed, using local offline result:', e);
       finalizedSession = {
         id: Math.floor(Math.random() * 1000) + 10,
@@ -107,8 +118,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
     // Always persist to local offline storage (Offline-first!)
     try {
-      const { OfflineStorageService } = await import('../services/offlineStorageService');
       OfflineStorageService.saveLocalSession(finalizedSession);
+      // เข้าคิวเฉพาะเมื่อบันทึกขึ้นเซิร์ฟเวอร์ล้มเหลว
+      if (serverSaveFailed) {
+        OfflineStorageService.addToSyncQueue(finalizedSession);
+      }
     } catch (err) {
       console.warn('Failed to save to OfflineStorageService:', err);
     }

@@ -469,10 +469,13 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
               <Camera className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <h3 className="font-bold text-slate-900 text-sm sm:text-base truncate">
-                {mode === 'login' ? 'เข้าสู่ระบบด้วยใบหน้า (Face Login)' : 'สมัครสมาชิกด้วยใบหน้า (Face Enrollment)'}
+              <h3 className="font-bold text-slate-900 text-sm sm:text-base truncate flex items-center gap-2">
+                <span>{mode === 'login' ? 'เข้าสู่ระบบด้วยใบหน้า (Face Login)' : 'สมัครสมาชิกด้วยใบหน้า (Face Enrollment)'}</span>
+                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 flex-shrink-0">
+                  ทดลอง (Beta)
+                </span>
               </h3>
-              <p className="text-[11px] text-slate-500 font-medium truncate">ออกแบบเพื่อผู้สูงอายุ • ไม่ต้องพิมพ์รหัสผ่าน</p>
+              <p className="text-[11px] text-slate-500 font-medium truncate">ออกแบบเพื่อผู้สูงอายุ • เทคโนโลยี AI ไบโอเมตริกซ์</p>
             </div>
           </div>
 
