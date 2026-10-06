@@ -55,6 +55,22 @@ const STATIC_SOUNDS_MAP: Record<string, string> = {
   guide_patients: '/sounds/guide_patients.mp3',
   guide_result: '/sounds/guide_result.mp3',
   test_voice: '/sounds/test_voice.mp3',
+  stretch_start: '/sounds/stretch_start.mp3',
+  stretch_switch_right: '/sounds/stretch_switch_right.mp3',
+  stretch_switch_left: '/sounds/stretch_switch_left.mp3',
+  stretch_hold_begin: '/sounds/stretch_hold_begin.mp3',
+  stretch_complete_all: '/sounds/stretch_complete_all.mp3',
+  stretch_pose_1: '/sounds/stretch_pose_1.mp3',
+  stretch_pose_2: '/sounds/stretch_pose_2.mp3',
+  stretch_pose_3: '/sounds/stretch_pose_3.mp3',
+  stretch_pose_4: '/sounds/stretch_pose_4.mp3',
+  stretch_pose_5: '/sounds/stretch_pose_5.mp3',
+  stretch_pose_6: '/sounds/stretch_pose_6.mp3',
+  stretch_pose_7: '/sounds/stretch_pose_7.mp3',
+  stretch_pose_8: '/sounds/stretch_pose_8.mp3',
+  stretch_pose_9: '/sounds/stretch_pose_9.mp3',
+  stretch_pose_10: '/sounds/stretch_pose_10.mp3',
+  stretch_pose_11: '/sounds/stretch_pose_11.mp3',
 };
 
 class VoiceAssistantService {

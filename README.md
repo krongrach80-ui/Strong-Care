@@ -1,14 +1,22 @@
 # Strong Care
 
 ## AI-assisted Rehabilitation Monitoring Platform
-
 ### ระบบช่วยติดตามและวิเคราะห์การฝึกกายภาพด้วย AI
 **“เพื่อการฝึกที่ปลอดภัย เหมาะสมกับผู้ใช้แต่ละราย และคำนึงถึงความเป็นส่วนตัว”**
+
+- 🌐 **ทดลองใช้งานจริงออนไลน์ (Live Demo)**: [https://krongrach80-ui.github.io/Strong-Care/](https://krongrach80-ui.github.io/Strong-Care/)
+- 📖 **เอกสารเกี่ยวกับระบบ (About)**: [ABOUT.md](file:///c:/Users/Devops/.gemini/antigravity-ide/scratch/StrongCare/ABOUT.md)
 
 > **Master Pitch:**
 > “Strong Care — แพลตฟอร์ม AI ช่วยติดตามและวิเคราะห์การฝึกกายภาพ เพื่อการฝึกที่ปลอดภัย เหมาะสมกับผู้ใช้แต่ละราย และคำนึงถึงความเป็นส่วนตัว”
 > 
 > “Strong Care is an AI-assisted rehabilitation monitoring platform that combines facial identity verification, liveness detection, pose and biomechanical analysis, real-time safety monitoring, adaptive recommendations, and human approval within a privacy-conscious offline-first architecture.”
+
+### 🌟 ฟีเจอร์เด่นใหม่ (New Features):
+1. **Vertical Fullscreen Smart-Mirror**: กล้องแนวตั้งเต็มจอสไตล์ Smart Rehab Mirror ล็อกจอ 100% Zero-Scroll เหมาะสำหรับผู้สูงอายุ
+2. **Picture-in-Picture (PiP) Video Inset**: คลิปวิดีโอคุณหมอสาธิต (Dr. Fame) ฝังในหน้าจอกล้องโดยตรง สลับมุมซ้าย-ขวาได้ ไม่บังการเคลื่อนไหว
+3. **11 Clinical Stretch Program**: โปรแกรมยืดเส้นกายภาพ 11 ท่า พร้อมระบบปรับเวลาค้างท่าอิสระ
+4. **Clinical Safety Watchdog**: ตรวจจับข้อต่อและมุมผิดรูป พร้อมเสียง AI ภาษาไทยแจ้งเตือนและสั่งหยุดพักฉุกเฉิน
 
 ---
 

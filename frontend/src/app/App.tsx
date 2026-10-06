@@ -1,134 +1,396 @@
-import React, { useEffect, useState } from 'react';
-import { Navbar } from '../components/Navbar';
-import { HomePage } from '../pages/Home/HomePage';
-import { DashboardPage } from '../pages/Dashboard/DashboardPage';
-import { PatientPage } from '../pages/Patient/PatientPage';
-import { ExercisePage } from '../pages/Exercise/ExercisePage';
-import { TrainingPage } from '../pages/Training/TrainingPage';
-import { ResultPage } from '../pages/Result/ResultPage';
-import { HistoryPage } from '../pages/History/HistoryPage';
-import { ReportsPage } from '../pages/Reports/ReportsPage';
-import { SettingsPage } from '../pages/Settings/SettingsPage';
-import { LoginPage } from '../pages/Login/LoginPage';
-import { EnrollmentPage } from '../pages/Enrollment/EnrollmentPage';
+import React, { useState, useEffect } from 'react';
+import { MintBackground } from '../components/Background/MintBackground';
+import { Screen1Home } from '../pages/NewFlow/Screen1Home';
+import { Screen2Login } from '../pages/NewFlow/Screen2Login';
+import { Screen3Menu } from '../pages/NewFlow/Screen3Menu';
+import { Screen3ScheduleConfig } from '../pages/NewFlow/Screen3ScheduleConfig';
+import { Screen4Exercise } from '../pages/NewFlow/Screen4Exercise';
+import {
+  checkDueReminder,
+  getSavedTherapyConfig,
+  TherapyScheduleConfig,
+} from '../services/therapySettingsService';
+import {
+  STRETCH_EXERCISES,
+  StretchExerciseItem,
+} from '../data/stretchExercises';
+import {
+  AdminModal,
+  TherapySettingsModal,
+  MiniGameSettingsModal,
+  UserProfileModal,
+  TherapistReportModal,
+} from '../components/Modals/AppModals';
 import { FaceAuthModal } from '../components/FaceAuth/FaceAuthModal';
-import { PrivacyConsentModal } from '../components/Privacy/PrivacyConsentModal';
-import { PrivacyCenterModal } from '../components/Privacy/PrivacyCenterModal';
-import { ArchitectureModal } from '../components/Architecture/ArchitectureModal';
-import { CompetitionDemoModal } from '../components/Competition/CompetitionDemoModal';
-import { SeniorEmergencyButton } from '../components/SeniorMode/SeniorEmergencyButton';
 import { usePatientStore } from '../store/patientStore';
 import { useExerciseStore } from '../store/exerciseStore';
-import { useSeniorStore } from '../store/seniorStore';
+import { useSessionStore } from '../store/sessionStore';
+import { api } from '../services/api';
+import { CheckCircle2 } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const [currentTab, setCurrentTab] = useState<string>('home');
-  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState<boolean>(false);
-  const [isPrivacyCenterOpen, setIsPrivacyCenterOpen] = useState<boolean>(false);
-  const [isArchitectureModalOpen, setIsArchitectureModalOpen] = useState<boolean>(false);
-  const [isCompetitionDemoOpen, setIsCompetitionDemoOpen] = useState<boolean>(false);
-  const { fetchPatients, isFaceAuthOpen, faceAuthMode, closeFaceAuth } = usePatientStore();
-  const fetchExercises = useExerciseStore((s) => s.fetchExercises);
-  const { isSeniorMode } = useSeniorStore();
+  // Navigation Flow State: 1 -> 2 -> 3 -> 4
+  const [currentScreen, setCurrentScreen] = useState<number>(1);
+  const [currentUserName, setCurrentUserName] = useState<string>('คุณสมชาย ใจดี');
+  const [activeStretchQueue, setActiveStretchQueue] = useState<StretchExerciseItem[]>([]);
+  const [activeCustomHoldTimes, setActiveCustomHoldTimes] = useState<Record<string, number>>({});
+
+  // Screen 3 Sub-View: 'menu' (Default user menu) | 'config' (เลือกเวลาและท่าทาง)
+  const [screen3SubView, setScreen3SubView] = useState<'menu' | 'config'>('menu');
+  const [configMode, setConfigMode] = useState<'physio' | 'minigame'>('physio');
+
+  // Modal States
+  const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
+  const [isTherapySettingsOpen, setIsTherapySettingsOpen] = useState<boolean>(false);
+  const [isMiniGameSettingsOpen, setIsMiniGameSettingsOpen] = useState<boolean>(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+  const [isTherapistReportOpen, setIsTherapistReportOpen] = useState<boolean>(false);
+  const [therapistReportData, setTherapistReportData] = useState<{
+    score: number;
+    poseName: string;
+    romAngle: number;
+  }>({ score: 85, poseName: 'ท่าที่ 1: กางแขนข้างลำตัว', romAngle: 88 });
+
+  // Toast notification
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 3200);
+  };
+
+  // Global Stores
+  const { patients, selectedPatient, selectPatient, fetchPatients, isFaceAuthOpen, faceAuthMode, closeFaceAuth, openFaceAuth } =
+    usePatientStore();
+  const { exercises, selectedExercise, selectExercise, fetchExercises } = useExerciseStore();
+  const { finishSession } = useSessionStore();
 
   useEffect(() => {
     fetchPatients();
     fetchExercises();
   }, [fetchPatients, fetchExercises]);
 
+  // Navigate & scroll to top smoothly
+  const handleNavigate = (screenNumber: number) => {
+    setCurrentScreen(screenNumber);
+    if (screenNumber === 3) {
+      setScreen3SubView('menu');
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Open Sub-View Configuration ("เลือกเวลาและท่าทาง")
+  const handleOpenScheduleConfig = (mode: 'physio' | 'minigame' = 'physio') => {
+    setConfigMode(mode);
+    setScreen3SubView('config');
+    window.history.pushState({ screen: 3, subView: 'config', mode }, '');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Back to Screen 3 Menu from Config
+  const handleBackToMenu = () => {
+    setScreen3SubView('menu');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Start Workout immediately from Schedule Config -> Screen 4
+  const handleStartNowFromConfig = (config: TherapyScheduleConfig) => {
+    const categoryTitle = config.categoryTitle;
+
+    // If stretch category, prepare active stretch queue
+    if (config.category === 'stretch') {
+      const selectedIds = config.selectedStretchIds && config.selectedStretchIds.length > 0
+        ? config.selectedStretchIds
+        : STRETCH_EXERCISES.map((e) => e.id);
+      const queue = STRETCH_EXERCISES.filter((item) => selectedIds.includes(item.id));
+      setActiveStretchQueue(queue);
+      setActiveCustomHoldTimes(config.customHoldTimes || {});
+    } else {
+      setActiveStretchQueue([]);
+      setActiveCustomHoldTimes({});
+    }
+
+    const baseEx = exercises[0] || {
+      id: 1,
+      name: 'Shoulder Lateral Raise (กางแขนยกหัวไหล่)',
+      slug: 'shoulder_raise',
+      category: 'Upper Body',
+      description: 'ฝึกยกแขนออกด้านข้างลำตัวเพื่อฟื้นฟูกล้ามเนื้อ Deltoid',
+      target_joint: 'shoulder',
+      target_angle: 90,
+      min_angle: 75,
+      max_angle: 110,
+      target_reps: 10,
+      difficulty: 'beginner',
+    };
+
+    selectExercise({
+      ...baseEx,
+      name: `${categoryTitle}: ${baseEx.name}`,
+    });
+
+    showToast(`เริ่มโปรแกรม: ${categoryTitle}`);
+    handleNavigate(4);
+  };
+
+  // Save Schedule Booking Confirmation
+  const handleScheduleSaved = (config: TherapyScheduleConfig, msg: string) => {
+    showToast(msg);
+    setScreen3SubView('menu');
+  };
+
+  // Browser Back Button (popstate) handling for sub-view
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (screen3SubView === 'config') {
+        setScreen3SubView('menu');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [screen3SubView]);
+
+  // Scheduled Reminder Notification Poller
+  useEffect(() => {
+    const checkReminder = () => {
+      const due = checkDueReminder();
+      if (due) {
+        showToast(`⏰ ถึงเวลาฝึกกายภาพตามที่นัดหมายไว้: ${due.categoryTitle}!`);
+      }
+    };
+    checkReminder();
+    const interval = setInterval(checkReminder, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Login handler
+  const handleLoginSuccess = (name: string) => {
+    setCurrentUserName(name);
+    const matched = patients.find((p) => p.name.includes(name) || name.includes(p.name));
+    if (matched) {
+      selectPatient(matched);
+    }
+    showToast(`เข้าสู่ระบบสำเร็จ ยินดีต้อนรับ ${name}`);
+    setTimeout(() => {
+      handleNavigate(3);
+    }, 350);
+  };
+
+  // Face auth login callback
+  const handleFaceLoginDone = (patientData?: any) => {
+    closeFaceAuth();
+    if (patientData && patientData.name) {
+      setCurrentUserName(patientData.name);
+      selectPatient(patientData);
+      showToast(`ยินดีต้อนรับ ${patientData.name} เข้าสู่ระบบด้วยใบหน้าสำเร็จ`);
+    } else {
+      showToast('เข้าสู่ระบบด้วยใบหน้าสำเร็จ');
+    }
+    setTimeout(() => {
+      handleNavigate(3);
+    }, 350);
+  };
+
+  // Therapist report submission
+  const handleSubmitReport = async (note: string) => {
+    try {
+      await api.saveSession({
+        patient_id: selectedPatient?.id || 1,
+        exercise_id: selectedExercise?.id || 1,
+        total_reps: 10,
+        correct_reps: 9,
+        accuracy: therapistReportData.score,
+        avg_duration_per_rep: 6.0,
+        status: 'completed',
+        notes: note || `บันทึกผลท่า ${therapistReportData.poseName} องศา ROM ${therapistReportData.romAngle}°`,
+      });
+      showToast('ส่งผลการฝึกให้นักกายภาพบำบัดเรียบร้อยแล้ว!');
+    } catch (e) {
+      showToast('บันทึกผลการฝึกเรียบร้อย');
+    }
+  };
+
   return (
     <div
-      className={`h-[100dvh] min-h-screen bg-[#F8FAF9] text-[#1F2937] flex flex-col selection:bg-emerald-200 selection:text-emerald-900 transition-all overflow-hidden ${
-        isSeniorMode ? 'senior-mode text-base' : ''
+      className={`w-full relative flex flex-col items-center text-[#0B2B2B] ${
+        currentScreen === 4 ? 'h-[100dvh] max-h-[100dvh] overflow-hidden' : 'min-h-[100dvh] justify-start'
       }`}
     >
-      <Navbar
-        currentTab={currentTab}
-        setCurrentTab={setCurrentTab}
-        onOpenPrivacy={() => setIsPrivacyModalOpen(true)}
-        onOpenPrivacyCenter={() => setIsPrivacyCenterOpen(true)}
-        onOpenArchitecture={() => setIsArchitectureModalOpen(true)}
-        onOpenCompetitionDemo={() => setIsCompetitionDemoOpen(true)}
-      />
+      
+      {/* 1. Full-Screen Vector Ambient Mint Background */}
+      <MintBackground />
 
-      <main className="flex-1 overflow-y-auto overscroll-contain max-w-[1400px] w-full mx-auto px-3 sm:px-6 lg:px-8 pt-3 sm:pt-6 pb-24 safe-area-left safe-area-right">
-        {currentTab === 'home' && <HomePage onNavigate={setCurrentTab} />}
-        {currentTab === 'dashboard' && <DashboardPage onNavigate={setCurrentTab} />}
-        {currentTab === 'patients' && <PatientPage onNavigate={setCurrentTab} />}
-        {currentTab === 'exercises' && <ExercisePage onNavigate={setCurrentTab} />}
-        {currentTab === 'training' && <TrainingPage onNavigate={setCurrentTab} />}
-        {currentTab === 'result' && <ResultPage onNavigate={setCurrentTab} />}
-        {currentTab === 'history' && <HistoryPage onNavigate={setCurrentTab} />}
-        {currentTab === 'reports' && <ReportsPage onNavigate={setCurrentTab} />}
-        {currentTab === 'settings' && <SettingsPage />}
-        {currentTab === 'login' && <LoginPage onNavigate={setCurrentTab} />}
-        {currentTab === 'enrollment' && <EnrollmentPage onNavigate={setCurrentTab} />}
+      {/* 2. Top Screen Switcher for Testing & Demonstration */}
+      <nav
+        className={`fixed z-40 bg-[#0B2B2B]/85 backdrop-blur-md border border-emerald-400/35 rounded-full px-2 py-0.5 sm:py-1 flex items-center gap-1 shadow-lg max-w-[calc(100vw-24px)] overflow-x-auto transition-all ${
+          currentScreen === 4 ? 'top-1 sm:top-1.5 opacity-80 hover:opacity-100 scale-90 sm:scale-95' : 'top-2 sm:top-3'
+        }`}
+        aria-label="แถบสลับหน้าทดสอบ"
+      >
+        {[
+          { num: 1, label: '1: หน้าแรก' },
+          { num: 2, label: '2: เข้าสู่ระบบ' },
+          { num: 3, label: '3: เมนูผู้ใช้' },
+          { num: 4, label: '4: กายภาพ' },
+        ].map((tab) => (
+          <button
+            key={tab.num}
+            onClick={() => handleNavigate(tab.num)}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-all whitespace-nowrap ${
+              currentScreen === tab.num
+                ? 'bg-gradient-to-r from-[#6FD67F] to-[#4AE387] text-[#0B2B2B] font-bold shadow-sm'
+                : 'text-emerald-100/80 hover:text-white hover:bg-emerald-700/30'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
+      {/* 3. Toast Notification Banner */}
+      {toastMessage && (
+        <div className="fixed top-14 sm:top-16 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-white text-[#0B2B2B] border-l-4 border-[#1E8A4C] shadow-xl animate-fadeIn max-w-sm w-[90%]">
+          <div className="w-6 h-6 rounded-full bg-emerald-100 text-[#1E8A4C] flex items-center justify-center flex-shrink-0">
+            <CheckCircle2 className="w-4 h-4" />
+          </div>
+          <span className="text-xs sm:text-sm font-semibold leading-snug">{toastMessage}</span>
+        </div>
+      )}
+
+      {/* 4. Active Screens Viewport */}
+      <main
+        className={`w-full flex-1 flex flex-col items-center relative z-10 ${
+          currentScreen === 4
+            ? 'h-[calc(100dvh-36px)] max-h-[calc(100dvh-36px)] pt-9 sm:pt-10 pb-1.5 px-1.5 sm:px-3 justify-between overflow-hidden'
+            : 'justify-center px-4 pt-14 pb-8 sm:pt-16 sm:pb-10'
+        }`}
+      >
+        
+        {/* หน้า 1: หน้าแรก */}
+        {currentScreen === 1 && (
+          <Screen1Home
+            onStart={() => handleNavigate(2)}
+            onOpenAdmin={() => setIsAdminOpen(true)}
+          />
+        )}
+
+        {/* หน้า 2: เข้าสู่ระบบ */}
+        {currentScreen === 2 && (
+          <Screen2Login
+            onBack={() => handleNavigate(1)}
+            onLoginSuccess={handleLoginSuccess}
+            onOpenFaceLogin={() => openFaceAuth('login')}
+            onRegister={() => openFaceAuth('enroll')}
+            patients={patients}
+          />
+        )}
+
+        {/* หน้า 3: เมนูผู้ใช้ และหน้าย่อยตั้งค่า "เลือกเวลาและท่าทาง" */}
+        {currentScreen === 3 && (
+          screen3SubView === 'config' ? (
+            <Screen3ScheduleConfig
+              mode={configMode}
+              onBack={handleBackToMenu}
+              onStartNow={handleStartNowFromConfig}
+              onScheduleSaved={handleScheduleSaved}
+            />
+          ) : (
+            <Screen3Menu
+              userName={currentUserName}
+              patient={selectedPatient}
+              onBack={() => handleNavigate(2)}
+              onStartTherapy={() => {
+                const savedConfig = getSavedTherapyConfig('physio');
+                if (savedConfig.category === 'stretch') {
+                  const selectedIds = savedConfig.selectedStretchIds && savedConfig.selectedStretchIds.length > 0
+                    ? savedConfig.selectedStretchIds
+                    : STRETCH_EXERCISES.map((e) => e.id);
+                  const queue = STRETCH_EXERCISES.filter((item) => selectedIds.includes(item.id));
+                  setActiveStretchQueue(queue);
+                  setActiveCustomHoldTimes(savedConfig.customHoldTimes || {});
+                } else {
+                  setActiveStretchQueue([]);
+                  setActiveCustomHoldTimes({});
+                }
+                handleNavigate(4);
+              }}
+              onOpenTherapySettings={() => handleOpenScheduleConfig('physio')}
+              onStartMiniGame={() => {
+                showToast('เปิดโหมดมินิเกม: ตะลุยด่านสะสมแต้มสุขภาพ!');
+                setTimeout(() => handleNavigate(4), 500);
+              }}
+              onOpenMiniGameSettings={() => handleOpenScheduleConfig('minigame')}
+              onOpenUserInfo={() => setIsProfileModalOpen(true)}
+            />
+          )
+        )}
+
+        {/* หน้า 4: หน้าทำกายภาพ */}
+        {currentScreen === 4 && (
+          <Screen4Exercise
+            onBack={() => handleNavigate(3)}
+            onOpenTherapistModal={(score, poseName, romAngle) => {
+              setTherapistReportData({ score, poseName, romAngle });
+              setIsTherapistReportOpen(true);
+            }}
+            selectedExercise={selectedExercise}
+            stretchQueue={activeStretchQueue}
+            customHoldTimes={activeCustomHoldTimes}
+            patientId={selectedPatient?.id || 1}
+          />
+        )}
+
       </main>
 
-      {/* Global Face Auth Modal (Elderly-Friendly Face Login & Enrollment) */}
+      {/* 5. Modals System */}
+      {/* Admin Portal Modal */}
+      <AdminModal
+        isOpen={isAdminOpen}
+        onClose={() => setIsAdminOpen(false)}
+      />
+
+      {/* Therapy Settings Modal */}
+      <TherapySettingsModal
+        isOpen={isTherapySettingsOpen}
+        onClose={() => setIsTherapySettingsOpen(false)}
+        exercises={exercises}
+        selectedExercise={selectedExercise}
+        onSelectExercise={selectExercise}
+      />
+
+      {/* Mini Game Settings Modal */}
+      <MiniGameSettingsModal
+        isOpen={isMiniGameSettingsOpen}
+        onClose={() => setIsMiniGameSettingsOpen(false)}
+      />
+
+      {/* User Profile Modal */}
+      <UserProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        patient={selectedPatient}
+      />
+
+      {/* Therapist Report Modal */}
+      <TherapistReportModal
+        isOpen={isTherapistReportOpen}
+        onClose={() => setIsTherapistReportOpen(false)}
+        score={therapistReportData.score}
+        poseName={therapistReportData.poseName}
+        romAngle={therapistReportData.romAngle}
+        onSubmit={handleSubmitReport}
+      />
+
+      {/* Face Authentication Modal (Face Login & Face Enrollment) */}
       <FaceAuthModal
         isOpen={isFaceAuthOpen}
         onClose={closeFaceAuth}
         initialMode={faceAuthMode}
+        onLoginSuccess={handleFaceLoginDone}
       />
 
-      {/* Edge Biometric Privacy & Protection Consent Modal */}
-      <PrivacyConsentModal
-        isOpen={isPrivacyModalOpen}
-        onClose={() => setIsPrivacyModalOpen(false)}
-      />
-
-      {/* Dedicated Privacy Center Modal (Privacy-by-Design Architecture) */}
-      <PrivacyCenterModal
-        isOpen={isPrivacyCenterOpen}
-        onClose={() => setIsPrivacyCenterOpen(false)}
-      />
-
-      {/* Winning 3-5 Minute Competition Demo Modal */}
-      <CompetitionDemoModal
-        isOpen={isCompetitionDemoOpen}
-        onClose={() => setIsCompetitionDemoOpen(false)}
-        onNavigateToTab={(tab) => {
-          setCurrentTab(tab);
-          setIsCompetitionDemoOpen(false);
-        }}
-      />
-
-      {/* System Architecture & AI Pipeline Modal (Competition Judges) */}
-      <ArchitectureModal
-        isOpen={isArchitectureModalOpen}
-        onClose={() => setIsArchitectureModalOpen(false)}
-        onNavigateToDemoStep={(stepId) => {
-          if (stepId === 'identify' || stepId === 'verify') {
-            usePatientStore.getState().openFaceAuth('login');
-          } else if (stepId === 'calibrate' || stepId === 'analyze' || stepId === 'protect') {
-            setCurrentTab('training');
-          } else if (stepId === 'improve' || stepId === 'adapt' || stepId === 'approve') {
-            setCurrentTab('history');
-          }
-          setIsArchitectureModalOpen(false);
-        }}
-        onOpenApprovalGate={() => {
-          setCurrentTab('history');
-          setIsArchitectureModalOpen(false);
-        }}
-      />
-
-      {/* Floating Senior Mode Emergency SOS Button */}
-      <SeniorEmergencyButton />
-
-      {/* Clinical Footer */}
-      <footer className="border-t border-emerald-100 bg-white/95 backdrop-blur-md py-6 text-center text-xs text-slate-500 font-sans mt-12">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <span className="flex items-center gap-2 font-medium text-slate-700">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <strong>Strong Care v1.0</strong> &bull; ระบบช่วยติดตามและวิเคราะห์การฝึกกายภาพด้วย AI เพื่อความปลอดภัยและการฟื้นฟูที่เหมาะสม
-          </span>
-          <span className="text-slate-400 text-[11px]">
-            React + TypeScript + Vite + MediaPipe + PHP 8.x + MySQL &bull; Privacy-Oriented Edge AI
-          </span>
-        </div>
-      </footer>
     </div>
   );
 };

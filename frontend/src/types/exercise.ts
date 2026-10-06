@@ -1,8 +1,36 @@
-export type ExerciseSlug = 'shoulder_raise' | 'bicep_curl' | 'knee_squat' | 'elbow_extension' | string;
+export type ExerciseSlug = 'shoulder_raise' | 'bicep_curl' | 'knee_squat' | 'elbow_extension' | 'alternating-knee-raise' | string;
+
+export type ExercisePhase =
+  | 'IDLE'
+  | 'EXERCISE_SELECTED'
+  | 'PREPARING'
+  | 'COUNTDOWN_3'
+  | 'COUNTDOWN_2'
+  | 'COUNTDOWN_1'
+  | 'READY'
+  | 'ACTIVE'
+  | 'COMPLETED'
+  | 'SAFETY_STOP';
+
+export interface ExerciseConfig {
+  id: string;
+  name: string;
+  englishName: string;
+  description: string;
+  demoVideoUrl?: string;
+  thumbnailUrl?: string;
+  targetPose: string;
+  targetAngle?: number;
+  targetRom?: number;
+  recommendedReps: number;
+  cooldownSeconds: number;
+  safetyTips: string[];
+}
 
 export interface ExerciseDefinition {
   id: number;
   name: string;
+  englishName?: string;
   slug: ExerciseSlug;
   category: string;
   description: string;
@@ -13,6 +41,12 @@ export interface ExerciseDefinition {
   target_reps: number;
   difficulty: 'beginner' | 'intermediate' | 'advanced';
   instructions?: string;
+  demoVideoUrl?: string;
+  thumbnailUrl?: string;
+  targetPose?: string;
+  targetRom?: number;
+  cooldownSeconds?: number;
+  safetyTips?: string[];
   // Clinical Configuration Parameters
   hold_seconds?: number;
   tolerance_angle?: number;

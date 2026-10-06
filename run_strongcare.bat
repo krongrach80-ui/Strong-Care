@@ -15,7 +15,7 @@ start "StrongCare-Backend" /min "%PHP_PATH%\php.exe" -S 127.0.0.1:8000 -t "%CURR
 
 echo [2/2] Starting Frontend (Vite) on http://127.0.0.1:5173 ...
 cd /d "%CURRENT_DIR%frontend"
-start "StrongCare-Frontend" cmd /k ""%NODE_PATH%\node.exe" ".\node_modules\vite\bin\vite.js" --host 127.0.0.1 --open http://127.0.0.1:5173"
+start "StrongCare-Frontend" "%NODE_PATH%\node.exe" ".\node_modules\vite\bin\vite.js" --host 127.0.0.1 --open http://127.0.0.1:5173
 
 echo.
 echo ========================================================
