@@ -40,6 +40,9 @@ import { useHospitalStore } from '../../store/hospitalStore';
 import { UserAccount, UserRole, PhysicalTherapist, HospitalExercise, ActivityLog } from '../../types/hospital';
 import { ReceptionOnboardingModal } from '../../components/Reception/ReceptionOnboardingModal';
 import { AddUserModal } from '../../components/Hospital/AddUserModal';
+import { EditUserModal } from '../../components/Hospital/EditUserModal';
+import { ChangePasswordModal } from '../../components/Hospital/ChangePasswordModal';
+import { DeleteUserModal } from '../../components/Hospital/DeleteUserModal';
 
 interface HospitalPortalProps {
   onClose: () => void;
@@ -174,12 +177,55 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
     }
   };
 
-  // Edit User (Name/Phone) Modal State
+  // Edit User Modal State
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
+
+  const handleEditUser = (
+    userId: number,
+    updatedData: Partial<UserAccount>,
+    therapistExtra?: Partial<PhysicalTherapist>
+  ) => {
+    updateUser(userId, updatedData);
+    if (therapistExtra) {
+      const existingTherapist = therapists.find((t) => t.id === userId);
+      if (existingTherapist) {
+        updateTherapist(userId, therapistExtra);
+      } else {
+        addTherapist({
+          code: updatedData.code || `T-${Math.floor(100 + Math.random() * 900)}`,
+          name: updatedData.name || 'นักกายภาพ',
+          specialty:
+            therapistExtra.specialty ||
+            'กายภาพบำบัดระบบกระดูกและกล้ามเนื้อ (Orthopedic PT)',
+          phone: updatedData.phone || '08x-xxx-xxxx',
+          email: updatedData.email || 'pt@strongcare.hospital',
+          licenseNumber: therapistExtra.licenseNumber || 'กภ. 8920',
+          activePatientsCount: 0,
+          assignedCases: [],
+          bio: therapistExtra.bio || '',
+          status: 'active',
+        });
+      }
+    }
+  };
+
+  // Check if current user can edit target user
+  const canEditUser = (targetUser: UserAccount): boolean => {
+    if (currentRole === 'admin') return true;
+    if (currentRole === 'therapist') {
+      // Physiotherapist can ONLY edit patients under their care
+      if (targetUser.role !== 'patient') return false;
+      const isAssigned =
+        targetUser.assignedTherapistId === currentUserId ||
+        (targetUser.assignedTherapistName &&
+          targetUser.assignedTherapistName.includes(currentTherapist?.name || 'ธนากร'));
+      return !!isAssigned;
+    }
+    return false;
+  };
 
   // Edit Password / PIN Modal State
   const [editingPasswordUser, setEditingPasswordUser] = useState<UserAccount | null>(null);
-  const [newPasswordInput, setNewPasswordInput] = useState<string>('');
 
   // Delete User Confirmation Modal State
   const [deletingUser, setDeletingUser] = useState<UserAccount | null>(null);
@@ -860,13 +906,44 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                     <tbody className="divide-y divide-emerald-50">
                       {paginatedUsers.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="py-10 text-center text-slate-400">
-                            ไม่พบบัญชีผู้ใช้งานที่ตรงตามเงื่อนไข
+                          <td colSpan={5} className="py-12 text-center">
+                            <div className="flex flex-col items-center justify-center space-y-2">
+                              <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
+                                <Search className="w-6 h-6" />
+                              </div>
+                              <div className="font-bold text-sm text-slate-600">
+                                ไม่พบข้อมูลผู้ใช้งานที่ตรงตามเงื่อนไข
+                              </div>
+                              <div className="text-xs text-slate-400">
+                                ลองเปลี่ยนคำค้นหา หรือรีเซ็ตตัวกรองเพื่อดูรายชื่อทั้งหมด
+                              </div>
+                              <div className="flex items-center gap-2 pt-2">
+                                {(userSearch || userRoleFilter !== 'all') && (
+                                  <button
+                                    onClick={() => {
+                                      setUserSearch('');
+                                      setUserRoleFilter('all');
+                                      setUserPage(1);
+                                    }}
+                                    className="px-4 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer"
+                                  >
+                                    ล้างการค้นหา
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => setIsAddUserModalOpen(true)}
+                                  className="px-4 py-1.5 rounded-full bg-[#10B981] hover:bg-emerald-600 text-white text-xs font-bold shadow-sm transition cursor-pointer"
+                                >
+                                  {currentRole === 'admin' ? '+ เพิ่มบัญชีใหม่' : '+ เพิ่มบัญชีคนไข้'}
+                                </button>
+                              </div>
+                            </div>
                           </td>
                         </tr>
                       ) : (
                         paginatedUsers.map((user) => {
                           const isPwRevealed = revealedPasswords[user.id];
+                          const canEdit = canEditUser(user);
                           const canDelete = canDeleteUser(user);
                           return (
                             <tr key={user.id} className="hover:bg-emerald-50/40 transition">
@@ -907,11 +984,8 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                                     {isPwRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                                   </button>
                                   <button
-                                    onClick={() => {
-                                      setEditingPasswordUser(user);
-                                      setNewPasswordInput(user.password || '1234');
-                                    }}
-                                    title="แก้ไขรหัสผ่าน / PIN"
+                                    onClick={() => setEditingPasswordUser(user)}
+                                    title="เปลี่ยนรหัสผ่าน / PIN"
                                     className="text-[11px] font-bold text-emerald-700 hover:underline pl-1 cursor-pointer"
                                   >
                                     เปลี่ยน
@@ -951,22 +1025,30 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                               {/* 5. Actions: Edit Name, Edit Password, Delete Account */}
                               <td className="py-4 px-6 text-right">
                                 <div className="inline-flex items-center gap-1.5">
-                                  {/* Edit name & basic info */}
+                                  {/* Edit user account */}
                                   <button
-                                    onClick={() => setEditingUser(user)}
-                                    title="แก้ไขชื่อผู้ใช้งาน"
-                                    className="p-1.5 rounded-full border border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition cursor-pointer"
+                                    onClick={() => {
+                                      if (canEdit) {
+                                        setEditingUser(user);
+                                      } else {
+                                        showToast('สิทธิ์ไม่เพียงพอ: นักกายภาพสามารถแก้ไขได้เฉพาะคนไข้ที่ตนเองดูแลเท่านั้น');
+                                      }
+                                    }}
+                                    disabled={!canEdit}
+                                    title={canEdit ? 'แก้ไขบัญชี' : 'แก้ไขได้เฉพาะคนไข้ที่ตนเองดูแลเท่านั้น'}
+                                    className={`p-1.5 rounded-full border transition ${
+                                      canEdit
+                                        ? 'border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 cursor-pointer'
+                                        : 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50'
+                                    }`}
                                   >
                                     <Pencil className="w-3.5 h-3.5" />
                                   </button>
 
-                                  {/* Edit password */}
+                                  {/* Change password */}
                                   <button
-                                    onClick={() => {
-                                      setEditingPasswordUser(user);
-                                      setNewPasswordInput(user.password || '1234');
-                                    }}
-                                    title="แก้ไขรหัสผ่าน"
+                                    onClick={() => setEditingPasswordUser(user)}
+                                    title="เปลี่ยนรหัสผ่าน"
                                     className="p-1.5 rounded-full border border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition cursor-pointer"
                                   >
                                     <KeyRound className="w-3.5 h-3.5" />
@@ -1972,220 +2054,48 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
       />
 
       {/* ==================================================================== */}
-      {/* 5. EDIT USER NAME/PHONE MODAL (Tab 1: users)                         */}
+      {/* 5. EDIT USER MODAL (Tab 1: users)                                    */}
       {/* ==================================================================== */}
-      {editingUser && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F2F2B]/60 backdrop-blur-sm animate-fadeIn"
-          onClick={() => setEditingUser(null)}
-        >
-          <div
-            className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-emerald-200 space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between pb-2 border-b border-emerald-100">
-              <h4 className="font-bold text-base text-[#0F2F2B]">แก้ไขชื่อและข้อมูลผู้ใช้งาน</h4>
-              <button
-                onClick={() => setEditingUser(null)}
-                className="p-1 rounded-full text-slate-400 hover:bg-slate-100 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                updateUser(editingUser.id, editingUser);
-                showToast(`แก้ไขชื่อของ ${editingUser.name} สำเร็จ`);
-                setEditingUser(null);
-              }}
-              className="space-y-3.5 text-xs font-semibold"
-            >
-              <div>
-                <label className="block text-slate-700 mb-1">ชื่อ-นามสกุล:</label>
-                <input
-                  type="text"
-                  value={editingUser.name}
-                  onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-sm font-bold outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-700 mb-1">ชื่อผู้ใช้งาน (Username):</label>
-                <input
-                  type="text"
-                  value={editingUser.username}
-                  onChange={(e) => setEditingUser({ ...editingUser, username: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-sm font-mono outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-700 mb-1">เบอร์โทรศัพท์:</label>
-                <input
-                  type="text"
-                  value={editingUser.phone || ''}
-                  onChange={(e) => setEditingUser({ ...editingUser, phone: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-sm outline-none"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingUser(null)}
-                  className="px-4 py-2 rounded-full border border-slate-300 text-slate-600 font-bold cursor-pointer"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-full bg-[#10B981] text-white font-bold shadow-md hover:bg-emerald-600 transition cursor-pointer"
-                >
-                  บันทึก
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <EditUserModal
+        isOpen={!!editingUser}
+        onClose={() => setEditingUser(null)}
+        user={editingUser}
+        currentRole={currentRole}
+        currentUserId={currentUserId}
+        currentUserName={currentUser?.name || 'กภ. ธนากร วงศ์สวัสดิ์'}
+        therapists={therapists}
+        existingUsers={users}
+        onSubmitUser={handleEditUser}
+        onSuccessToast={showToast}
+      />
 
       {/* ==================================================================== */}
-      {/* 6. EDIT PASSWORD / PIN MODAL (Tab 1: users)                          */}
+      {/* 6. CHANGE PASSWORD MODAL (Tab 1: users)                              */}
       {/* ==================================================================== */}
-      {editingPasswordUser && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F2F2B]/60 backdrop-blur-sm animate-fadeIn"
-          onClick={() => setEditingPasswordUser(null)}
-        >
-          <div
-            className="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl border border-emerald-200 space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between pb-2 border-b border-emerald-100">
-              <h4 className="font-bold text-base text-[#0F2F2B]">แก้ไขรหัสผ่าน / PIN</h4>
-              <button
-                onClick={() => setEditingPasswordUser(null)}
-                className="p-1 rounded-full text-slate-400 hover:bg-slate-100 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-600">
-              เปลี่ยนรหัสผ่านสำหรับ <strong>{editingPasswordUser.name}</strong> ({editingPasswordUser.code})
-            </p>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                resetUserPassword(editingPasswordUser.id, newPasswordInput);
-                showToast(`เปลี่ยนรหัสผ่านของ ${editingPasswordUser.name} เรียบร้อยแล้ว`);
-                setEditingPasswordUser(null);
-              }}
-              className="space-y-3.5"
-            >
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">รหัสผ่านใหม่:</label>
-                <input
-                  type="text"
-                  value={newPasswordInput}
-                  onChange={(e) => setNewPasswordInput(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-base font-mono font-bold text-center outline-none"
-                  required
-                />
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setNewPasswordInput('1234')}
-                  className="flex-1 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 cursor-pointer"
-                >
-                  ใช้ค่ามาตรฐาน (1234)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const rnd = Math.floor(1000 + Math.random() * 9000).toString();
-                    setNewPasswordInput(rnd);
-                  }}
-                  className="flex-1 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-xs font-semibold text-emerald-800 cursor-pointer"
-                >
-                  สุ่ม PIN 4 หลัก
-                </button>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingPasswordUser(null)}
-                  className="px-4 py-2 rounded-full border border-slate-300 text-slate-600 text-xs font-bold cursor-pointer"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-full bg-[#10B981] text-white text-xs font-bold shadow-md hover:bg-emerald-600 transition cursor-pointer"
-                >
-                  บันทึกรหัสผ่าน
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <ChangePasswordModal
+        isOpen={!!editingPasswordUser}
+        onClose={() => setEditingPasswordUser(null)}
+        user={editingPasswordUser}
+        onSavePassword={(userId, newPassword) => {
+          resetUserPassword(userId, newPassword);
+        }}
+        onSuccessToast={showToast}
+      />
 
       {/* ==================================================================== */}
-      {/* 7. DELETE USER CONFIRMATION MODAL                                    */}
+      {/* 7. DELETE USER CONFIRMATION MODAL (Tab 1: users)                     */}
       {/* ==================================================================== */}
-      {deletingUser && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F2F2B]/60 backdrop-blur-sm animate-fadeIn"
-          onClick={() => setDeletingUser(null)}
-        >
-          <div
-            className="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl border border-rose-200 text-center space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 mx-auto flex items-center justify-center">
-              <Trash2 className="w-6 h-6" />
-            </div>
-
-            <div>
-              <h4 className="font-bold text-base text-[#0F2F2B]">ยืนยันการลบบัญชีผู้ใช้งาน?</h4>
-              <p className="text-xs text-slate-500 mt-1">
-                คุณกำลังจะลบบัญชี <strong>{deletingUser.name}</strong> ({deletingUser.code}) ข้อมูลประวัติการใช้งานจะถูกลบออกจากระบบ
-              </p>
-            </div>
-
-            <div className="flex gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeletingUser(null)}
-                className="flex-1 py-2.5 rounded-2xl border border-slate-300 text-slate-600 text-xs font-bold cursor-pointer"
-              >
-                ยกเลิก
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  deleteUser(deletingUser.id);
-                  showToast(`ลบบัญชี ${deletingUser.name} สำเร็จ`);
-                  setDeletingUser(null);
-                }}
-                className="flex-1 py-2.5 rounded-2xl bg-rose-600 text-white text-xs font-bold shadow-md hover:bg-rose-700 transition cursor-pointer"
-              >
-                ยืนยันลบบัญชี
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeleteUserModal
+        isOpen={!!deletingUser}
+        onClose={() => setDeletingUser(null)}
+        user={deletingUser}
+        currentRole={currentRole}
+        currentUserId={currentUserId}
+        onConfirmDelete={(userId) => {
+          deleteUser(userId);
+        }}
+        onSuccessToast={showToast}
+      />
 
       {/* ==================================================================== */}
       {/* 8. VIEW & EDIT PATIENT CLINICAL DATA MODAL (Tab 2: patients)         */}
