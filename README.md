@@ -95,25 +95,31 @@ AI เสนอ (Adaptive Recommendation)
 
 ---
 
-## 3. SYSTEM MODULES (17 MODULES)
+## 3. สถาปัตยกรรม 4 จอหลักของตู้ KIOSK และพอร์ทัลโรงพยาบาล
 
-1. **Face Authentication**: สแกนใบหน้าและแปลงเป็น 128-D Embedding (ไม่บันทึกภาพถ่ายดิบ)
-2. **Liveness Detection**: ตรวจจับการกะพริบตา (EAR) และการหันศีรษะ (Yaw) ป้องกันภาพถ่ายนิ่ง
-3. **Pose Detection**: MediaPipe Pose 33 จุดแลนด์มาร์กบน WebAssembly แบบเรียลไทม์
-4. **Biomechanics Engine**: คำนวณองศาเวกเตอร์ข้อต่อ (Vector Dot Product θ = acos(BA·BC / |BA||BC|))
-5. **Exercise / Repetition Engine**: State Machine นับรอบ (START → READY → MOVING → TARGET → HOLD → COMPLETE)
-6. **Safety Engine**: ตรวจสอบ Over-ROM, ลำตัวเอียง (Trunk Lean), ไหล่เกร็งยก (Shoulder Hike), และความเร็วกระตุก
-7. **Pre-Exercise Calibration**: 5-Point Readiness Check (Face, Light, Distance, Body, Stability)
-8. **AI Voice Assistant**: เสียงนำทางภาษาไทย พร้อมระบบ Immediate Voice Preemption (Priority 10)
-9. **Senior Mode**: ตัวหนังสือใหญ่ คอนทราสต์สูง ปุ่มขนาดใหญ่ 52px+ และปุ่มลอยตัว SOS ฉุกเฉิน
-10. **Progress Tracking**: เปรียบเทียบผลย้อนหลัง (Previous vs Current vs Delta: ΔReps, ΔAccuracy, ΔROM)
-11. **Adaptive Rehabilitation**: AI เสนอแนะการปรับระดับความยาก/ง่าย (Target ROM, Reps, Hold, Tolerance)
-12. **Therapist / Caregiver Approval Gate**: หน้าต่างตัดสินใจ [อนุมัติ] [ปรับแก้] [ปฏิเสธ]
-13. **Offline-first Storage**: จัดเก็บข้อมูลลง `StrongCareDB` (IndexedDB) พร้อม Offline Sync Queue
-14. **Clinical Audit**: บันทึกเส้นทางการฝึกรายรอบ (Rep-by-Rep Trail), Peak Angles, Compensations และพิมพ์รายงาน
-15. **Biometric Privacy**: เข้ารหัสเวกเตอร์ชีวมิติด้วย AES-GCM 256-bit พร้อมปุ่มล้างข้อมูล (Purge Biometrics)
-16. **Simulation Mode**: โหมดจำลองข้อมูล Deterministic Replay สำหรับสาธิตโดยไม่ต้องใช้กล้องจริง
-17. **Architecture / Competition Dashboard**: หน้าแดชบอร์ด 🔬 AI Pipeline และ Runbook 3-5 นาที
+ระบบ Strong Care แบ่งการทำงานเป็น 2 ส่วนหลัก: **ตู้ Kiosk สำหรับคนไข้ (4 จอ)** และ **Hospital Management Portal สำหรับบุคลากรทางการแพทย์**
+
+### 1. หน้าจอหลักของตู้ (Kiosk 4-Screen Flow)
+1. **Screen 1: หน้าแรก (Home)**
+   - นาฬิกาไทยเรียลไทม์ พร้อมวันเดือนปี พ.ศ. สำหรับผู้สูงอายุ
+   - ทางเข้าคนไข้หลักทางเดียว (Single Primary Entrance)
+   - ข้อมูลนวัตกรรมระบบ (About Modal) และทางเข้าบุคลากรโรงพยาบาล
+2. **Screen 2: เข้าสู่ระบบ (Identity & Authentication)**
+   - เลือกโปรไฟล์ผู้ป่วยและยืนยันตัวตนด้วยรหัส PIN (หรือระบบสแกนใบหน้าชีวมิติ AI)
+   - ระบบต้อนรับ & ลงทะเบียนคนไข้ใหม่ (Reception Onboarding 2 ขั้นตอน: กรอกประวัติคนไข้ ➔ สแกนใบหน้า 128-D Feature Extraction)
+3. **Screen 3: เมนูผู้ใช้ & ตั้งค่าโปรแกรม (User Menu & Config)**
+   - แสดงข้อมูลผู้ป่วยและแผนการฟื้นฟูเฉพาะบุคคลแบบไดนามิก
+   - เมนูเลือกทำกายภาพ (Physical Therapy), มินิเกมกายภาพ (Gamified Rehab Challenge), หรือปรับแต่งเวลาค้างท่าและเลือกท่าฝึก
+4. **Screen 4: หน้าฝึกกายภาพ (Smart Mirror Exercise & AI Engine)**
+   - Fullscreen Vertical Smart Rehab Mirror ล็อกจอ Zero-Scroll กล้องเปิดทำงานอัตโนมัติ
+   - Picture-in-Picture (PiP) คลิปวิดีโอคุณหมอสาธิต (Dr. Fame) ฝังในหน้าจอกล้องโดยตรง สลับมุมซ้าย-ขวาได้ ไม่บังการเคลื่อนไหว
+   - Real-Time MediaPipe Skeleton Tracker + Safety Engine เฝ้าระวังมุมหัก/การบาดเจ็บพร้อมเสียงเตือนภาษาไทย
+   - ปุ่มส่งผลการฝึกให้นักกายภาพบำบัด (Clinical Report Submission)
+
+### 2. ระบบบริหารจัดการโรงพยาบาล (Hospital Management Portal)
+- ป้องกันด้วย **Staff Security Gate** (PIN บุคลากร พร้อม Demo Quick-Pass `1234` สำหรับการนำเสนอ)
+- **Role-Based Access Control (RBAC)**: ผู้อำนวยการโรงพยาบาล (Admin), นักกายภาพบำบัด (Physical Therapist), คนไข้ (Patient)
+- **10 โมดูลบริหารการแพทย์**: ภาพรวมระบบ, จัดการผู้ใช้งาน, ข้อมูลคนไข้, ข้อมูลนักกายภาพ, เคสและแผนการรักษา (Prescriptions), คลังท่ากายภาพ, ผลการรักษา & AI วิเคราะห์, บันทึกการใช้งาน (Audit Trail), สถานะอุปกรณ์ตู้ Kiosk, และตั้งค่าความปลอดภัย AI
 
 ---
 
@@ -124,7 +130,7 @@ AI เสนอ (Adaptive Recommendation)
 - **Backend API**: PHP 8.2 (REST API, PDO, MVC Controllers, JSON Output, CORS Middleware)
 - **Database**: MySQL / MariaDB (XAMPP) พร้อม SQLite 3 Fallback อัตโนมัติ (รับประกัน 100% Uptime)
 - **Local Storage**: IndexedDB (`StrongCareDB`), Offline FIFO Sync Queue
-- **Design System**: Palette (#6FCF97 Primary, #3FAF70 Dark, #E8F8EF Light, #F8FAF9 Bg), Card 18px, Button 12px, Noto Sans Thai + Inter
+- **Design System**: Palette (#1E8A4C Primary, #6FD67F Mint, #0B2B2B Dark Green, #F4FBF7 Light Bg), Noto Sans Thai + Inter
 
 ---
 
@@ -180,15 +186,12 @@ npm run dev
 
 ## 7. COMPETITION DEMO RUNBOOK (3-5 MINUTES)
 
-1. **① IDENTIFY (00:00 - 00:20)**: แสดงหน้าแรก คลิกปุ่ม **สแกนใบหน้า (Face Login)** โชว์การสแกน 128-D Vector
-2. **② VERIFY (00:20 - 00:40)**: ทดสอบ Liveness (EAR Blink + Head Turn) แสดงการป้องกันรูปถ่ายนิ่ง
-3. **③ CALIBRATE (00:40 - 01:20)**: เข้าสู่หน้า **เริ่มฝึก (Training)** แสดง 5-Point Calibration ตรวจแสง ระยะ ความเสถียร นับถอยหลัง 3..2..1
-4. **④ ANALYZE (01:20 - 02:00)**: ทำท่า Shoulder Raise AI วัดองศาแบบเรียลไทม์ โชว์ State Machine และนับรอบอัตโนมัติ
-5. **⑤ PROTECT (02:00 - 02:30)**: จงใจเอียงตัวหรือยกเกินพิกัด ระบบส่งเสียงตัดบททันที (Immediate Voice Preemption) และสั่ง Emergency Stop (พร้อมชี้ปุ่ม SOS ลอยตัว)
-6. **⑥ IMPROVE (02:30 - 03:00)**: เปิดหน้า **ประวัติ & การอนุมัติ (History)** โชว์ Delta Progress (ΔReps, ΔAccuracy, ΔROM)
-7. **⑦ ADAPT (03:00 - 03:20)**: แสดงการ์ด AI Adaptive Recommendation ที่เสนอปรับองศาแต่ยังไม่เปลี่ยนแผนเอง
-8. **⑧ APPROVE (03:20 - 03:50)**: เปิด **Caregiver Approval Gate** กดอนุมัติหรือปรับแก้ค่า พร้อมแสดงบันทึก Audit Trail ครบ 8 Fields
-9. **⑨ DASHBOARD & AUDIT (03:50 - 04:30)**: เปิดหน้า **รายงาน (Reports)** พิมพ์รายงานทางการแพทย์ และหน้า **แดชบอร์ด (Dashboard)** สรุปภาพรวม
+1. **① KIOSK START (00:00 - 00:20)**: แสดงหน้าแรกตู้ Kiosk นาฬิกาไทยเรียลไทม์ กดปุ่ม **"เริ่มต้นการใช้งานตู้"**
+2. **② IDENTITY & RECEPTION (00:20 - 01:00)**: แสดงการเข้าสู่ระบบแบบ Senior-Friendly โชว์ฟังก์ชัน **"ลงทะเบียนคนไข้ใหม่ (Reception Onboarding)"** กรอกข้อมูลคนไข้แล้วสแกนใบหน้า 128-D Biometric Extraction
+3. **③ PATIENT PROFILE & CONFIG (01:00 - 01:40)**: เข้าสู่หน้าเมนูผู้ใช้ แสดงโรค/อาการเฉพาะบุคคล เลือกระหว่างการฝึกกายภาพทั่วไป หรือ **"เริ่มกายภาพแบบมินิเกม"**
+4. **④ SMART MIRROR EXERCISE (01:40 - 02:40)**: กล้องเปิดอัตโนมัติ แสดง PiP วิดีโอคุณหมอสาธิต AI วัดมุมข้อต่อแบบเรียลไทม์ พร้อม Live Accuracy และคำแนะนำความปลอดภัย
+5. **⑤ CLINICAL REPORT (02:40 - 03:10)**: กดปุ่ม **"ส่งผลให้นักกายภาพ"** แสดงโมดอลสรุปผลและส่งข้อมูลเข้าฐานข้อมูลคลินิก
+6. **⑥ HOSPITAL PORTAL (03:10 - 04:30)**: เข้าสู่ **"ระบบบุคลากร / รพ."** ผ่าน Staff Security Gate โชว์ระบบจัดการผู้ใช้, กำหนดนักกายภาพผู้รับผิดชอบ, บันทึก Prescription และสิทธิ์ RBAC ครบวงจร
 
 ---
 

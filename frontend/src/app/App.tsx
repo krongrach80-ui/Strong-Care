@@ -44,6 +44,13 @@ export const App: React.FC = () => {
   // Screen 3 Sub-View: 'menu' (Default user menu) | 'config' (เลือกเวลาและท่าทาง)
   const [screen3SubView, setScreen3SubView] = useState<'menu' | 'config'>('menu');
   const [configMode, setConfigMode] = useState<'physio' | 'minigame'>('physio');
+  const [isGameModeActive, setIsGameModeActive] = useState<boolean>(false);
+
+  // Floating test nav is hidden by default on public demo (enabled only with ?dev=1 or ?test=1)
+  const isDevMode = typeof window !== 'undefined' && (
+    window.location.search.includes('dev=1') ||
+    window.location.search.includes('test=1')
+  );
 
   // Modal States
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
@@ -267,53 +274,55 @@ export const App: React.FC = () => {
       {/* 1. Full-Screen Vector Ambient Mint Background */}
       <MintBackground />
 
-      {/* 2. Top Screen Switcher for Testing & Demonstration */}
-      <nav
-        className={`fixed z-40 bg-[#0B2B2B]/90 backdrop-blur-md border border-emerald-400/35 rounded-full px-2.5 py-1 flex items-center gap-1.5 shadow-xl max-w-[calc(100vw-24px)] overflow-x-auto transition-all ${
-          currentScreen === 4 ? 'top-1 sm:top-1.5 opacity-80 hover:opacity-100 scale-90 sm:scale-95' : 'top-2 sm:top-3'
-        }`}
-        aria-label="แถบสลับหน้าทดสอบ"
-      >
-        {[
-          { num: 1, label: '1: หน้าแรก' },
-          { num: 2, label: '2: เข้าสู่ระบบ' },
-          { num: 3, label: '3: เมนูผู้ใช้' },
-          { num: 4, label: '4: กายภาพ' },
-        ].map((tab) => (
+      {/* 2. Top Screen Switcher (ซ่อนเป็นค่าเริ่มต้นบนเดโมสาธารณะ แสดงเฉพาะเมื่อมี ?dev=1 หรือ ?test=1) */}
+      {isDevMode && (
+        <nav
+          className={`fixed z-40 bg-[#0B2B2B]/90 backdrop-blur-md border border-emerald-400/35 rounded-full px-2.5 py-1 flex items-center gap-1.5 shadow-xl max-w-[calc(100vw-24px)] overflow-x-auto transition-all ${
+            currentScreen === 4 ? 'top-1 sm:top-1.5 opacity-80 hover:opacity-100 scale-90 sm:scale-95' : 'top-2 sm:top-3'
+          }`}
+          aria-label="แถบสลับหน้าทดสอบ"
+        >
+          {[
+            { num: 1, label: '1: หน้าแรก' },
+            { num: 2, label: '2: เข้าสู่ระบบ' },
+            { num: 3, label: '3: เมนูผู้ใช้' },
+            { num: 4, label: '4: กายภาพ' },
+          ].map((tab) => (
+            <button
+              key={tab.num}
+              onClick={() => handleNavigate(tab.num)}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-all whitespace-nowrap ${
+                currentScreen === tab.num
+                  ? 'bg-gradient-to-r from-[#6FD67F] to-[#4AE387] text-[#0B2B2B] font-bold shadow-sm'
+                  : 'text-emerald-100/80 hover:text-white hover:bg-emerald-700/30'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+
+          <div className="w-px h-4 bg-emerald-500/40 mx-0.5" />
+
+          {/* Quick Shortcut: Reception Onboarding */}
           <button
-            key={tab.num}
-            onClick={() => handleNavigate(tab.num)}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-all whitespace-nowrap ${
-              currentScreen === tab.num
-                ? 'bg-gradient-to-r from-[#6FD67F] to-[#4AE387] text-[#0B2B2B] font-bold shadow-sm'
-                : 'text-emerald-100/80 hover:text-white hover:bg-emerald-700/30'
-            }`}
+            onClick={() => setIsReceptionOpen(true)}
+            className="text-xs font-bold px-3 py-1.5 rounded-full text-emerald-200 hover:text-white hover:bg-emerald-700/40 transition whitespace-nowrap flex items-center gap-1"
+            title="ต้อนรับและลงทะเบียนคนไข้ใหม่"
           >
-            {tab.label}
+            <span>✨ ต้อนรับ & สแกนหน้า</span>
           </button>
-        ))}
 
-        <div className="w-px h-4 bg-emerald-500/40 mx-0.5" />
-
-        {/* Quick Shortcut: Reception Onboarding */}
-        <button
-          onClick={() => setIsReceptionOpen(true)}
-          className="text-xs font-bold px-3 py-1.5 rounded-full text-emerald-200 hover:text-white hover:bg-emerald-700/40 transition whitespace-nowrap flex items-center gap-1"
-          title="ต้อนรับและลงทะเบียนคนไข้ใหม่"
-        >
-          <span>✨ ต้อนรับ & สแกนหน้า</span>
-        </button>
-
-        {/* Quick Shortcut: Hospital Portal */}
-        <button
-          onClick={() => setIsHospitalPortalOpen(true)}
-          className="text-xs font-extrabold px-3.5 py-1.5 rounded-full bg-emerald-500/25 border border-emerald-400/50 text-[#6FD67F] hover:bg-[#10B981] hover:text-[#0B2B2B] transition whitespace-nowrap flex items-center gap-1.5 shadow-sm"
-          title="ระบบบุคลากรและโรงพยาบาล (ผอรพ / นักกายภาพ)"
-        >
-          <Shield className="w-3.5 h-3.5" />
-          <span>🏥 ระบบบุคลากร & รพ.</span>
-        </button>
-      </nav>
+          {/* Quick Shortcut: Hospital Portal */}
+          <button
+            onClick={() => setIsHospitalPortalOpen(true)}
+            className="text-xs font-extrabold px-3.5 py-1.5 rounded-full bg-emerald-500/25 border border-emerald-400/50 text-[#6FD67F] hover:bg-[#10B981] hover:text-[#0B2B2B] transition whitespace-nowrap flex items-center gap-1.5 shadow-sm"
+            title="ระบบบุคลากรและโรงพยาบาล (ผอรพ / นักกายภาพ)"
+          >
+            <Shield className="w-3.5 h-3.5" />
+            <span>🏥 ระบบบุคลากร & รพ.</span>
+          </button>
+        </nav>
+      )}
 
       {/* 3. Toast Notification Banner */}
       {toastMessage && (
@@ -329,8 +338,12 @@ export const App: React.FC = () => {
       <main
         className={`w-full flex-1 flex flex-col items-center relative z-10 ${
           currentScreen === 4
-            ? 'h-[calc(100dvh-36px)] max-h-[calc(100dvh-36px)] pt-9 sm:pt-10 pb-1.5 px-1.5 sm:px-3 justify-between overflow-hidden'
-            : 'justify-center px-4 pt-14 pb-8 sm:pt-16 sm:pb-10'
+            ? isDevMode
+              ? 'h-[calc(100dvh-36px)] max-h-[calc(100dvh-36px)] pt-8 sm:pt-9 pb-1.5 px-1.5 sm:px-3 justify-between overflow-hidden'
+              : 'h-[100dvh] max-h-[100dvh] pt-1 sm:pt-1.5 pb-1.5 px-1.5 sm:px-3 justify-between overflow-hidden'
+            : isDevMode
+            ? 'justify-center px-4 pt-14 pb-8 sm:pt-16 sm:pb-10'
+            : 'justify-center px-4 pt-6 pb-8 sm:pt-8 sm:pb-10'
         }`}
       >
         
@@ -371,11 +384,12 @@ export const App: React.FC = () => {
               patient={selectedPatient}
               onBack={() => handleNavigate(2)}
               onStartTherapy={() => {
+                setIsGameModeActive(false);
                 const savedConfig = getSavedTherapyConfig('physio', selectedPatient?.id);
                 if (savedConfig.category === 'stretch') {
                   const selectedIds = savedConfig.selectedStretchIds && savedConfig.selectedStretchIds.length > 0
                     ? savedConfig.selectedStretchIds
-                    : STRETCH_EXERCISES.map((e) => e.id);
+                    : ['stretch_neck_lateral', 'stretch_shoulder_cross', 'stretch_chest_open'];
                   const queue = STRETCH_EXERCISES.filter((item) => selectedIds.includes(item.id));
                   setActiveStretchQueue(queue);
                   setActiveCustomHoldTimes(savedConfig.customHoldTimes || {});
@@ -387,8 +401,13 @@ export const App: React.FC = () => {
               }}
               onOpenTherapySettings={() => handleOpenScheduleConfig('physio')}
               onStartMiniGame={() => {
-                showToast('เปิดโหมดมินิเกม: ตะลุยด่านสะสมแต้มสุขภาพ!');
-                setTimeout(() => handleNavigate(4), 500);
+                setIsGameModeActive(true);
+                // Active 2 poses for quick fun gamified physical exercise
+                const gameQueue = STRETCH_EXERCISES.slice(0, 2);
+                setActiveStretchQueue(gameQueue);
+                setActiveCustomHoldTimes({});
+                showToast('🎮 เปิดโหมดมินิเกม: ตะลุยด่านสะสมแต้มสุขภาพ!');
+                handleNavigate(4);
               }}
               onOpenMiniGameSettings={() => handleOpenScheduleConfig('minigame')}
               onOpenUserInfo={() => setIsProfileModalOpen(true)}
@@ -408,6 +427,7 @@ export const App: React.FC = () => {
             stretchQueue={activeStretchQueue}
             customHoldTimes={activeCustomHoldTimes}
             patientId={selectedPatient?.id || 1}
+            isGameMode={isGameModeActive}
           />
         )}
 

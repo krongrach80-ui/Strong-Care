@@ -55,6 +55,7 @@ interface Screen4ExerciseProps {
   stretchQueue?: StretchExerciseItem[];
   customHoldTimes?: Record<string, number>;
   patientId?: number;
+  isGameMode?: boolean;
 }
 
 export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
@@ -64,6 +65,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
   stretchQueue,
   customHoldTimes,
   patientId = 1,
+  isGameMode = false,
 }) => {
   // Check if we are running in Stretch Queue Mode
   const isStretchMode = Boolean(stretchQueue && stretchQueue.length > 0);
@@ -140,6 +142,11 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     startCamera,
     stopCamera,
   } = useCamera();
+
+  // Automatically start camera on mount for elderly kiosk users
+  useEffect(() => {
+    startCamera();
+  }, [startCamera]);
 
   // Pose Detection Hook
   const { landmarks, fps, modelError, isMockMode } = usePose(videoRef, isCameraReady, currentExerciseConfig?.targetPose || 'shoulder_raise');
@@ -871,6 +878,13 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
 
         {/* Right Controls: Steps Info + Camera Toggle */}
         <div className="flex items-center gap-1.5 sm:gap-2">
+          {isGameMode && (
+            <div className="hidden min-[520px]:inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-amber-400 to-orange-400 text-stone-900 font-extrabold text-[11px] shadow-2xs border border-amber-300">
+              <Sparkles className="w-3 h-3 text-stone-900" />
+              <span>🎮 โหมดมินิเกม</span>
+            </div>
+          )}
+
           <button
             type="button"
             onClick={() => setIsStepsModalOpen(true)}
@@ -1060,7 +1074,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
         </div>
 
         {/* C. Center 3-2-1 Giant Countdown Overlay */}
-        {(exercisePhase === 'PREPARING' ||
+        {(isCameraReady || isMockMode) && (exercisePhase === 'PREPARING' ||
           exercisePhase === 'COUNTDOWN_3' ||
           exercisePhase === 'COUNTDOWN_2' ||
           exercisePhase === 'COUNTDOWN_1' ||
@@ -1285,7 +1299,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
           id="btnNotifyTherapist"
         >
           <Send className="w-4 h-4 flex-shrink-0" />
-          <span className="truncate">เอาไว้บอกผู้กายภาพ</span>
+          <span className="truncate">ส่งผลให้นักกายภาพ</span>
         </button>
       </div>
 

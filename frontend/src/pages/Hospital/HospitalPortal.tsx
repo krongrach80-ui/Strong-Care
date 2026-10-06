@@ -133,6 +133,116 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
   // Current active user info
   const currentUser = users.find((u) => u.id === currentUserId) || users[0];
 
+  // Staff Authentication Barrier
+  const [isStaffAuthenticated, setIsStaffAuthenticated] = useState<boolean>(false);
+  const [staffPinInput, setStaffPinInput] = useState<string>('');
+  const [staffAuthError, setStaffAuthError] = useState<string | null>(null);
+
+  const handleStaffLogin = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!staffPinInput.trim()) {
+      setStaffAuthError('กรุณากรอกรหัส PIN ประจำตัวเจ้าหน้าที่ (หรือใช้ 1234)');
+      return;
+    }
+    if (staffPinInput === '1234' || staffPinInput === '0000' || staffPinInput.length >= 4) {
+      setIsStaffAuthenticated(true);
+      setStaffAuthError(null);
+      showToast('ยืนยันตัวตนบุคลากรสำเร็จ ยินดีต้อนรับสู่ระบบบริหารโรงพยาบาล');
+    } else {
+      setStaffAuthError('รหัส PIN ไม่ถูกต้อง (สำหรับโหมดสาธิตให้ใช้ 1234)');
+    }
+  };
+
+  const handleQuickDemoPass = () => {
+    setIsStaffAuthenticated(true);
+    setStaffAuthError(null);
+    showToast('เข้าสู่ระบบด้วยสิทธิ์ผู้ดูแลระบบ (โหมดสาธิตการแข่งขัน)');
+  };
+
+  // If not authenticated, render Staff Security Barrier
+  if (!isStaffAuthenticated) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B2B2B]/90 backdrop-blur-md p-4 animate-fadeIn">
+        <div className="bg-white rounded-[32px] border-2 border-emerald-400 p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6 text-center">
+          <div className="w-16 h-16 rounded-full bg-emerald-100 border-2 border-[#10B981] mx-auto flex items-center justify-center text-[#0F2F2B] shadow-md">
+            <Shield className="w-8 h-8 text-[#10B981]" />
+          </div>
+
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold mb-2">
+              <span>โหมดสาธิตระบบโรงพยาบาล (Hospital Demo)</span>
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black text-[#0F2F2B]">
+              ระบบบุคลากร & โรงพยาบาล
+            </h2>
+            <p className="text-xs text-stone-600 font-medium mt-1">
+              เฉพาะแพทย์ นักกายภาพบำบัด และผู้บริหารโรงพยาบาลเท่านั้น
+            </p>
+          </div>
+
+          <form onSubmit={handleStaffLogin} className="space-y-4 text-left">
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1.5">
+                รหัส PIN บุคลากรทางการแพทย์ (Staff PIN):
+              </label>
+              <div className="bg-stone-50 rounded-2xl border border-emerald-200 p-3 flex items-center gap-2.5 focus-within:border-[#10B981] focus-within:ring-2 focus-within:ring-emerald-200 transition">
+                <KeyRound className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                <input
+                  type="password"
+                  value={staffPinInput}
+                  onChange={(e) => {
+                    setStaffPinInput(e.target.value);
+                    setStaffAuthError(null);
+                  }}
+                  placeholder="กรอกรหัส PIN (เช่น 1234)"
+                  maxLength={6}
+                  className="w-full bg-transparent text-sm font-semibold outline-none"
+                  autoFocus
+                />
+              </div>
+              {staffAuthError && (
+                <p className="text-xs text-rose-600 font-semibold mt-1.5 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>{staffAuthError}</span>
+                </p>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2.5 pt-2">
+              <button
+                type="submit"
+                className="w-full py-3 rounded-2xl bg-gradient-to-r from-[#10B981] to-[#059669] text-white font-extrabold text-sm shadow-md hover:brightness-105 transition active:scale-95 cursor-pointer"
+              >
+                ยืนยันเข้าสู่ระบบบุคลากร
+              </button>
+
+              <button
+                type="button"
+                onClick={handleQuickDemoPass}
+                className="w-full py-2.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-[#0F2F2B] font-bold text-xs transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 text-emerald-600" />
+                <span>⚡ ปลดล็อกโหมดสาธิตทันที (Demo PIN: 1234)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-2.5 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-600 font-bold text-xs transition cursor-pointer"
+              >
+                ย้อนกลับไปหน้าตู้คนไข้
+              </button>
+            </div>
+          </form>
+
+          <div className="text-[11px] text-stone-500 bg-stone-50 border border-stone-200 rounded-xl p-2.5 text-center leading-relaxed">
+            💡 ในระบบงานจริงจะเชื่อมต่อ SSO/LDAP ของโรงพยาบาล ข้อมูลทั้งหมดในหน้านี้เป็นข้อมูลจำลองเพื่อการสาธิต (Offline Mock DB)
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex bg-[#F4FBF7] text-[#0F2F2B] font-sans overflow-hidden animate-fadeIn">
       {/* ==================================================================== */}
@@ -230,6 +340,12 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
 
           {/* Right Header: Role switcher + Quick Action button */}
           <div className="flex items-center gap-3">
+            {/* Demo Watermark Badge */}
+            <div className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100/90 text-amber-900 border border-amber-300 text-xs font-bold shadow-2xs">
+              <Shield className="w-3.5 h-3.5 text-amber-700" />
+              <span>โหมดสาธิต (Simulated HIS & RBAC)</span>
+            </div>
+
             {/* Quick Reception Onboarding button */}
             <button
               onClick={() => setIsReceptionOpen(true)}
@@ -241,7 +357,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
 
             {/* Role Switcher Pill Capsule */}
             <div className="flex items-center gap-2 p-1.5 rounded-full bg-emerald-50 border border-emerald-200 shadow-sm">
-              <span className="text-[11px] font-bold text-emerald-800 pl-2 hidden sm:inline">สลับสิทธิ์:</span>
+              <span className="text-[11px] font-bold text-emerald-800 pl-2 hidden sm:inline">สลับสิทธิ์ทดสอบ:</span>
               {(['admin', 'therapist', 'patient'] as UserRole[]).map((r) => {
                 const isSelected = currentRole === r;
                 return (

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Pause, Volume2, VolumeX, RotateCcw, AlertCircle, Sparkles, Video, User } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, RotateCcw, AlertCircle, Sparkles, Video, User, Loader2 } from 'lucide-react';
 import { StretchStickFigure } from '../StickFigure/StretchStickFigure';
 
 interface ExercisePosePreviewProps {
@@ -77,16 +77,19 @@ export const ExercisePosePreview: React.FC<ExercisePosePreviewProps> = ({
 }) => {
   const [isMuted, setIsMuted] = useState<boolean>(true); // ปลอดภัย: ไม่ autoplay พร้อมเสียง
   const [hasVideoError, setHasVideoError] = useState<boolean>(false);
+  const [isIframeLoading, setIsIframeLoading] = useState<boolean>(true);
   const [replayKey, setReplayKey] = useState<number>(0);
 
-  // Reset video error when URL changes
+  // Reset video error and show loading when URL or start time changes
   useEffect(() => {
     setHasVideoError(false);
-  }, [demoVideoUrl, videoStartSeconds]);
+    setIsIframeLoading(true);
+  }, [demoVideoUrl, videoStartSeconds, replayKey]);
 
   const embedUrl = resolveYouTubeEmbedUrl(demoVideoUrl, videoStartSeconds, true, isMuted);
 
   const handleReplay = () => {
+    setIsIframeLoading(true);
     setReplayKey((prev) => prev + 1);
   };
 
@@ -94,7 +97,7 @@ export const ExercisePosePreview: React.FC<ExercisePosePreviewProps> = ({
     <div className={`w-full flex flex-col items-center justify-center relative ${className || ''}`}>
       {/* Priority: Video > Animation > Skeleton fallback */}
       {showVideoPlayer && demoVideoUrl && !hasVideoError ? (
-        <div className="w-full bg-black rounded-2xl overflow-hidden shadow-md border-[1.5px] border-emerald-400/80 relative aspect-video flex flex-col items-center justify-center group animate-fadeIn">
+        <div className="w-full bg-black rounded-2xl overflow-hidden shadow-md border-2 border-emerald-400/80 relative aspect-video flex flex-col items-center justify-center group animate-fadeIn">
           {/* YouTube Video Embed Player */}
           <iframe
             key={`yt-preview-${replayKey}-${embedUrl}`}
@@ -103,8 +106,20 @@ export const ExercisePosePreview: React.FC<ExercisePosePreviewProps> = ({
             className="w-full h-full border-0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
-            onError={() => setHasVideoError(true)}
+            onLoad={() => setIsIframeLoading(false)}
+            onError={() => {
+              setIsIframeLoading(false);
+              setHasVideoError(true);
+            }}
           />
+
+          {/* Loading Skeleton / Placeholder to prevent black box flicker */}
+          {isIframeLoading && (
+            <div className="absolute inset-0 bg-[#0B2B2B] flex flex-col items-center justify-center gap-2 text-emerald-300 text-xs font-semibold z-5 pointer-events-none">
+              <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
+              <span>กำลังเตรียมคลิปสาธิต...</span>
+            </div>
+          )}
 
           {/* Quick Overlay Control Badge */}
           <div className="absolute top-2 right-2 flex items-center gap-1.5 z-10">

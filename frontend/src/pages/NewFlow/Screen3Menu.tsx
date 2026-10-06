@@ -58,8 +58,8 @@ export const Screen3Menu: React.FC<Screen3MenuProps> = ({
             <div className="text-sm sm:text-base font-bold text-[#0B2B2B] truncate">
               {userName}
             </div>
-            <div className="inline-block text-[11px] font-bold text-[#1E8A4C] bg-[#D7F9E1] px-2 py-0.5 rounded-full mt-0.5">
-              กายภาพฟื้นฟูข้อไหล่ • ระดับ 2
+            <div className="inline-block text-[11px] font-bold text-[#1E8A4C] bg-[#D7F9E1] px-2.5 py-0.5 rounded-full mt-0.5 truncate max-w-[260px]">
+              {patient?.notes || (patient?.patient_code ? `รหัสคนไข้: ${patient.patient_code}` : 'แผนการฟื้นฟูกายภาพบำบัดเฉพาะบุคคล')}
             </div>
           </div>
           <button
@@ -90,7 +90,7 @@ export const Screen3Menu: React.FC<Screen3MenuProps> = ({
 
             <button
               onClick={onOpenTherapySettings}
-              className="w-14 h-14 min-w-[56px] min-h-[56px] rounded-full bg-white hover:bg-emerald-50 border-1.5 border-[#1E8A4C] text-[#1E8A4C] shadow-md flex items-center justify-center transition active:scale-95 flex-shrink-0 outline-none focus-visible:ring-3 focus-visible:ring-emerald-500"
+              className="w-14 h-14 min-w-[56px] min-h-[56px] rounded-full bg-white hover:bg-emerald-50 border-2 border-[#1E8A4C] text-[#1E8A4C] shadow-md flex items-center justify-center transition active:scale-95 flex-shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               aria-label="ตั้งค่าเริ่มกายภาพ"
               title="ตั้งค่าการทำกายภาพ (เลือกเวลาและท่าทาง)"
             >
@@ -111,7 +111,7 @@ export const Screen3Menu: React.FC<Screen3MenuProps> = ({
 
             <button
               onClick={onOpenMiniGameSettings}
-              className="w-14 h-14 min-w-[56px] min-h-[56px] rounded-full bg-white hover:bg-emerald-50 border-1.5 border-[#1E8A4C] text-[#1E8A4C] shadow-md flex items-center justify-center transition active:scale-95 flex-shrink-0 outline-none focus-visible:ring-3 focus-visible:ring-emerald-500"
+              className="w-14 h-14 min-w-[56px] min-h-[56px] rounded-full bg-white hover:bg-emerald-50 border-2 border-[#1E8A4C] text-[#1E8A4C] shadow-md flex items-center justify-center transition active:scale-95 flex-shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               aria-label="ตั้งค่ามินิเกม"
               title="ตั้งค่ามินิเกม (เลือกเวลาและท่าทาง)"
             >

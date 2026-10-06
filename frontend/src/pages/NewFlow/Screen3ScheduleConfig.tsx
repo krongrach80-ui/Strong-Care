@@ -861,7 +861,7 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
                         handleToggleStretch(item.id);
                       }
                     }}
-                    className={`group w-full min-h-[64px] p-2.5 sm:p-3 rounded-2xl border transition-all duration-150 flex items-center justify-between gap-3 cursor-pointer outline-none focus-visible:ring-3 focus-visible:ring-emerald-500 ${
+                    className={`group w-full min-h-[64px] p-2.5 sm:p-3 rounded-2xl border transition-all duration-150 flex items-center justify-between gap-3 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                       isSelected
                         ? 'bg-[#E9FCEB]/90 border-emerald-400 shadow-xs'
                         : 'bg-white/80 border-emerald-100 hover:bg-white hover:border-emerald-200 opacity-80'

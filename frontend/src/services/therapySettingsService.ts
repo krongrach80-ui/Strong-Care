@@ -128,16 +128,8 @@ export function getSavedTherapyConfig(mode: TherapyMode = 'physio', patientId?: 
     patientId: pId,
     selectedStretchIds: [
       'stretch_neck_lateral',
-      'stretch_neck_flexion',
       'stretch_shoulder_cross',
-      'stretch_triceps_overhead',
       'stretch_chest_open',
-      'stretch_side_bend',
-      'stretch_torso_twist',
-      'stretch_quadriceps',
-      'stretch_hamstrings',
-      'stretch_calf',
-      'stretch_piriformis_seated',
     ],
   };
 
