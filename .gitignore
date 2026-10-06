@@ -63,7 +63,8 @@ Thumbs.db
 # Antigravity IDE Internal App Data
 antigravity-ide/
 .gemini/
-config/
+/config/
+!frontend/src/config/
 GEMINI.md
 .agents/
 
