@@ -36,7 +36,20 @@ export const usePatientStore = create<PatientState>((set, get) => ({
         isLoading: false,
       });
     } catch (e) {
-      set({ isLoading: false });
+      console.warn('fetchPatients error, using offline fallback:', e);
+      const fallbackPatient: Patient = {
+        id: 1,
+        patient_code: 'PT-2026-001',
+        name: 'คุณสมชาย ใจดี [โหมดออฟไลน์]',
+        age: 65,
+        gender: 'male',
+        notes: 'ระบบกำลังทำงานในโหมดออฟไลน์',
+      };
+      set({
+        patients: [fallbackPatient],
+        selectedPatient: fallbackPatient,
+        isLoading: false,
+      });
     }
   },
 

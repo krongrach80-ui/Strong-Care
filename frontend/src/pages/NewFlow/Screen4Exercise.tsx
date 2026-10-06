@@ -43,6 +43,8 @@ import { ExercisePosePreview } from '../../components/Exercise/ExercisePosePrevi
 import { ExerciseVideoModal } from '../../components/VideoPlayer/ExerciseVideoModal';
 import { voiceAssistant } from '../../services/voiceAssistantService';
 import { api } from '../../services/api';
+import { OfflineStorageService } from '../../services/offlineStorageService';
+import { Session } from '../../types/session';
 import { SafetyEngine, SafetyTelemetry } from '../../biomechanics/SafetyEngine';
 
 interface Screen4ExerciseProps {
@@ -220,10 +222,10 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
       category: 'Rehab',
       description: currentExerciseConfig.description,
       target_joint: 'shoulder',
-      target_angle: currentExerciseConfig.targetAngle || 90,
+      target_angle: currentExerciseConfig.targetAngle ?? 90,
       min_angle: 30,
-      max_angle: currentExerciseConfig.targetRom || 110,
-      target_reps: currentExerciseConfig.recommendedReps || 10,
+      max_angle: currentExerciseConfig.targetRom ?? 110,
+      target_reps: currentExerciseConfig.recommendedReps ?? 10,
       difficulty: 'beginner',
     };
 
@@ -476,19 +478,43 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
       console.info('ℹ️ เซสชันมาจากโหมดจำลอง (Mock Mode) - ข้ามการบันทึกข้อมูล');
       return;
     }
+
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const toLocalDT = (d: Date) =>
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+
+    const totalCount = unifiedQueue.length;
+    const sessionPayload: Session = {
+      id: Date.now(),
+      patient_id: patientId ?? 1,
+      exercise_id: 1,
+      started_at: toLocalDT(new Date(Date.now() - totalElapsedTimeSec * 1000)),
+      ended_at: toLocalDT(new Date()),
+      total_reps: totalCount,
+      correct_reps: totalCount,
+      accuracy: averageScore,
+      avg_duration_per_rep: Math.round(totalElapsedTimeSec / Math.max(1, totalCount)),
+      status: 'completed',
+      notes: `ฝึกสำเร็จครบ ${totalCount} ท่า เวลา ${Math.round(totalElapsedTimeSec / 60)} นาที คะแนนเฉลี่ย ${averageScore}%`,
+    };
+
+    const safetyLogs = safetyEngineRef.current ? safetyEngineRef.current.getViolationLog() : [];
+    let serverFailed = false;
+
     try {
-      await api.saveSession({
-        patient_id: patientId,
-        exercise_id: 1,
-        total_reps: unifiedQueue.length,
-        correct_reps: unifiedQueue.length,
-        accuracy: averageScore,
-        avg_duration_per_rep: Math.round(totalElapsedTimeSec / Math.max(1, unifiedQueue.length)),
-        status: 'completed',
-        notes: `ฝึกสำเร็จครบ ${unifiedQueue.length} ท่า เวลา ${Math.round(totalElapsedTimeSec / 60)} นาที คะแนนเฉลี่ย ${averageScore}%`,
-      });
+      await api.saveSession(sessionPayload);
     } catch (e) {
-      console.warn('Auto save session info:', e);
+      serverFailed = true;
+      console.warn('Auto save session to server failed, saving locally:', e);
+    }
+
+    try {
+      OfflineStorageService.saveLocalSession(sessionPayload, safetyLogs);
+      if (serverFailed) {
+        OfflineStorageService.addToSyncQueue(sessionPayload);
+      }
+    } catch (err) {
+      console.warn('Offline storage error:', err);
     }
   };
 
@@ -587,8 +613,8 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
   }
 
   const targetHoldSec = currentStretch ? getPoseHoldSeconds(currentStretch) : 20;
-  const targetRepsCount = currentExerciseConfig.recommendedReps || 10;
-  const currentRepsCount = analysis?.repCount || 0;
+  const targetRepsCount = currentExerciseConfig.recommendedReps ?? 10;
+  const currentRepsCount = analysis?.repCount ?? 0;
 
   const progressPercent = isStretchMode
     ? Math.min(100, Math.max(0, Math.round(((targetHoldSec - timeLeft) / Math.max(1, targetHoldSec)) * 100)))

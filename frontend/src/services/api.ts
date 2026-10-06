@@ -5,6 +5,21 @@ import { API_BASE_URL, IS_STATIC_MODE } from '../config/apiConfig';
 
 const API_BASE = API_BASE_URL || '/api';
 
+/**
+ * Helper: Format Date as Local MySQL DateTime string (YYYY-MM-DD HH:mm:ss)
+ * ป้องกันปัญหา UTC Offset เพี้ยน 7 ชั่วโมงในประเทศไทย
+ */
+function formatLocalMySQLDateTime(date: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
 export const api = {
   /**
    * ดึงรายชื่อผู้ป่วย
@@ -12,7 +27,7 @@ export const api = {
   async getPatients(): Promise<Patient[]> {
     if (IS_STATIC_MODE) {
       return [
-        { id: 1, patient_code: 'PT-2026-001', name: 'สมชาย วิจิตรศิลป์ (Somchai V.) [โหมดสาธิต]', age: 58, gender: 'male', notes: 'ฟื้นฟูกล้ามเนื้อไหล่และข้อศอกหลังผ่าตัด' },
+        { id: 1, patient_code: 'PT-2026-001', name: 'คุณสมชาย ใจดี [โหมดสาธิต]', age: 65, gender: 'male', notes: 'ฟื้นฟูกล้ามเนื้อไหล่และข้อศอกหลังผ่าตัด' },
         { id: 2, patient_code: 'PT-2026-002', name: 'วิภาดา รัตนกุล (Wiphada R.) [โหมดสาธิต]', age: 42, gender: 'female', notes: 'กายภาพบำบัดฟื้นฟูข้อเข่า' },
       ];
     }
@@ -107,6 +122,7 @@ export const api = {
     return json.data ?? [];
   },
 
+
   /**
    * บันทึกผลเซสชัน (ต้อง throw หากส่งขึ้นเซิร์ฟเวอร์ไม่ได้ เพื่อให้ระบบจัดการคิวซิงก์)
    */
@@ -116,8 +132,8 @@ export const api = {
         id: sessionData.id ?? Date.now(),
         patient_id: sessionData.patient_id ?? 1,
         exercise_id: sessionData.exercise_id ?? 1,
-        started_at: sessionData.started_at ?? new Date().toISOString(),
-        ended_at: sessionData.ended_at ?? new Date().toISOString(),
+        started_at: sessionData.started_at ?? formatLocalMySQLDateTime(),
+        ended_at: sessionData.ended_at ?? formatLocalMySQLDateTime(),
         avg_duration_per_rep: sessionData.avg_duration_per_rep ?? 6.0,
         total_reps: sessionData.total_reps ?? 10,
         correct_reps: sessionData.correct_reps ?? 8,
@@ -165,12 +181,34 @@ export const api = {
   },
 
   /**
+   * ลบข้อมูลผู้ป่วยทั้งหมดตามสิทธิ์ PDPA (ทั้งเซิร์ฟเวอร์และแคช)
+   */
+  async purgePatientData(patientId: number): Promise<{ success: boolean; message: string }> {
+    if (IS_STATIC_MODE) {
+      return { success: true, message: 'ลบข้อมูลในเครื่องและโหมดสาธิตสำเร็จตาม PDPA [โหมดสาธิต]' };
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/patients/${patientId}/purge`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        throw new Error(`ลบข้อมูลฝั่งเซิร์ฟเวอร์ไม่สำเร็จ HTTP ${res.status}: ${res.statusText}`);
+      }
+      return await res.json();
+    } catch (err: any) {
+      console.warn('Server purge endpoint warning:', err);
+      return { success: false, message: err?.message || 'ไม่สามารถติดต่อเซิร์ฟเวอร์เพื่อลบข้อมูลได้' };
+    }
+  },
+
+  /**
    * ดึงรายงานผลสรุปเซสชัน
    */
   async getSessionReport(sessionId: number): Promise<SessionReport> {
     if (IS_STATIC_MODE) {
       return {
-        session: { id: sessionId, patient_id: 1, exercise_id: 1, started_at: new Date().toISOString(), avg_duration_per_rep: 5.0, total_reps: 10, correct_reps: 9, accuracy: 90, status: 'completed' },
+        session: { id: sessionId, patient_id: 1, exercise_id: 1, started_at: formatLocalMySQLDateTime(), avg_duration_per_rep: 5.0, total_reps: 10, correct_reps: 9, accuracy: 90, status: 'completed' },
         patient: { id: 1, patient_code: 'PT-2026-001', name: 'คุณสมชาย ใจดี [โหมดสาธิต]', age: 65, gender: 'male' },
         metrics: { total_reps: 10, correct_reps: 9, accuracy_percentage: 90, max_angle: 92, avg_angle: 88, status: 'completed' },
         results: [],

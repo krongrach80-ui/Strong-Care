@@ -651,18 +651,18 @@ export function getExerciseUnifiedConfig(item: any): PhysioExerciseConfig {
 
   // Fallback จาก ExerciseDefinition ทั่วไป
   return {
-    id: String(item.id || 'exercise-1'),
-    name: item.name || 'ท่ายกเข่าสลับ',
-    englishName: item.englishName || (item.slug ? item.slug.replace(/_/g, ' ') : 'Exercise'),
-    description: item.description || '',
-    demoVideoUrl: item.demoVideoUrl || 'https://www.youtube.com/embed/1vR_n96sV-k',
+    id: String(item.id ?? 'exercise-1'),
+    name: item.name ?? 'ท่ายกเข่าสลับ',
+    englishName: item.englishName ?? (item.slug ? item.slug.replace(/_/g, ' ') : 'Exercise'),
+    description: item.description ?? '',
+    demoVideoUrl: item.demoVideoUrl ?? 'https://www.youtube.com/embed/1vR_n96sV-k',
     thumbnailUrl: item.thumbnailUrl,
-    targetPose: item.targetPose || item.slug || 'exercise',
-    targetAngle: item.target_angle || 90,
-    targetRom: item.max_angle || 110,
-    recommendedReps: item.target_reps || 10,
-    cooldownSeconds: item.cooldownSeconds || 10,
-    safetyTips: item.safetyTips || ['จัดท่าทางให้ตรง ไม่เกร็งกล้ามเนื้อ', 'หากปวดให้หยุดทันที'],
+    targetPose: item.targetPose ?? item.slug ?? 'exercise',
+    targetAngle: item.target_angle ?? 90,
+    targetRom: item.max_angle ?? 110,
+    recommendedReps: item.target_reps ?? 10,
+    cooldownSeconds: item.cooldownSeconds ?? 10,
+    safetyTips: item.safetyTips ?? ['จัดท่าทางให้ตรง ไม่เกร็งกล้ามเนื้อ', 'หากปวดให้หยุดทันที'],
   };
 }
 

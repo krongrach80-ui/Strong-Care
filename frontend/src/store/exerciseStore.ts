@@ -50,7 +50,40 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         isLoading: false,
       });
     } catch (e) {
-      set({ isLoading: false });
+      console.warn('fetchExercises failed, using offline fallback exercises:', e);
+      const fallbackExercises: ExerciseDefinition[] = [
+        {
+          id: 1,
+          name: 'Shoulder Lateral Raise (กางแขนยกหัวไหล่)',
+          slug: 'shoulder_raise',
+          category: 'Upper Body',
+          description: 'ฝึกยกแขนออกด้านข้างลำตัวเพื่อฟื้นฟูกล้ามเนื้อ Deltoid',
+          target_joint: 'shoulder',
+          target_angle: 90,
+          min_angle: 75,
+          max_angle: 110,
+          target_reps: 10,
+          difficulty: 'beginner',
+        },
+        {
+          id: 2,
+          name: 'Bicep Curl (งอข้อศอกฟื้นฟูกล้ามเนื้อ)',
+          slug: 'bicep_curl',
+          category: 'Upper Body',
+          description: 'บริหารข้อศอกและการเคลื่อนไหวแขนท่อนล่าง',
+          target_joint: 'elbow',
+          target_angle: 50,
+          min_angle: 35,
+          max_angle: 65,
+          target_reps: 10,
+          difficulty: 'beginner',
+        },
+      ];
+      set({
+        exercises: fallbackExercises,
+        selectedExercise: get().selectedExercise ?? fallbackExercises[0],
+        isLoading: false,
+      });
     }
   },
 
@@ -63,9 +96,9 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       ...newExData,
       id: newId,
       is_custom: true,
-      hold_seconds: newExData.hold_seconds || 2,
-      tolerance_angle: newExData.tolerance_angle || 10,
-      max_safe_angle: newExData.max_safe_angle || newExData.max_angle + 15,
+      hold_seconds: newExData.hold_seconds ?? 2,
+      tolerance_angle: newExData.tolerance_angle ?? 10,
+      max_safe_angle: newExData.max_safe_angle ?? (newExData.max_angle ? newExData.max_angle + 15 : 120),
     };
 
     const updated = [...exercises, newEx];

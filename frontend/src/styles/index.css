@@ -60,7 +60,8 @@
     font-family: var(--font-th);
     color: var(--text-main);
     background: linear-gradient(160deg, var(--bg-gradient-start) 0%, var(--bg-gradient-mid) 50%, var(--bg-gradient-end) 100%);
-    background-attachment: fixed;
+    background-repeat: no-repeat;
+    background-size: cover;
     overflow-x: hidden;
   }
 }

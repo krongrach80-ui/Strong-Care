@@ -4,6 +4,22 @@ import { Session } from '../types/session';
 import { api } from '../services/api';
 import { poseService } from '../services/poseService';
 import { OfflineStorageService } from '../services/offlineStorageService';
+import { SafetyViolation } from '../biomechanics/SafetyEngine';
+
+/**
+ * Format Date as Local MySQL DateTime string (YYYY-MM-DD HH:mm:ss)
+ * ป้องกันปัญหา UTC Offset เพี้ยน 7 ชั่วโมงในประเทศไทย
+ */
+function formatLocalMySQLDateTime(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
 
 interface SessionState {
   isActive: boolean;
@@ -20,7 +36,7 @@ interface SessionState {
   updateLiveFrame: (frame: LiveAnalysisFrame) => void;
   addRepResult: (result: RepResult) => void;
   tickDuration: () => void;
-  finishSession: (patientId: number, exerciseId: number) => Promise<Session>;
+  finishSession: (patientId: number, exerciseId: number, safetyEvents?: SafetyViolation[]) => Promise<Session>;
   resetSession: () => void;
 }
 
@@ -57,7 +73,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       durationSeconds: state.durationSeconds + 1,
     })),
 
-  finishSession: async (patientId: number, exerciseId: number) => {
+  finishSession: async (patientId: number, exerciseId: number, safetyEvents: SafetyViolation[] = []) => {
     const { repResults, durationSeconds } = get();
     set({ isSaving: true, isActive: false });
 
@@ -69,11 +85,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const avgAngle = totalReps > 0 ? Math.round(repResults.reduce((acc, r) => acc + r.angle, 0) / totalReps) : 0;
     const avgDuration = totalReps > 0 ? Math.round((durationSeconds / totalReps) * 10) / 10 : 0;
 
+    const startDate = new Date(Date.now() - durationSeconds * 1000);
+    const endDate = new Date();
+
     const sessionPayload: Partial<Session> = {
       patient_id: patientId,
       exercise_id: exerciseId,
-      started_at: new Date(Date.now() - durationSeconds * 1000).toISOString().slice(0, 19).replace('T', ' '),
-      ended_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      started_at: formatLocalMySQLDateTime(startDate),
+      ended_at: formatLocalMySQLDateTime(endDate),
       total_reps: totalReps,
       correct_reps: correctReps,
       accuracy: avgAccuracy,
@@ -116,9 +135,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       };
     }
 
-    // Always persist to local offline storage (Offline-first!)
+    // Always persist to local offline storage (Offline-first!) พร้อมส่งต่อ safetyEvents
     try {
-      OfflineStorageService.saveLocalSession(finalizedSession);
+      OfflineStorageService.saveLocalSession(finalizedSession, safetyEvents);
       // เข้าคิวเฉพาะเมื่อบันทึกขึ้นเซิร์ฟเวอร์ล้มเหลว
       if (serverSaveFailed) {
         OfflineStorageService.addToSyncQueue(finalizedSession);

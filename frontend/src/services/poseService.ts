@@ -201,9 +201,14 @@ export class PoseService {
 
   /**
    * Complete Holistic AI Detection:
-   * Returns Pose (33-pts), Hands (2x21-pts full 5 fingers), and Face (478-pts facial contours)
+   * Optimized for Mobile: Runs Pose (33-pts) every frame,
+   * while Hand and Face detection are skipped during exercise unless explicitly enabled.
    */
-  public detectHolistic(video: HTMLVideoElement, timestamp: number): HolisticDetectionResult | null {
+  public detectHolistic(
+    video: HTMLVideoElement,
+    timestamp: number,
+    options?: { enableHands?: boolean; enableFace?: boolean }
+  ): HolisticDetectionResult | null {
     if (this.isMockMode) {
       return {
         poseLandmarks: this.generateSyntheticPose(),
@@ -236,9 +241,9 @@ export class PoseService {
       // ignore frame error
     }
 
-    // 2. Hand detection (Full 5 fingers for each hand with 21 joints)
-    let handLandmarks: PoseLandmarks[] | null = this.lastHandResult;
-    if (this.handLandmarker) {
+    // 2. Hand detection (รันเฉพาะเมื่อเปิด options?.enableHands ป้องกันเฟรมเรตตกบนมือถือ)
+    let handLandmarks: PoseLandmarks[] | null = null;
+    if (options?.enableHands && this.handLandmarker) {
       try {
         let handTime = timestamp;
         if (handTime <= this.lastHandTimestamp) {
@@ -251,18 +256,16 @@ export class PoseService {
           handLandmarks = handRes.landmarks as PoseLandmarks[];
           this.lastHandResult = handLandmarks;
         } else {
-          // Reset when hand leaves frame
           this.lastHandResult = null;
-          handLandmarks = null;
         }
       } catch (e) {
         // ignore
       }
     }
 
-    // 3. Face detection (Full 478 face mesh points & facial proportion alignment)
-    let faceLandmarks: PoseLandmarks | null = this.lastFaceResult;
-    if (this.faceLandmarker && (this.frameCount % 2 === 0 || !this.lastFaceResult)) {
+    // 3. Face detection (รันเฉพาะเมื่อเปิด options?.enableFace ป้องกันเฟรมเรตตกบนมือถือ)
+    let faceLandmarks: PoseLandmarks | null = null;
+    if (options?.enableFace && this.faceLandmarker && (this.frameCount % 4 === 0 || !this.lastFaceResult)) {
       try {
         let faceTime = timestamp;
         if (faceTime <= this.lastFaceTimestamp) {
@@ -276,7 +279,6 @@ export class PoseService {
           this.lastFaceResult = faceLandmarks;
         } else {
           this.lastFaceResult = null;
-          faceLandmarks = null;
         }
       } catch (e) {
         // ignore

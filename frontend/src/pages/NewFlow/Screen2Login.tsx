@@ -21,9 +21,23 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
   const [password, setPassword] = useState<string>('••••••••');
   const [authType, setAuthType] = useState<'password' | 'pin'>('password');
   const [pin, setPin] = useState<string>('');
+  const [pinError, setPinError] = useState<string | null>(null);
+
+  // สแกนใบหน้าถูกซ่อนไว้เป็นค่าเริ่มต้นเพื่อความปลอดภัยของข้อมูลจริง
+  // เปิดใช้งานเมื่อตั้งค่า VITE_ENABLE_FACE_LOGIN=true หรือเพิ่ม ?face_login=1 ใน URL
+  const isFaceLoginEnabled =
+    import.meta.env.VITE_ENABLE_FACE_LOGIN === 'true' ||
+    (typeof window !== 'undefined' && window.location.search.includes('face_login=1'));
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (authType === 'pin') {
+      if (pin.trim().length !== 6) {
+        setPinError('กรุณากรอกรหัส PIN ตัวเลขให้ครบ 6 หลัก');
+        return;
+      }
+    }
+    setPinError(null);
     onLoginSuccess(userName.trim() || 'คุณสมชาย ใจดี');
   };
 
@@ -62,7 +76,10 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
         <div className="flex bg-emerald-50/80 p-1 rounded-2xl border border-emerald-100">
           <button
             type="button"
-            onClick={() => setAuthType('password')}
+            onClick={() => {
+              setAuthType('password');
+              setPinError(null);
+            }}
             className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
               authType === 'password'
                 ? 'bg-white text-[#1E8A4C] shadow-sm'
@@ -74,13 +91,16 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
           <button
             type="button"
             onClick={() => setAuthType('pin')}
-            className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
+            className={`flex-1 py-2 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 ${
               authType === 'pin'
                 ? 'bg-white text-[#1E8A4C] shadow-sm'
                 : 'text-slate-600 hover:text-slate-800'
             }`}
           >
-            รหัส PIN 6 หลัก
+            <span>รหัส PIN 6 หลัก</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-normal">
+              โหมดสาธิต
+            </span>
           </button>
         </div>
 
@@ -111,19 +131,33 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
               />
             </div>
           ) : (
-            <div className="bg-white rounded-2xl border border-emerald-200 p-3 sm:p-3.5 flex items-center gap-3 shadow-sm focus-within:border-[#1E8A4C] focus-within:ring-2 focus-within:ring-emerald-200 transition">
-              <KeyRound className="w-5 h-5 text-[#1E8A4C] flex-shrink-0" />
-              <input
-                type="password"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={6}
-                value={pin}
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="กรอกรหัส PIN ตัวเลข 6 หลัก (เช่น 123456)"
-                className="w-full bg-transparent text-sm font-mono tracking-widest text-[#0B2B2B] outline-none placeholder:font-sans placeholder:tracking-normal"
-                aria-label="รหัส PIN"
-              />
+            <div className="space-y-2">
+              <div className={`bg-white rounded-2xl border p-3 sm:p-3.5 flex items-center gap-3 shadow-sm transition ${
+                pinError ? 'border-rose-400 ring-2 ring-rose-200' : 'border-emerald-200 focus-within:border-[#1E8A4C] focus-within:ring-2 focus-within:ring-emerald-200'
+              }`}>
+                <KeyRound className="w-5 h-5 text-[#1E8A4C] flex-shrink-0" />
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  value={pin}
+                  onChange={(e) => {
+                    setPin(e.target.value.replace(/\D/g, '').slice(0, 6));
+                    if (pinError) setPinError(null);
+                  }}
+                  placeholder="กรอกรหัส PIN ตัวเลข 6 หลัก (เช่น 123456)"
+                  className="w-full bg-transparent text-sm font-mono tracking-widest text-[#0B2B2B] outline-none placeholder:font-sans placeholder:tracking-normal"
+                  aria-label="รหัส PIN"
+                />
+              </div>
+              {pinError && (
+                <p className="text-xs text-rose-600 font-semibold pl-1">{pinError}</p>
+              )}
+              <div className="text-[11px] text-amber-800 bg-amber-50/90 border border-amber-200 rounded-xl p-2.5 leading-relaxed">
+                <span className="font-bold">⚠️ หมายเหตุความปลอดภัย [โหมดสาธิต]:</span>{' '}
+                การเข้าสู่ระบบด้วย PIN ในหน้านี้เป็นระบบจำลองฝั่งเบราว์เซอร์ หากใช้งานกับข้อมูลผู้ป่วยจริงต้องตรวจและแฮชรหัสผ่านที่เซิร์ฟเวอร์ Backend
+              </div>
             </div>
           )}
 
@@ -150,20 +184,22 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
             </div>
           )}
 
-          {/* Face Login Fast-Action With Beta Badge */}
-          <div className="pt-1 text-center">
-            <button
-              type="button"
-              onClick={onOpenFaceLogin}
-              className="inline-flex items-center gap-2 text-xs font-bold text-[#1E8A4C] hover:text-[#156C3B] p-1.5 transition"
-            >
-              <Camera className="w-4 h-4 text-[#1E8A4C]" />
-              <span>หรือ สแกนใบหน้าเข้าสู่ระบบ (Face Login)</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
-                ทดลอง (Beta)
-              </span>
-            </button>
-          </div>
+          {/* Face Login Fast-Action: แสดงเฉพาะเมื่อเปิด VITE_ENABLE_FACE_LOGIN=true หรือ ?face_login=1 */}
+          {isFaceLoginEnabled && (
+            <div className="pt-1 text-center">
+              <button
+                type="button"
+                onClick={onOpenFaceLogin}
+                className="inline-flex items-center gap-2 text-xs font-bold text-[#1E8A4C] hover:text-[#156C3B] p-1.5 transition"
+              >
+                <Camera className="w-4 h-4 text-[#1E8A4C]" />
+                <span>หรือ สแกนใบหน้าเข้าสู่ระบบ (Face Login)</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                  ทดลอง (Beta)
+                </span>
+              </button>
+            </div>
+          )}
 
           {/* Buttons: Primary "เข้าสู่ระบบ", ~16px gap, Secondary "สมัครสมาชิก" */}
           <div className="flex flex-col gap-4 pt-3">
