@@ -684,6 +684,16 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
               </p>
             </div>
 
+            <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1">
+              <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
+                <span>🩺</span>
+                <span>Patient Clinical Editor</span>
+              </div>
+              <p className="text-slate-600 text-[11px] leading-relaxed">
+                โมดอลดูและแก้ไขเวชระเบียนคนไข้ 3 ส่วน (ข้อมูลส่วนตัว, ประวัติการรักษา/Chief Complaint/ROM/โน้ตนักกายภาพ, สถานะ) พร้อมบังคับสิทธิ์ Admin & Physio
+              </p>
+            </div>
+
             <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1 sm:col-span-2">
               <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
                 <span>🤖</span>
