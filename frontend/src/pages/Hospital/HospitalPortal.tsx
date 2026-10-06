@@ -39,6 +39,7 @@ import {
 import { useHospitalStore } from '../../store/hospitalStore';
 import { UserAccount, UserRole, PhysicalTherapist, HospitalExercise, ActivityLog } from '../../types/hospital';
 import { ReceptionOnboardingModal } from '../../components/Reception/ReceptionOnboardingModal';
+import { AddUserModal } from '../../components/Hospital/AddUserModal';
 
 interface HospitalPortalProps {
   onClose: () => void;
@@ -162,33 +163,16 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
 
   // Add User Modal State
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState<boolean>(false);
-  const [newUserForm, setNewUserForm] = useState<{
-    username: string;
-    name: string;
-    role: UserRole;
-    password: string;
-    phone: string;
-    age: number;
-    gender: 'male' | 'female' | 'other';
-    diagnosis: string;
-    chiefComplaint: string;
-    patientBackground: string;
-    treatmentOutcome: string;
-    therapistNotes: string;
-  }>({
-    username: '',
-    name: '',
-    role: 'patient',
-    password: '1234',
-    phone: '',
-    age: 60,
-    gender: 'male',
-    diagnosis: '',
-    chiefComplaint: '',
-    patientBackground: '',
-    treatmentOutcome: '',
-    therapistNotes: '',
-  });
+
+  const handleAddUser = (
+    userData: Omit<UserAccount, 'id' | 'created_at'>,
+    therapistExtra?: Omit<PhysicalTherapist, 'id'>
+  ) => {
+    addUser(userData);
+    if (therapistExtra) {
+      addTherapist(therapistExtra);
+    }
+  };
 
   // Edit User (Name/Phone) Modal State
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
@@ -213,55 +197,6 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
       return !!isAssigned;
     }
     return false;
-  };
-
-  // Submit Add User
-  const handleAddUserSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newUserForm.name.trim() || !newUserForm.username.trim()) {
-      showToast('กรุณากรอกชื่อและชื่อผู้ใช้งาน (Username)');
-      return;
-    }
-
-    const assignedRole: UserRole = currentRole === 'therapist' ? 'patient' : newUserForm.role;
-    const prefix = assignedRole === 'patient' ? 'P' : assignedRole === 'therapist' ? 'T' : 'ADM';
-    const randCode = `${prefix}-${Math.floor(1000 + Math.random() * 9000)}`;
-
-    const created = addUser({
-      username: newUserForm.username.trim(),
-      name: newUserForm.name.trim(),
-      role: assignedRole,
-      status: 'active',
-      code: randCode,
-      password: newUserForm.password || '1234',
-      phone: newUserForm.phone || '08x-xxx-xxxx',
-      age: Number(newUserForm.age) || 60,
-      gender: newUserForm.gender,
-      diagnosis: newUserForm.diagnosis || (assignedRole === 'patient' ? 'ข้อไหล่ติดระยะฟื้นฟู' : undefined),
-      chiefComplaint: newUserForm.chiefComplaint || (assignedRole === 'patient' ? 'มีอาการปวดตึงข้อต่อเรื้อรัง' : undefined),
-      patientBackground: newUserForm.patientBackground || (assignedRole === 'patient' ? 'สุขภาพทั่วไปปกติ' : undefined),
-      treatmentOutcome: newUserForm.treatmentOutcome || (assignedRole === 'patient' ? 'เริ่มต้นโปรแกรมกายภาพ' : undefined),
-      therapistNotes: newUserForm.therapistNotes || (assignedRole === 'patient' ? 'เริ่มฝึกท่าพื้นฐานอย่างระมัดระวัง' : undefined),
-      assignedTherapistId: assignedRole === 'patient' ? currentUserId : undefined,
-      assignedTherapistName: assignedRole === 'patient' ? (currentTherapist?.name || 'กภ. ธนากร วงศ์สวัสดิ์') : undefined,
-    });
-
-    setIsAddUserModalOpen(false);
-    showToast(`เพิ่มผู้ใช้งานสำเร็จ: ${created.name} (${created.code})`);
-    setNewUserForm({
-      username: '',
-      name: '',
-      role: 'patient',
-      password: '1234',
-      phone: '',
-      age: 60,
-      gender: 'male',
-      diagnosis: '',
-      chiefComplaint: '',
-      patientBackground: '',
-      treatmentOutcome: '',
-      therapistNotes: '',
-    });
   };
 
   // =========================================================================
@@ -900,23 +835,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                   </div>
 
                   <button
-                    onClick={() => {
-                      setNewUserForm({
-                        username: '',
-                        name: '',
-                        role: 'patient',
-                        password: '1234',
-                        phone: '',
-                        age: 60,
-                        gender: 'male',
-                        diagnosis: '',
-                        chiefComplaint: '',
-                        patientBackground: '',
-                        treatmentOutcome: '',
-                        therapistNotes: '',
-                      });
-                      setIsAddUserModalOpen(true);
-                    }}
+                    onClick={() => setIsAddUserModalOpen(true)}
                     className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#10B981] text-white text-xs sm:text-sm font-bold shadow-md shadow-emerald-500/20 hover:bg-emerald-600 transition active:scale-95 cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
@@ -2040,164 +1959,17 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
       {/* ==================================================================== */}
       {/* 4. ADD USER MODAL (Tab 1: users)                                     */}
       {/* ==================================================================== */}
-      {isAddUserModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F2F2B]/60 backdrop-blur-sm animate-fadeIn"
-          onClick={() => setIsAddUserModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-lg bg-white rounded-3xl p-6 shadow-2xl border border-emerald-200 space-y-4 max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between pb-2 border-b border-emerald-100">
-              <h4 className="font-bold text-base text-[#0F2F2B]">
-                {currentRole === 'admin' ? 'เพิ่มบัญชีผู้ใช้งานใหม่' : 'เพิ่มบัญชีคนไข้ใหม่ (โดยนักกายภาพ)'}
-              </h4>
-              <button
-                onClick={() => setIsAddUserModalOpen(false)}
-                className="p-1 rounded-full text-slate-400 hover:bg-slate-100 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddUserSubmit} className="space-y-3.5 text-xs font-semibold">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-700 mb-1">ชื่อ-นามสกุล:</label>
-                  <input
-                    type="text"
-                    value={newUserForm.name}
-                    onChange={(e) => setNewUserForm({ ...newUserForm, name: e.target.value })}
-                    placeholder="เช่น นายประสิทธิ์ สดใส"
-                    className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-sm outline-none font-bold"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 mb-1">ชื่อผู้ใช้งาน (Username):</label>
-                  <input
-                    type="text"
-                    value={newUserForm.username}
-                    onChange={(e) => setNewUserForm({ ...newUserForm, username: e.target.value })}
-                    placeholder="เช่น prasit99"
-                    className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-sm outline-none font-mono"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-700 mb-1">รหัสผ่าน / PIN:</label>
-                  <input
-                    type="text"
-                    value={newUserForm.password}
-                    onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })}
-                    placeholder="1234"
-                    className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-sm outline-none font-mono"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 mb-1">สถานะ / บทบาท:</label>
-                  {currentRole === 'admin' ? (
-                    <select
-                      value={newUserForm.role}
-                      onChange={(e) => setNewUserForm({ ...newUserForm, role: e.target.value as UserRole })}
-                      className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-sm outline-none font-bold bg-white"
-                    >
-                      <option value="patient">คนไข้ (Patient)</option>
-                      <option value="therapist">นักกายภาพบำบัด (Therapist)</option>
-                    </select>
-                  ) : (
-                    <div className="px-3.5 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-sm font-bold text-emerald-800">
-                      คนไข้ (นักกายภาพเพิ่มได้เฉพาะคนไข้)
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-slate-700 mb-1">อายุ (ปี):</label>
-                  <input
-                    type="number"
-                    value={newUserForm.age}
-                    onChange={(e) => setNewUserForm({ ...newUserForm, age: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-sm outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 mb-1">เพศ:</label>
-                  <select
-                    value={newUserForm.gender}
-                    onChange={(e) => setNewUserForm({ ...newUserForm, gender: e.target.value as any })}
-                    className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-sm outline-none bg-white"
-                  >
-                    <option value="male">ชาย</option>
-                    <option value="female">หญิง</option>
-                    <option value="other">อื่นๆ</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-700 mb-1">เบอร์โทรศัพท์:</label>
-                  <input
-                    type="text"
-                    value={newUserForm.phone}
-                    onChange={(e) => setNewUserForm({ ...newUserForm, phone: e.target.value })}
-                    placeholder="08x-xxx-xxxx"
-                    className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-sm outline-none"
-                  />
-                </div>
-              </div>
-
-              {newUserForm.role === 'patient' && (
-                <>
-                  <div>
-                    <label className="block text-slate-700 mb-1">ประวัติการซักประวัติ / อาการสำคัญ:</label>
-                    <input
-                      type="text"
-                      value={newUserForm.chiefComplaint}
-                      onChange={(e) => setNewUserForm({ ...newUserForm, chiefComplaint: e.target.value })}
-                      placeholder="เช่น ปวดตึงหัวไหล่ขวาเรื้อรัง ยกแขนไม่สุด"
-                      className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-sm outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-700 mb-1">คำแนะนำเริ่มต้นจากนักกายภาพ:</label>
-                    <input
-                      type="text"
-                      value={newUserForm.therapistNotes}
-                      onChange={(e) => setNewUserForm({ ...newUserForm, therapistNotes: e.target.value })}
-                      placeholder="เช่น ฝึกยกแขนช้าๆ ตามแนวระนาบ ไม่กลั้นหายใจ"
-                      className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-sm outline-none"
-                    />
-                  </div>
-                </>
-              )}
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-emerald-100">
-                <button
-                  type="button"
-                  onClick={() => setIsAddUserModalOpen(false)}
-                  className="px-4 py-2 rounded-full border border-slate-300 text-slate-600 font-bold cursor-pointer"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-full bg-[#10B981] text-white font-bold shadow-md hover:bg-emerald-600 transition cursor-pointer"
-                >
-                  ยืนยันเพิ่มบัญชี
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <AddUserModal
+        isOpen={isAddUserModalOpen}
+        onClose={() => setIsAddUserModalOpen(false)}
+        currentRole={currentRole}
+        currentUserId={currentUserId}
+        currentUserName={currentUser?.name || 'กภ. ธนากร วงศ์สวัสดิ์'}
+        therapists={therapists}
+        existingUsers={users}
+        onSubmitUser={handleAddUser}
+        onSuccessToast={showToast}
+      />
 
       {/* ==================================================================== */}
       {/* 5. EDIT USER NAME/PHONE MODAL (Tab 1: users)                         */}
