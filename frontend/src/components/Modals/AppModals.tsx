@@ -626,6 +626,26 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
             
             <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1">
               <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
+                <span>🏥</span>
+                <span>Reception Onboarding</span>
+              </div>
+              <p className="text-slate-600 text-[11px] leading-relaxed">
+                ต้อนรับคนไข้ใหม่ กรอกข้อมูล HN/อาการ/นักกายภาพผู้รับผิดชอบก่อน แล้วค่อยสแกนหน้าเพื่อล็อกอินเข้าตู้ทันที
+              </p>
+            </div>
+
+            <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1">
+              <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
+                <span>🏛️</span>
+                <span>Hospital & RBAC Portal</span>
+              </div>
+              <p className="text-slate-600 text-[11px] leading-relaxed">
+                ระบบจัดการ 3 บทบาท (ผอรพ / นักกายภาพ / คนไข้) จัดการผู้ใช้ แผนการรักษา Activity Log และตั้งค่า AI
+              </p>
+            </div>
+
+            <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1">
+              <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
                 <span>🪞</span>
                 <span>Vertical Smart-Mirror</span>
               </div>
@@ -636,51 +656,31 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
 
             <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1">
               <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
-                <span>👨‍⚕️</span>
-                <span>PiP Doctor Guidance</span>
-              </div>
-              <p className="text-slate-600 text-[11px] leading-relaxed">
-                คลิปคุณหมอสาธิตซ้อนในกล้อง สลับมุมซ้าย-ขวา ย่อ-ขยายได้ ไม่บังแขนข้างที่ฝึก
-              </p>
-            </div>
-
-            <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1">
-              <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
                 <span>🧘‍♂️</span>
-                <span>11 Clinical Stretch</span>
+                <span>15 Kinematic Exercises</span>
               </div>
               <p className="text-slate-600 text-[11px] leading-relaxed">
-                โปรแกรมยืดเหยียด 11 ท่า พร้อมระบบตรวจวัดองศาข้อต่อยืนยันความถูกต้องก่อนจับเวลา
+                คลัง 15 ท่ากายภาพชีวกลศาสตร์ พร้อม 5-State Machine ป้องกันโกงท่า และคำนวณแบบ Aspect-Ratio Invariant
               </p>
             </div>
 
             <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1">
               <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
                 <span>🤖</span>
-                <span>MediaPipe FaceLandmarker</span>
+                <span>ResNet-34 Face Biometrics</span>
               </div>
               <p className="text-slate-600 text-[11px] leading-relaxed">
-                ตรวจจับใบหน้า 478 จุดจริง เวกเตอร์ชีวมิติ 128 มิติ พร้อม Liveness Blink & Head Yaw ป้องกันภาพนิ่ง
+                MediaPipe Mesh 478 จุด + ResNet-34 เวกเตอร์ 128 มิติ พร้อม Liveness Blink ป้องกันภาพนิ่งตาม PDPA
               </p>
             </div>
 
             <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1">
               <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
                 <span>🛡️</span>
-                <span>Safety Watchdog</span>
+                <span>Safety Watchdog & Symptoms</span>
               </div>
               <p className="text-slate-600 text-[11px] leading-relaxed">
-                ตรวจจับ Over-ROM, ลำตัวเอียง (Trunk Lean), ยกบ่า (Shoulder Hike) พร้อมเสียงแจ้งเตือนภาษาไทย
-              </p>
-            </div>
-
-            <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1">
-              <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
-                <span>💾</span>
-                <span>Offline-First & PDPA</span>
-              </div>
-              <p className="text-slate-600 text-[11px] leading-relaxed">
-                IndexedDB (StrongCareDB) ทำงานออฟไลน์ 100% ไม่เก็บรูปถ่ายจริง และมีปุ่มลบข้อมูลตาม PDPA
+                ตรวจจับ Over-ROM, ลำตัวเอียง (Trunk Lean), กล่องรับแจ้งอาการปวด (1-5) พร้อมเสียงโค้ชชิ่ง AI
               </p>
             </div>
 
@@ -690,8 +690,8 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
         {/* Technical Architecture Badge */}
         <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-600 space-y-1">
           <div className="font-bold text-[#0B2B2B]">🛠️ เทคโนโลยีที่ใช้</div>
-          <div>• Frontend: React 18, TypeScript 5, Vite 5, Tailwind CSS, Lucide Icons, Zustand</div>
-          <div>• Computer Vision: Google MediaPipe Pose Landmarker (WASM 0.10.35), FaceLandmarker</div>
+          <div>• Frontend: React 18, TypeScript 5, Vite 5, Tailwind CSS, Lucide Icons, Zustand, Recharts</div>
+          <div>• Computer Vision: MediaPipe Pose Landmarker (WASM), FaceLandmarker, ResNet-34 128-D</div>
           <div>• Backend & DB: PHP 8.2 REST API, SQLite 3 / MySQL, IndexedDB Local Database</div>
         </div>
 
