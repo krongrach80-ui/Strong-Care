@@ -25,11 +25,23 @@ var/
 wheels/
 *.egg-info/
 .installed.cfg
-*.egg
+# Environment variables
 .env
-.venv
-venv/
-ENV/
+.env.*
+!.env.example
+!.env.production
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+!frontend/.env.production
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Cache & Temporary runtime files
+backend/cache/
+backend/cache/*
+!backend/cache/.gitkeep
 
 # Database & SQLite
 *.db

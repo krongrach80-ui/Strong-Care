@@ -107,12 +107,13 @@ class SyncController {
                 'synced_at' => date('Y-m-d H:i:s'),
                 'message' => "ซิงค์ข้อมูลสำเร็จ ({$syncedSessions} เซสชัน, {$syncedSafety} เหตุการณ์ความปลอดภัย)"
             ]);
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();
             }
+            error_log("SyncController error: " . $e->getMessage());
             http_response_code(500);
-            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+            echo json_encode(['status' => 'error', 'message' => 'Failed to synchronize offline data']);
         }
     }
 }

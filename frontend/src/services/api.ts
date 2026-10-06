@@ -2,12 +2,71 @@ import { Patient } from '../types/patient';
 import { ExerciseDefinition } from '../types/exercise';
 import { Session, SessionReport } from '../types/session';
 import { API_BASE_URL, IS_STATIC_MODE } from '../config/apiConfig';
+import { IndexedDbService } from './indexedDbService';
 
 const API_BASE = API_BASE_URL || '/api';
 
 /**
+ * In-memory and sessionStorage token manager (Never stores in localStorage for PDPA & security)
+ */
+let inMemoryToken: string | null = null;
+
+export const authStorage = {
+  getToken(): string | null {
+    if (inMemoryToken) return inMemoryToken;
+    if (typeof sessionStorage !== 'undefined') {
+      try {
+        return sessionStorage.getItem('strongcare_auth_token');
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  },
+  setToken(token: string | null): void {
+    inMemoryToken = token;
+    if (typeof sessionStorage !== 'undefined') {
+      try {
+        if (token) {
+          sessionStorage.setItem('strongcare_auth_token', token);
+        } else {
+          sessionStorage.removeItem('strongcare_auth_token');
+        }
+      } catch {
+        // Ignore storage error
+      }
+    }
+  },
+  clear(): void {
+    this.setToken(null);
+  }
+};
+
+/**
+ * Fetch wrapper that attaches Authorization: Bearer token and handles 401 redirection
+ */
+async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
+  const token = authStorage.getToken();
+  const headers = new Headers(options.headers || {});
+
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const response = await fetch(url, { ...options, headers });
+
+  if (response.status === 401) {
+    authStorage.clear();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+    }
+  }
+
+  return response;
+}
+
+/**
  * Helper: Format Date as Local MySQL DateTime string (YYYY-MM-DD HH:mm:ss)
- * ป้องกันปัญหา UTC Offset เพี้ยน 7 ชั่วโมงในประเทศไทย
  */
 function formatLocalMySQLDateTime(date: Date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -21,8 +80,63 @@ function formatLocalMySQLDateTime(date: Date = new Date()): string {
 }
 
 export const api = {
+  getAuthToken(): string | null {
+    return authStorage.getToken();
+  },
+
+  setAuthToken(token: string | null): void {
+    authStorage.setToken(token);
+  },
+
   /**
-   * ดึงรายชื่อผู้ป่วย
+   * เข้าสู่ระบบด้วย PIN หรือรหัสผ่านฝั่งเซิร์ฟเวอร์
+   */
+  async login(payload: { patient_id?: number; patient_code?: string; pin?: string; username?: string; password?: string }): Promise<any> {
+    if (IS_STATIC_MODE) {
+      return {
+        status: 'success',
+        role: 'patient',
+        token: 'demo-static-token',
+        patient: { id: payload.patient_id || 1, name: 'คุณสมชาย ใจดี [โหมดสาธิต]' },
+        message: 'เข้าสู่ระบบสำเร็จ [โหมดสาธิต]'
+      };
+    }
+
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      throw new Error(err?.message || `เข้าสู่ระบบไม่สำเร็จ HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    if (data.token) {
+      authStorage.setToken(data.token);
+    }
+    return data;
+  },
+
+  /**
+   * ออกจากระบบ
+   */
+  async logout(): Promise<void> {
+    try {
+      if (!IS_STATIC_MODE) {
+        await fetchWithAuth(`${API_BASE}/auth/logout`, { method: 'POST' });
+      }
+    } catch {
+      // Ignore network error on logout
+    } finally {
+      authStorage.clear();
+    }
+  },
+
+  /**
+   * ดึงรายชื่อผู้ป่วย (เฉพาะบุคลากร หรือใช้ fallback ในโหมดสาธิต)
    */
   async getPatients(): Promise<Patient[]> {
     if (IS_STATIC_MODE) {
@@ -32,7 +146,7 @@ export const api = {
       ];
     }
 
-    const res = await fetch(`${API_BASE}/patients`);
+    const res = await fetchWithAuth(`${API_BASE}/patients`);
     if (!res.ok) {
       throw new Error(`โหลดรายชื่อผู้ป่วยไม่สำเร็จ HTTP ${res.status}: ${res.statusText}`);
     }
@@ -55,7 +169,7 @@ export const api = {
       };
     }
 
-    const res = await fetch(`${API_BASE}/patients`, {
+    const res = await fetchWithAuth(`${API_BASE}/patients`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patient),
@@ -102,14 +216,13 @@ export const api = {
       ];
     }
 
-    const res = await fetch(`${API_BASE}/exercises`);
+    const res = await fetchWithAuth(`${API_BASE}/exercises`);
     if (!res.ok) {
       throw new Error(`โหลดรายการท่าออกกำลังกายไม่สำเร็จ HTTP ${res.status}: ${res.statusText}`);
     }
     const json = await res.json();
     return json.data ?? [];
   },
-
 
   /**
    * บันทึกผลเซสชัน (ต้อง throw หากส่งขึ้นเซิร์ฟเวอร์ไม่ได้ เพื่อให้ระบบจัดการคิวซิงก์)
@@ -132,7 +245,7 @@ export const api = {
       };
     }
 
-    const res = await fetch(`${API_BASE}/sessions`, {
+    const res = await fetchWithAuth(`${API_BASE}/sessions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(sessionData),
@@ -160,7 +273,7 @@ export const api = {
       };
     }
 
-    const res = await fetch(`${API_BASE}/patients/${patientId}/history`);
+    const res = await fetchWithAuth(`${API_BASE}/patients/${patientId}/history`);
     if (!res.ok) {
       throw new Error(`ดึงประวัติผู้ป่วยไม่สำเร็จ HTTP ${res.status}: ${res.statusText}`);
     }
@@ -173,17 +286,21 @@ export const api = {
    */
   async purgePatientData(patientId: number): Promise<{ success: boolean; message: string }> {
     if (IS_STATIC_MODE) {
+      await IndexedDbService.purgePatientData(patientId);
       return { success: true, message: 'ลบข้อมูลในเครื่องและโหมดสาธิตสำเร็จตาม PDPA [โหมดสาธิต]' };
     }
 
     try {
-      const res = await fetch(`${API_BASE}/patients/${patientId}/purge`, {
+      const res = await fetchWithAuth(`${API_BASE}/patients/${patientId}/purge`, {
         method: 'DELETE',
       });
       if (!res.ok) {
         throw new Error(`ลบข้อมูลฝั่งเซิร์ฟเวอร์ไม่สำเร็จ HTTP ${res.status}: ${res.statusText}`);
       }
-      return await res.json();
+      const data = await res.json();
+      // Server returned success: purge local client storage for this patient
+      await IndexedDbService.purgePatientData(patientId);
+      return data;
     } catch (err: any) {
       console.warn('Server purge endpoint warning:', err);
       return { success: false, message: err?.message || 'ไม่สามารถติดต่อเซิร์ฟเวอร์เพื่อลบข้อมูลได้' };
@@ -203,7 +320,7 @@ export const api = {
       };
     }
 
-    const res = await fetch(`${API_BASE}/reports/${sessionId}`);
+    const res = await fetchWithAuth(`${API_BASE}/reports/${sessionId}`);
     if (!res.ok) {
       throw new Error(`ดึงรายงานเซสชันไม่สำเร็จ HTTP ${res.status}: ${res.statusText}`);
     }
@@ -235,7 +352,7 @@ export const api = {
   },
 
   /**
-   * ยืนยันตัวตนด้วยใบหน้า (Fallback ใช้ได้เฉพาะโหมดสาธิตเท่านั้น)
+   * ยืนยันตัวตนด้วยใบหน้า (รองรับทั้งโหมดสาธิตและเซิร์ฟเวอร์จริง)
    */
   async verifyFace(embedding: number[], threshold: number = 0.82): Promise<any> {
     if (IS_STATIC_MODE) {
@@ -244,6 +361,7 @@ export const api = {
         match: true,
         similarity: 0.92,
         similarity_percent: 92,
+        token: 'demo-face-token',
         patient: { id: 1, patient_code: 'PT-2026-001', name: 'คุณสมชาย ใจดี [โหมดสาธิต]', age: 65 },
       };
     }
@@ -257,7 +375,11 @@ export const api = {
     if (!res.ok) {
       throw new Error(`ตรวจสอบใบหน้าไม่สำเร็จ HTTP ${res.status}: ${res.statusText}`);
     }
-    return await res.json();
+    const data = await res.json();
+    if (data.token) {
+      authStorage.setToken(data.token);
+    }
+    return data;
   },
 
   /**
@@ -271,6 +393,27 @@ export const api = {
     const res = await fetch(`${API_BASE}/face/status`);
     if (!res.ok) {
       throw new Error(`ดึงสถานะใบหน้าไม่สำเร็จ HTTP ${res.status}: ${res.statusText}`);
+    }
+    return await res.json();
+  },
+
+  /**
+   * ซิงก์ข้อมูลออฟไลน์กับเซิร์ฟเวอร์
+   */
+  async sync(payload: { sessions?: any[]; safety_events?: any[] }): Promise<any> {
+    if (IS_STATIC_MODE) {
+      return { status: 'success', message: 'ทำงานในโหมดสาธิต (ไม่ส่งข้อมูลขึ้นเซิร์ฟเวอร์)', data: { synced_sessions: 0 } };
+    }
+
+    const res = await fetchWithAuth(`${API_BASE}/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => null);
+      throw new Error(errJson?.message || `ซิงก์ข้อมูลไม่สำเร็จ HTTP ${res.status}: ${res.statusText}`);
     }
     return await res.json();
   },

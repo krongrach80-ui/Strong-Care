@@ -20,12 +20,15 @@ import {
   MiniGameSettingsModal,
   UserProfileModal,
   TherapistReportModal,
+  AboutModal,
 } from '../components/Modals/AppModals';
 import { FaceAuthModal } from '../components/FaceAuth/FaceAuthModal';
 import { usePatientStore } from '../store/patientStore';
 import { useExerciseStore } from '../store/exerciseStore';
 import { useSessionStore } from '../store/sessionStore';
 import { api } from '../services/api';
+import { OfflineStorageService } from '../services/offlineStorageService';
+import { IS_STATIC_MODE } from '../config/apiConfig';
 import { Patient } from '../types/patient';
 import { CheckCircle2 } from 'lucide-react';
 
@@ -45,6 +48,7 @@ export const App: React.FC = () => {
   const [isTherapySettingsOpen, setIsTherapySettingsOpen] = useState<boolean>(false);
   const [isMiniGameSettingsOpen, setIsMiniGameSettingsOpen] = useState<boolean>(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+  const [isAboutOpen, setIsAboutOpen] = useState<boolean>(false);
   const [isTherapistReportOpen, setIsTherapistReportOpen] = useState<boolean>(false);
   const [therapistReportData, setTherapistReportData] = useState<{
     score: number | null;
@@ -72,6 +76,45 @@ export const App: React.FC = () => {
     fetchPatients();
     fetchExercises();
   }, [fetchPatients, fetchExercises]);
+
+  // Offline sync watcher: trigger on app launch and window 'online' event (skipped in static demo mode)
+  useEffect(() => {
+    if (IS_STATIC_MODE) return;
+
+    let isRunning = false;
+    const triggerSync = async () => {
+      if (isRunning || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
+      isRunning = true;
+      try {
+        const res = await OfflineStorageService.syncPendingSessions();
+        if (res.syncedCount > 0) {
+          showToast(`ซิงก์ข้อมูลค้างส่งสำเร็จ ${res.syncedCount} รายการ`);
+        }
+      } catch (err) {
+        console.warn('Auto sync pending sessions error:', err);
+      } finally {
+        isRunning = false;
+      }
+    };
+
+    triggerSync();
+    window.addEventListener('online', triggerSync);
+    return () => {
+      window.removeEventListener('online', triggerSync);
+    };
+  }, []);
+
+  // Listen for unauthorized 401 events to redirect to login
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setCurrentScreen(2);
+      showToast('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
+    };
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => {
+      window.removeEventListener('auth:unauthorized', handleUnauthorized);
+    };
+  }, []);
 
   // Navigate & scroll to top smoothly
   const handleNavigate = (screenNumber: number) => {
@@ -271,6 +314,7 @@ export const App: React.FC = () => {
           <Screen1Home
             onStart={() => handleNavigate(2)}
             onOpenAdmin={() => setIsAdminOpen(true)}
+            onOpenAbout={() => setIsAboutOpen(true)}
           />
         )}
 
@@ -370,6 +414,11 @@ export const App: React.FC = () => {
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
         patient={selectedPatient}
+        onPatientPurged={() => {
+          showToast('ลบข้อมูลผู้ป่วยและข้อมูลชีวมิติเรียบร้อยตาม PDPA');
+          fetchPatients();
+          handleNavigate(1);
+        }}
       />
 
       {/* Therapist Report Modal */}
@@ -388,6 +437,12 @@ export const App: React.FC = () => {
         onClose={closeFaceAuth}
         initialMode={faceAuthMode}
         onLoginSuccess={handleFaceLoginDone}
+      />
+
+      {/* About Modal */}
+      <AboutModal
+        isOpen={isAboutOpen}
+        onClose={() => setIsAboutOpen(false)}
       />
 
     </div>

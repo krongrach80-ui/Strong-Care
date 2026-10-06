@@ -21,7 +21,7 @@ export function useCamera() {
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         if (typeof window !== 'undefined' && !window.isSecureContext) {
-          const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+          const isLocal = window.location.hostname === 'localhost' || /^127(?:\.\d+){3}$/.test(window.location.hostname);
           if (!isLocal) {
             throw new Error(
               `เบราว์เซอร์บล็อกการเข้าถึงกล้องเนื่องจากไม่ได้ใช้ HTTPS (Insecure Context): สำหรับการทดสอบบนมือถือผ่าน LAN/Wi-Fi กรุณาใช้ URL ที่ขึ้นต้นด้วย "https://" (เช่น https://${window.location.host}) หรือเปิดผ่าน localhost`

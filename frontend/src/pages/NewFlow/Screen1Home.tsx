@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowRight, Shield, Sparkles } from 'lucide-react';
+import { ArrowRight, Shield, Sparkles, Info } from 'lucide-react';
+import { IS_STATIC_MODE } from '../../config/apiConfig';
 
 interface Screen1HomeProps {
   onStart: () => void;
   onOpenAdmin: () => void;
+  onOpenAbout?: () => void;
 }
 
-export const Screen1Home: React.FC<Screen1HomeProps> = ({ onStart, onOpenAdmin }) => {
+export const Screen1Home: React.FC<Screen1HomeProps> = ({ onStart, onOpenAdmin, onOpenAbout }) => {
   const [thaiDate, setThaiDate] = useState<string>('');
   const [thaiTime, setThaiTime] = useState<string>('');
 
@@ -83,7 +85,7 @@ export const Screen1Home: React.FC<Screen1HomeProps> = ({ onStart, onOpenAdmin }
       </div>
 
       {/* กลางจอ: ปุ่ม Primary ขนาดใหญ่ "เริ่มต้นการใช้งาน" */}
-      <div className="w-full max-w-sm mt-4 sm:mt-6">
+      <div className="w-full max-w-sm mt-4 sm:mt-6 flex flex-col items-center gap-3">
         <button
           onClick={onStart}
           className="btn-primary-capsule !w-full"
@@ -92,18 +94,43 @@ export const Screen1Home: React.FC<Screen1HomeProps> = ({ onStart, onOpenAdmin }
           <span>เริ่มต้นการใช้งาน</span>
           <ArrowRight className="w-5 h-5 flex-shrink-0" />
         </button>
+
+        {onOpenAbout && (
+          <button
+            onClick={onOpenAbout}
+            className="text-xs sm:text-sm font-semibold text-emerald-800 hover:text-emerald-950 underline decoration-emerald-300 underline-offset-4 flex items-center justify-center gap-1.5 transition py-1"
+            aria-label="ดูข้อมูลเกี่ยวกับระบบ Strong Care"
+          >
+            <Info className="w-4 h-4 text-[#1E8A4C]" />
+            <span>เกี่ยวกับ Strong Care (จุดเด่น & นวัตกรรม)</span>
+          </button>
+        )}
       </div>
 
-      {/* มุมขวาล่าง: ปุ่มเล็กขอบเขียวพื้นขาว เขียนว่า "Admin" */}
-      <button
-        onClick={onOpenAdmin}
-        className="fixed bottom-5 right-5 sm:bottom-7 sm:right-7 bg-white hover:bg-emerald-50 border-1.5 border-[#1E8A4C] text-[#1E8A4C] font-sans font-bold text-sm px-4 py-2 rounded-full shadow-md hover:shadow-lg flex items-center gap-1.5 transition active:scale-95 z-30"
-        aria-label="เข้าสู่หน้าผู้ดูแลระบบ Admin"
-      >
-        <Shield className="w-4 h-4" />
-        <span>Admin</span>
-      </button>
+      {/* มุมซ้ายล่าง: ปุ่มเกี่ยวกับระบบ (About Modal) */}
+      {onOpenAbout && (
+        <button
+          onClick={onOpenAbout}
+          className="fixed bottom-5 left-5 sm:bottom-7 sm:left-7 bg-white/90 backdrop-blur-md hover:bg-emerald-50 border-1.5 border-emerald-300 text-[#1E8A4C] font-sans font-bold text-xs sm:text-sm px-4 py-2 rounded-full shadow-md hover:shadow-lg flex items-center gap-1.5 transition active:scale-95 z-30"
+          aria-label="เกี่ยวกับระบบ Strong Care"
+          id="btnAboutModal"
+        >
+          <Info className="w-4 h-4" />
+          <span>เกี่ยวกับระบบ</span>
+        </button>
+      )}
 
+      {/* มุมขวาล่าง: ปุ่ม Admin แสดงเฉพาะในโหมดสาธิต (เมื่อไม่ใช่โหมดสาธิต ต้องผ่าน auth ของ admin ก่อน) */}
+      {IS_STATIC_MODE && (
+        <button
+          onClick={onOpenAdmin}
+          className="fixed bottom-5 right-5 sm:bottom-7 sm:right-7 bg-white hover:bg-emerald-50 border-1.5 border-[#1E8A4C] text-[#1E8A4C] font-sans font-bold text-sm px-4 py-2 rounded-full shadow-md hover:shadow-lg flex items-center gap-1.5 transition active:scale-95 z-30"
+          aria-label="เข้าสู่หน้าผู้ดูแลระบบ Admin"
+        >
+          <Shield className="w-4 h-4" />
+          <span>Admin</span>
+        </button>
+      )}
     </div>
   );
 };

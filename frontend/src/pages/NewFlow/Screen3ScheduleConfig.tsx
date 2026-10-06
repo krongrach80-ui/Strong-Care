@@ -38,6 +38,8 @@ import {
 } from '../../data/stretchExercises';
 import { StretchStickFigure } from '../../components/StickFigure/StretchStickFigure';
 import { ExerciseVideoModal } from '../../components/VideoPlayer/ExerciseVideoModal';
+import { CustomPosesPage } from '../../components/CustomPoses/CustomPosesPage';
+import { getCustomPoseCount } from '../../services/customPoseService';
 
 interface Screen3ScheduleConfigProps {
   mode: TherapyMode; // 'physio' | 'minigame'
@@ -60,8 +62,8 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
   const [scheduledTime, setScheduledTime] = useState<string>(getDefaultTimeString());
   const [category, setCategory] = useState<ExerciseCategoryType>('stretch');
   const [customArea, setCustomArea] = useState<string>('');
-  const [isBottomSheetOpen, setIsBottomSheetOpen] = useState<boolean>(false);
-  const [customInputText, setCustomInputText] = useState<string>('');
+  const [showCustomPosesView, setShowCustomPosesView] = useState<boolean>(false);
+  const [customPosesCount, setCustomPosesCount] = useState<number>(() => getCustomPoseCount(patientId));
   const [selectedStretchIds, setSelectedStretchIds] = useState<string[]>(
     STRETCH_EXERCISES.map((e) => e.id)
   );
@@ -74,6 +76,11 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
   const todayStr = getTodayDateString();
   const defaultDateStr = getDefaultDateString();
 
+  // Reload custom poses count when patientId changes
+  useEffect(() => {
+    setCustomPosesCount(getCustomPoseCount(patientId));
+  }, [patientId]);
+
   // Load saved config on mount
   useEffect(() => {
     const saved = getSavedTherapyConfig(mode, patientId);
@@ -83,7 +90,6 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
     setCategory(saved.category || 'stretch');
     if (saved.customArea) {
       setCustomArea(saved.customArea);
-      setCustomInputText(saved.customArea);
     }
     if (saved.selectedStretchIds && saved.selectedStretchIds.length > 0) {
       setSelectedStretchIds(saved.selectedStretchIds);
@@ -133,36 +139,13 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
   const handleSelectCategory = (cat: ExerciseCategoryType) => {
     setCategory(cat);
     if (cat === 'custom') {
-      setIsBottomSheetOpen(true);
-      setCategoryNotice('หมวดหมู่ส่วนอื่นๆ อยู่ระหว่างจัดเตรียมชุดท่าทางเฉพาะบุคคล กรุณาเลือก "กายภาพยืดเส้น" สำหรับการฝึกในปัจจุบัน');
+      setShowCustomPosesView(true);
+      setCategoryNotice('หมวดหมู่ส่วนอื่นๆ (ท่าที่เพิ่มเอง) ยังไม่รองรับการเริ่มฝึกด้วย AI ในขณะนี้ กรุณาเลือก "กายภาพยืดเส้น" สำหรับการฝึก');
     } else if (cat !== 'stretch') {
       setCategoryNotice(`หมวดหมู่${cat === 'recovery' ? 'กายภาพฟื้นฟู' : 'กายภาพบำบัด'} อยู่ระหว่างจัดเตรียมชุดท่าทางเฉพาะบุคคล กรุณาเลือก "กายภาพยืดเส้น" สำหรับการฝึกในปัจจุบัน`);
     } else {
       setCategoryNotice(null);
     }
-  };
-
-  // Preset muscle / body areas
-  const presetAreas = [
-    'คอ',
-    'บ่า',
-    'ไหล่',
-    'หลัง',
-    'เอว',
-    'สะโพก',
-    'เข่า',
-    'ข้อเท้า',
-  ];
-
-  const handleSelectPresetArea = (area: string) => {
-    setCustomInputText(area);
-  };
-
-  const handleConfirmCustomArea = () => {
-    const finalArea = customInputText.trim() || 'คอและบ่า';
-    setCustomArea(finalArea);
-    setCategory('custom');
-    setIsBottomSheetOpen(false);
   };
 
   // Get human-friendly category title
@@ -175,7 +158,7 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
       case 'therapy':
         return 'กายภาพบำบัด';
       case 'custom':
-        return customArea ? `ส่วนอื่นๆ: ${customArea}` : 'ส่วนอื่นๆ';
+        return customPosesCount > 0 ? `ส่วนอื่นๆ (${customPosesCount} ท่า)` : 'ส่วนอื่นๆ (ท่าที่เพิ่มเอง)';
       default:
         return 'กายภาพยืดเส้น';
     }
@@ -232,6 +215,18 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
       onScheduleSaved(config, confirmationMsg);
     }
   };
+
+  if (showCustomPosesView) {
+    return (
+      <CustomPosesPage
+        patientId={patientId}
+        onBack={() => {
+          setShowCustomPosesView(false);
+          setCustomPosesCount(getCustomPoseCount(patientId));
+        }}
+      />
+    );
+  }
 
   return (
     <div className="w-full max-w-[720px] mx-auto flex flex-col animate-fadeIn relative z-10 py-3 sm:py-6 px-1">
@@ -457,14 +452,14 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
             >
               เลือกบริเวณที่ต้องการยืด
             </h2>
-            {category === 'custom' && customArea && (
+            {category === 'custom' && (
               <button
-                onClick={() => setIsBottomSheetOpen(true)}
+                onClick={() => setShowCustomPosesView(true)}
                 className="text-xs sm:text-sm font-bold text-[#1E8A4C] hover:underline flex items-center gap-1"
-                aria-label="เปลี่ยนบริเวณที่เลือก"
+                aria-label="จัดการท่ากายภาพที่เพิ่มเอง"
               >
                 <Edit2 className="w-3.5 h-3.5" />
-                <span>เปลี่ยนบริเวณ ({customArea})</span>
+                <span>จัดการท่าที่เพิ่มเอง ({customPosesCount} ท่า)</span>
               </button>
             )}
           </div>
@@ -696,11 +691,14 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
                 <Plus className="w-7 h-7" />
               </div>
 
-              <span className="text-sm sm:text-base font-bold text-[#0B2B2B] truncate max-w-[130px]">
-                {customArea ? customArea : 'ส่วนอื่นๆ'}
+              <span className="text-sm sm:text-base font-bold text-[#0B2B2B] flex items-center justify-center gap-1.5">
+                <span>ส่วนอื่นๆ</span>
+                <span className="text-xs font-bold text-[#1E8A4C] bg-white px-2 py-0.5 rounded-full border border-emerald-200 shadow-2xs">
+                  {customPosesCount} ท่า
+                </span>
               </span>
               <span className="text-[11px] sm:text-xs text-emerald-800/80 font-medium mt-0.5">
-                {customArea ? 'แตะเพื่อเปลี่ยน' : 'แตะเลือกบริเวณ'}
+                {customPosesCount > 0 ? 'แตะเพื่อจัดการท่า' : 'แตะเพื่อเพิ่มท่าใหม่'}
               </span>
             </div>
           </div>
@@ -1019,97 +1017,6 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
         </div>
 
       </main>
-
-      {/* ------------------------------------------------------------- */}
-      {/* Bottom Sheet สำหรับ "ส่วนอื่นๆ": เลือกบริเวณร่างกาย */}
-      {/* ------------------------------------------------------------- */}
-      {isBottomSheetOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="bottomsheet-title"
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm animate-fadeIn"
-          onClick={() => setIsBottomSheetOpen(false)}
-        >
-          <div
-            className="w-full sm:max-w-md bg-white rounded-t-[32px] sm:rounded-3xl p-6 shadow-2xl space-y-4 animate-slideUp sm:animate-fadeIn border border-emerald-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Sheet Handle for mobile */}
-            <div className="w-12 h-1.5 bg-emerald-200 rounded-full mx-auto sm:hidden" />
-
-            <div className="flex items-center justify-between pb-1 border-b border-emerald-100">
-              <div>
-                <h3 id="bottomsheet-title" className="text-lg font-bold text-[#0B2B2B]">
-                  เลือกบริเวณที่ต้องการยืด
-                </h3>
-                <p className="text-xs text-emerald-800">
-                  แตะเลือกบริเวณร่างกายที่ต้องการ หรือพิมพ์ระบุเอง
-                </p>
-              </div>
-              <button
-                onClick={() => setIsBottomSheetOpen(false)}
-                className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-800 hover:bg-emerald-100 flex items-center justify-center transition"
-                aria-label="ปิดหน้าต่างเลือกบริเวณ"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Quick preset area tags */}
-            <div className="space-y-2">
-              <span className="text-xs font-bold text-emerald-900">บริเวณแนะนำ:</span>
-              <div className="flex flex-wrap gap-2">
-                {presetAreas.map((area) => (
-                  <button
-                    key={area}
-                    onClick={() => handleSelectPresetArea(area)}
-                    className={`px-3.5 py-2 rounded-xl text-sm font-bold transition-all ${
-                      customInputText === area
-                        ? 'bg-[#1E8A4C] text-white shadow-sm'
-                        : 'bg-emerald-50 hover:bg-emerald-100 text-[#0B2B2B] border border-emerald-200'
-                    }`}
-                  >
-                    {area}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Custom Input */}
-            <div className="space-y-1.5 pt-1">
-              <label htmlFor="customAreaInput" className="text-xs font-bold text-emerald-900 block">
-                หรือพิมพ์บริเวณที่ต้องการ:
-              </label>
-              <input
-                id="customAreaInput"
-                type="text"
-                value={customInputText}
-                onChange={(e) => setCustomInputText(e.target.value)}
-                placeholder="เช่น คอและบ่า, ต้นแขน, ฝ่าเท้า"
-                className="w-full text-base font-semibold p-3 rounded-xl border border-emerald-300 bg-white text-[#0B2B2B] focus:ring-2 focus:ring-[#1E8A4C] focus:outline-none min-h-[48px]"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleConfirmCustomArea();
-                  }
-                }}
-              />
-            </div>
-
-            {/* Confirm button */}
-            <div className="pt-2">
-              <button
-                onClick={handleConfirmCustomArea}
-                className="w-full min-h-[50px] py-3 rounded-full bg-gradient-to-r from-[#6FD67F] to-[#1E8A4C] text-white font-bold text-base shadow-md hover:opacity-95 transition flex items-center justify-center gap-2"
-              >
-                <Check className="w-5 h-5 stroke-[2.5]" />
-                <span>ยืนยันบริเวณที่เลือก</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ------------------------------------------------------------- */}
       {/* Modal ดูวิดีโอคลิป YouTube แต่ละท่าทาง */}

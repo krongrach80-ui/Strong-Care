@@ -24,8 +24,8 @@ class Result {
         }
 
         $stmt = $this->db->prepare("
-            INSERT INTO session_results (session_id, rep_number, angle, accuracy, duration, is_correct, feedback)
-            VALUES (:session_id, :rep_number, :angle, :accuracy, :duration, :is_correct, :feedback)
+            INSERT INTO session_results (session_id, rep_number, angle, accuracy, rom, duration, is_correct, feedback)
+            VALUES (:session_id, :rep_number, :angle, :accuracy, :rom, :duration, :is_correct, :feedback)
         ");
 
         foreach ($results as $item) {
@@ -34,6 +34,7 @@ class Result {
                 'rep_number' => (int)($item['rep_number'] ?? 1),
                 'angle' => (float)($item['angle'] ?? 0.0),
                 'accuracy' => (float)($item['accuracy'] ?? 0.0),
+                'rom' => (float)($item['rom'] ?? 0.0),
                 'duration' => (float)($item['duration'] ?? 0.0),
                 'is_correct' => !empty($item['is_correct']) ? 1 : 0,
                 'feedback' => $item['feedback'] ?? 'Completed'

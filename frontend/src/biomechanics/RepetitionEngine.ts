@@ -31,6 +31,7 @@ export class RepetitionEngine {
 
   private holdDurationRequiredMs: number = 600; // Clinical hold at apex
   private isDecreasingTarget: boolean;
+  private outOfZoneSince: number | null = null;
 
   constructor(exercise: ExerciseDefinition, holdDurationMs: number = 600) {
     this.exercise = exercise;
@@ -45,6 +46,7 @@ export class RepetitionEngine {
     this.correctReps = 0;
     this.stateEnteredTime = Date.now();
     this.repStartTime = 0;
+    this.outOfZoneSince = null;
   }
 
   public getRepCount(): number {
@@ -96,9 +98,19 @@ export class RepetitionEngine {
       };
     }
 
-    // Resting threshold definitions with hysteresis
-    const restAngleThreshold = this.isDecreasingTarget ? 135 : 45;
-    const triggerMotionThreshold = this.isDecreasingTarget ? 125 : 50;
+    // Resting threshold definitions with hysteresis (Dynamically adapted per exercise)
+    let restAngleThreshold = this.isDecreasingTarget ? 135 : 45;
+    let triggerMotionThreshold = this.isDecreasingTarget ? 125 : 50;
+
+    if (this.exercise.slug === 'elbow_extension') {
+      // Elbow extension: starts with elbow bent ~80°-90° and extends up towards ~165°-180°
+      restAngleThreshold = 95;
+      triggerMotionThreshold = 105;
+    } else if (this.exercise.slug === 'knee_squat' || this.exercise.slug === 'chair_squat') {
+      // Squat: starts standing ~160°-175° and descends towards ~90°-100°
+      restAngleThreshold = 155;
+      triggerMotionThreshold = 145;
+    }
 
     switch (this.state) {
       case 'START':
@@ -149,24 +161,35 @@ export class RepetitionEngine {
       }
 
       case 'HOLD': {
-        // Must stay in target range for required duration
-        const inTargetZone = currentAngle >= min_angle - 8 && currentAngle <= max_angle + 8;
+        // Shallow check: moving back towards resting position rather than holding target
+        const shallow = this.isDecreasingTarget
+          ? currentAngle > max_angle + 8
+          : currentAngle < min_angle - 8;
+
+        if (shallow) {
+          this.outOfZoneSince ??= timestamp;
+          if (timestamp - this.outOfZoneSince > 700) {
+            this.outOfZoneSince = null;
+            this.transitionTo(this.isDecreasingTarget ? 'DOWN' : 'UP', timestamp);
+          }
+          feedback = 'พยายามรักษาระดับองศาให้อยู่ในโซนเป้าหมาย';
+          break;
+        }
+
+        // Deep/over-target or within target envelope: counts as holding target!
+        this.outOfZoneSince = null;
         const elapsedHold = timestamp - this.holdStartTime;
 
         holdProgressPercent = Math.min(100, Math.round((elapsedHold / this.holdDurationRequiredMs) * 100));
 
-        if (!inTargetZone) {
-          feedback = 'พยายามรักษาระดับองศาให้นิ่งในโซนเป้าหมาย';
+        if (elapsedHold >= this.holdDurationRequiredMs) {
+          this.holdEndTime = timestamp;
+          this.eccentricStartTime = timestamp;
+          this.transitionTo('COMPLETE', timestamp);
+          feedback = 'ยอดเยี่ยม! ค่อยๆ คลายท่ากลับสู่จุดเริ่มต้น';
         } else {
-          if (elapsedHold >= this.holdDurationRequiredMs) {
-            this.holdEndTime = timestamp;
-            this.eccentricStartTime = timestamp;
-            this.transitionTo('COMPLETE', timestamp);
-            feedback = 'ยอดเยี่ยม! ค่อยๆ คลายท่ากลับสู่จุดเริ่มต้น';
-          } else {
-            const secLeft = Math.max(0.1, (this.holdDurationRequiredMs - elapsedHold) / 1000).toFixed(1);
-            feedback = `ค้างท่าไว้... ${secLeft} วินาที`;
-          }
+          const secLeft = Math.max(0.1, (this.holdDurationRequiredMs - elapsedHold) / 1000).toFixed(1);
+          feedback = `ค้างท่าไว้... ${secLeft} วินาที`;
         }
         break;
       }

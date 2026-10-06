@@ -48,10 +48,10 @@ class Session {
         $stmt = $this->db->prepare("
             INSERT INTO sessions (
                 patient_id, exercise_id, started_at, ended_at, total_reps, correct_reps,
-                accuracy, avg_duration_per_rep, max_angle, avg_angle, status, notes
+                accuracy, avg_duration_per_rep, max_angle, avg_angle, rom, duration, status, notes
             ) VALUES (
                 :patient_id, :exercise_id, :started_at, :ended_at, :total_reps, :correct_reps,
-                :accuracy, :avg_duration_per_rep, :max_angle, :avg_angle, :status, :notes
+                :accuracy, :avg_duration_per_rep, :max_angle, :avg_angle, :rom, :duration, :status, :notes
             )
         ");
 
@@ -69,6 +69,8 @@ class Session {
             'avg_duration_per_rep' => (float)($data['avg_duration_per_rep'] ?? 0.0),
             'max_angle' => (float)($data['max_angle'] ?? 0.0),
             'avg_angle' => (float)($data['avg_angle'] ?? 0.0),
+            'rom' => (float)($data['rom'] ?? 0.0),
+            'duration' => (int)($data['duration'] ?? 0),
             'status' => $data['status'] ?? 'completed',
             'notes' => $data['notes'] ?? ''
         ]);

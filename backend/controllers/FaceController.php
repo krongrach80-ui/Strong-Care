@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/../models/FaceEmbedding.php';
 require_once __DIR__ . '/../models/Patient.php';
+require_once __DIR__ . '/../services/RateLimiter.php';
+require_once __DIR__ . '/../config/database.php';
 
 class FaceController {
     private FaceEmbedding $faceModel;
@@ -31,9 +33,7 @@ class FaceController {
 
         // If new patient data provided (Elderly quick enrollment)
         if (!$patientId && !empty($input['name'])) {
-            $patientCode = 'PT-' . date('Y') . '-' . str_pad((string)rand(100, 999), 3, '0', STR_PAD_LEFT);
             $newPatientData = [
-                'patient_code' => $patientCode,
                 'name' => trim($input['name']),
                 'age' => (int)($input['age'] ?? 60),
                 'gender' => $input['gender'] ?? 'male',
@@ -42,10 +42,14 @@ class FaceController {
 
             try {
                 $patientId = $this->patientModel->create($newPatientData);
-            } catch (Exception $e) {
-                // If patient code collision, retry with timestamp
-                $newPatientData['patient_code'] = 'PT-' . date('Y') . '-' . substr((string)time(), -4);
-                $patientId = $this->patientModel->create($newPatientData);
+            } catch (Throwable $e) {
+                error_log("FaceController enroll patient creation error: " . $e->getMessage());
+                http_response_code(500);
+                echo json_encode([
+                    'status' => 'error',
+                    'message' => 'ไม่สามารถสร้างข้อมูลผู้ป่วยสำหรับลงทะเบียนใบหน้าได้'
+                ]);
+                return;
             }
         }
 
@@ -97,8 +101,21 @@ class FaceController {
             return;
         }
 
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+        if (!RateLimiter::check('face_login', $ip, 5, 300)) {
+            http_response_code(429);
+            header('Retry-After: 300');
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'ระบบระงับการเข้าสู่ระบบชั่วคราวเนื่องจากพยายามล้มเหลวหลายครั้ง กรุณารอ 5 นาทีแล้วลองใหม่'
+            ]);
+            return;
+        }
+
         $candidateVec = $input['embedding'];
-        $threshold = (float)($input['threshold'] ?? 0.82); // 82% Cosine similarity threshold
+        $config = require __DIR__ . '/../config/config.php';
+        // Unified matching threshold from configuration (0.82+)
+        $threshold = (float)($config['face_auth']['similarity_threshold'] ?? 0.82);
 
         $enrolled = $this->faceModel->getAllWithPatient();
 
@@ -107,6 +124,7 @@ class FaceController {
                 'status' => 'fail',
                 'match' => false,
                 'similarity' => 0.0,
+                'threshold' => round($threshold * 100, 2),
                 'message' => 'ยังไม่มีข้อมูลใบหน้าที่ลงทะเบียนในระบบ กรุณาลงทะเบียนก่อน'
             ]);
             return;
@@ -133,31 +151,73 @@ class FaceController {
         $similarityPct = round($highestSimilarity * 100, 1);
 
         if ($highestSimilarity >= $threshold && $bestMatch !== null) {
+            RateLimiter::reset('face_login', $ip);
+
+            // Issue secure session token
+            $rawToken = bin2hex(random_bytes(32));
+            $tokenHash = hash('sha256', $rawToken);
+            $patientId = (int)$bestMatch['patient_id'];
+            $expiresAt = date('Y-m-d H:i:s', time() + 8 * 3600);
+
+            try {
+                $db = Database::getConnection();
+                $tStmt = $db->prepare("
+                    INSERT INTO auth_tokens (token_hash, patient_id, role, expires_at)
+                    VALUES (:token_hash, :patient_id, 'patient', :expires_at)
+                ");
+                $tStmt->execute([
+                    ':token_hash' => $tokenHash,
+                    ':patient_id' => $patientId,
+                    ':expires_at' => $expiresAt
+                ]);
+            } catch (Throwable $t) {
+                // Ignore if unable to insert
+            }
+
             echo json_encode([
                 'status' => 'success',
                 'match' => true,
                 'similarity' => round($highestSimilarity, 4),
                 'similarity_percent' => $similarityPct,
+                'euclidean_distance' => round(sqrt(max(0.0, 2 - 2 * $highestSimilarity)), 4),
+                'threshold' => round($threshold * 100, 2),
                 'angle_matched' => $matchedAngle,
                 'patient' => [
-                    'id' => (int)$bestMatch['patient_id'],
+                    'id' => $patientId,
                     'patient_code' => $bestMatch['patient_code'],
                     'name' => $bestMatch['patient_name'],
                     'age' => (int)$bestMatch['patient_age'],
                     'gender' => $bestMatch['patient_gender'],
                     'notes' => $bestMatch['patient_notes'],
                 ],
+                'token' => $rawToken,
+                'expires_at' => $expiresAt,
                 'message' => "ยินดีต้อนรับคุณ {$bestMatch['patient_name']} เข้าสู่ระบบสำเร็จ!"
             ]);
         } else {
+            RateLimiter::recordFailure('face_login', $ip, 300);
             echo json_encode([
                 'status' => 'fail',
                 'match' => false,
                 'similarity' => round($highestSimilarity, 4),
                 'similarity_percent' => $similarityPct,
+                'euclidean_distance' => round(sqrt(max(0.0, 2 - 2 * $highestSimilarity)), 4),
+                'threshold' => round($threshold * 100, 2),
                 'message' => 'ไม่พบข้อมูลใบหน้าที่ตรงกัน (ความคล้าย ' . $similarityPct . '% ต่ำกว่าเกณฑ์ ' . round($threshold * 100) . '%) กรุณาลองใหม่หรือสมัครสมาชิก'
             ]);
         }
+    }
+
+    /**
+     * POST /api/face/reset
+     * Clear all face embeddings to allow fresh re-enrollment with updated FaceLandmarker model
+     */
+    public function resetAll(): void {
+        $this->faceModel->deleteAll();
+        echo json_encode([
+            'status' => 'success',
+            'message' => 'ล้างข้อมูล Face Embeddings เก่าทั้งหมดเรียบร้อยแล้ว ผู้ป่วยสามารถลงทะเบียนใบหน้าใหม่ได้ทันที'
+        ]);
     }
 
     /**
@@ -172,7 +232,7 @@ class FaceController {
 
         echo json_encode([
             'status' => 'online',
-            'service' => 'PhysioVision Face Recognition Engine',
+            'service' => 'StrongCare Face Recognition Engine (MediaPipe FaceLandmarker)',
             'total_embeddings' => count($enrolled),
             'enrolled_patients_count' => count($uniquePatients),
         ]);

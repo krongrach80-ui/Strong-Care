@@ -46,6 +46,7 @@ import { api } from '../../services/api';
 import { OfflineStorageService } from '../../services/offlineStorageService';
 import { Session } from '../../types/session';
 import { SafetyEngine, SafetyTelemetry } from '../../biomechanics/SafetyEngine';
+import { evaluateStretchPose } from '../../biomechanics/stretchEvaluator';
 
 interface Screen4ExerciseProps {
   onBack: () => void;
@@ -250,6 +251,12 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     }
   }, [landmarks, biomechanics, exercisePhase, selectedExercise, currentExerciseConfig, clearCountdownTimers]);
 
+  // Evaluate stretch posture adherence in real-time
+  const stretchEval = useMemo(() => {
+    if (!isStretchMode || !currentStretch) return null;
+    return evaluateStretchPose(landmarks, currentStretch, currentSide);
+  }, [isStretchMode, landmarks, currentStretch, currentSide]);
+
   // Real-time posture status computation
   const realtimeStatus: 'ready' | 'adjust' | 'stop' | 'preparing' = useMemo(() => {
     if (exercisePhase === 'SAFETY_STOP' || safetyTelemetry?.state === 'STOP') {
@@ -261,6 +268,12 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     if (!isCameraReady) {
       return 'ready';
     }
+    if (isStretchMode && landmarks && landmarks.length > 0) {
+      if (stretchEval && !stretchEval.isHoldingPose) {
+        return 'adjust';
+      }
+      return 'ready';
+    }
     if (analysis) {
       if (!analysis.isCorrect || (safetyTelemetry && safetyTelemetry.state === 'WARNING')) {
         return 'adjust';
@@ -268,7 +281,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
       return 'ready';
     }
     return 'ready';
-  }, [exercisePhase, safetyTelemetry, isCameraReady, analysis]);
+  }, [exercisePhase, safetyTelemetry, isCameraReady, isStretchMode, landmarks, stretchEval, analysis]);
 
   const statusMessage = useMemo(() => {
     if (exercisePhase === 'SAFETY_STOP' || safetyTelemetry?.state === 'STOP') {
@@ -282,6 +295,11 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     if (isCameraReady && (!landmarks || landmarks.length === 0) && exercisePhase === 'ACTIVE') {
       return 'กรุณาเข้ามายืนในกรอบกล้องเพื่อเริ่มจับเวลา';
     }
+    if (isStretchMode && isCameraReady && landmarks && landmarks.length > 0 && exercisePhase === 'ACTIVE') {
+      if (stretchEval) {
+        return stretchEval.feedback;
+      }
+    }
     if (realtimeStatus === 'adjust') {
       if (analysis && analysis.feedback && analysis.feedback.length > 0) {
         return analysis.feedback[0];
@@ -289,7 +307,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
       return 'กรุณาปรับท่าทางให้ตรงตามคำแนะนำ';
     }
     return 'ทำท่าได้ถูกต้อง รักษาระดับไว้';
-  }, [exercisePhase, safetyTelemetry, realtimeStatus, analysis, isCameraReady, landmarks]);
+  }, [exercisePhase, safetyTelemetry, realtimeStatus, analysis, isCameraReady, landmarks, isStretchMode, stretchEval]);
 
   // Total elapsed workout timer
   useEffect(() => {
@@ -492,13 +510,18 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     handleAutoSaveSummary,
   ]);
 
-  // Main countdown timer for hold phase (strictly paused during preparation / countdown!)
+  // Main countdown timer for hold phase (strictly paused during preparation / countdown or when posture is off!)
   useEffect(() => {
     if (!isStretchMode || isPaused || isCompletedAll || isSwitchingSide || exercisePhase !== 'ACTIVE' || isSafetyHalted) return;
 
-    // ถ้าเปิดกล้องอยู่ ให้เริ่มนับเวลาค้างเมื่อตรวจพบท่า/คนเท่านั้น
-    if (isCameraReady && (!landmarks || landmarks.length === 0)) {
-      return;
+    // ถ้าเปิดกล้องอยู่ ให้เริ่มนับเวลาค้างเมื่อทำท่าทางถูกต้องเท่านั้น (stretchEval.isHoldingPose)
+    if (isCameraReady) {
+      if (!landmarks || landmarks.length === 0) {
+        return;
+      }
+      if (stretchEval && !stretchEval.isHoldingPose) {
+        return; // Pauses countdown until stretch posture is adopted!
+      }
     }
 
     if (timeLeft <= 0) {
@@ -521,29 +544,33 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     isSafetyHalted,
     isCameraReady,
     landmarks,
+    stretchEval,
     handlePhaseFinish,
   ]);
 
-  // Calculate live score from landmarks if available
+  // Calculate live score from landmarks or stretch evaluator
   useEffect(() => {
-    if (isCameraReady && landmarks && landmarks.length > 0 && currentExerciseConfig && analysis) {
-      const target = currentExerciseConfig.targetAngle || 90;
-      const tol = 15;
-      const measuredAngle = analysis?.currentAngle ?? target;
-      const diff = Math.abs(measuredAngle - target);
+    if (isCameraReady && landmarks && landmarks.length > 0) {
+      if (isStretchMode && stretchEval) {
+        setLiveScore(stretchEval.isHoldingPose ? stretchEval.score : Math.max(40, stretchEval.score - 20));
+      } else if (currentExerciseConfig && analysis) {
+        const target = currentExerciseConfig.targetAngle || 90;
+        const tol = 15;
+        const measuredAngle = analysis?.currentAngle ?? target;
+        const diff = Math.abs(measuredAngle - target);
 
-      // Score strictly between 0 and 100 based on clinical diff - no artificial floor of 70!
-      let calculatedScore = Math.max(0, Math.min(100, Math.round(100 - (diff / tol) * 15)));
-      if (isNaN(calculatedScore)) {
-        calculatedScore = 0;
+        let calculatedScore = Math.max(0, Math.min(100, Math.round(100 - (diff / tol) * 15)));
+        if (isNaN(calculatedScore)) {
+          calculatedScore = 0;
+        }
+        setLiveScore(calculatedScore);
+      } else {
+        setLiveScore(null);
       }
-
-      setLiveScore(calculatedScore);
     } else {
-      // No camera or no landmarks or no analysis => null (โหมดจับเวลา)
       setLiveScore(null);
     }
-  }, [landmarks, isCameraReady, currentExerciseConfig, analysis]);
+  }, [landmarks, isCameraReady, isStretchMode, stretchEval, currentExerciseConfig, analysis]);
 
   // Canvas skeletal rendering
   useEffect(() => {

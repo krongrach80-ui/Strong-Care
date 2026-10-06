@@ -2,7 +2,7 @@ import { Landmark, PoseLandmarks } from '../types/pose';
 
 /**
  * Confidence & Visibility Fail-Safe Algorithm
- * Ensures AI halts calculation rather than guessing when joint visibility is degraded
+ * Exercise-aware: Evaluates only the joints pertinent to the specific movement.
  */
 
 export interface ConfidenceEvaluation {
@@ -12,10 +12,19 @@ export interface ConfidenceEvaluation {
   keyJointsPresent: boolean;
 }
 
+export const EXERCISE_REQUIRED_LANDMARKS: Record<string, number[]> = {
+  shoulder_raise:  [11, 12, 13, 14],            // Shoulders, elbows
+  bicep_curl:      [11, 12, 13, 14, 15, 16],    // Shoulders, elbows, wrists
+  elbow_extension: [11, 12, 13, 14, 15, 16],    // Shoulders, elbows, wrists
+  knee_squat:      [23, 24, 25, 26, 27, 28],    // Hips, knees, ankles
+  'chair_squat':   [23, 24, 25, 26, 27, 28],    // Hips, knees, ankles
+  'alternating-knee-raise': [23, 24, 25, 26, 27, 28], // Hips, knees, ankles
+};
+
 export function evaluateLandmarkConfidence(
   landmarks: PoseLandmarks | null,
-  requiredIndices: number[] = [11, 12, 13, 14, 15, 16], // Shoulders, elbows, wrists
-  minVisibilityThreshold: number = 0.45
+  exerciseOrIndices: string | number[] = [11, 12, 13, 14],
+  minVisibilityThreshold: number = 0.35
 ): ConfidenceEvaluation {
   if (!landmarks || landmarks.length === 0) {
     return {
@@ -26,11 +35,15 @@ export function evaluateLandmarkConfidence(
     };
   }
 
+  const indices: number[] = typeof exerciseOrIndices === 'string'
+    ? (EXERCISE_REQUIRED_LANDMARKS[exerciseOrIndices] || [11, 12, 13, 14])
+    : exerciseOrIndices;
+
   const occluded: string[] = [];
   let totalScore = 0;
   let count = 0;
 
-  for (const idx of requiredIndices) {
+  for (const idx of indices) {
     const lm: Landmark | undefined = landmarks[idx];
     const vis = lm?.visibility ?? 0;
     totalScore += vis;
@@ -43,7 +56,9 @@ export function evaluateLandmarkConfidence(
 
   const avgVisibility = count > 0 ? totalScore / count : 0;
   const overallConfidence = Math.round(avgVisibility * 100);
-  const isReliable = occluded.length === 0 && overallConfidence >= 50;
+
+  // Relaxed clinical reliability: allow at most 1 minor occluded landmark if overall confidence >= 45%
+  const isReliable = (occluded.length === 0 || (occluded.length <= 1 && indices.length >= 4)) && overallConfidence >= 45;
 
   return {
     overallConfidence,

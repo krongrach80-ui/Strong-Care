@@ -30,7 +30,7 @@ export class PoseService {
   private visionInstance: any = null;
 
   private errorMessage: string | null = null;
-  private smoother = new LandmarkSmoother(0.7);
+  private smoother = new LandmarkSmoother(0.5);
   private isMockMode: boolean = false;
   private mockTime: number = 0;
 
@@ -64,8 +64,8 @@ export class PoseService {
       const localWasm = resolveAssetUrl('models/pose/wasm');
       this.visionInstance = await FilesetResolver.forVisionTasks(localWasm);
     } catch (eLocal) {
-      console.warn('⚠️ Local WASM failed, falling back to CDN:', eLocal);
-      this.visionInstance = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+      console.warn('⚠️ Local WASM failed, falling back to CDN 0.10.35:', eLocal);
+      this.visionInstance = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm');
     }
     return this.visionInstance;
   }
@@ -209,6 +209,7 @@ export class PoseService {
             minFaceDetectionConfidence: 0.35,
             minFacePresenceConfidence: 0.35,
             minTrackingConfidence: 0.35,
+            outputFaceBlendshapes: true,
             outputFacialTransformationMatrixes: false,
           }
         );
@@ -222,6 +223,14 @@ export class PoseService {
     })();
 
     return this.faceInitPromise;
+  }
+
+  public getFaceLandmarker(): FaceLandmarker | null {
+    return this.faceLandmarker;
+  }
+
+  public getPoseLandmarker(): PoseLandmarker | null {
+    return this.landmarker;
   }
 
   public isReady(): boolean {

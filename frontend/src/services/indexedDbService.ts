@@ -279,11 +279,14 @@ export class IndexedDBStorageService {
 
         // B. Remove patient items from pending sync queue
         try {
-          const queueRaw = localStorage.getItem('physiovision_pending_sync_queue');
-          if (queueRaw) {
-            const queue: any[] = JSON.parse(queueRaw);
-            const filtered = queue.filter((item) => (item.patient_id ?? item.payload?.patient_id) !== patientId);
-            localStorage.setItem('physiovision_pending_sync_queue', JSON.stringify(filtered));
+          const queueKeys = ['strongcare_pending_sync_queue', 'physiovision_pending_sync_queue'];
+          for (const qKey of queueKeys) {
+            const queueRaw = localStorage.getItem(qKey);
+            if (queueRaw) {
+              const queue: any[] = JSON.parse(queueRaw);
+              const filtered = queue.filter((item) => (item.patient_id ?? item.payload?.patient_id) !== patientId);
+              localStorage.setItem(qKey, JSON.stringify(filtered));
+            }
           }
         } catch (e) {
           // ignore
@@ -293,7 +296,7 @@ export class IndexedDBStorageService {
         const keysToRemove: string[] = [];
         for (let i = 0; i < localStorage.length; i++) {
           const key = localStorage.key(i);
-          if (key && (key.includes(`patient_${patientId}`) || key.includes(`user_${patientId}`))) {
+          if (key && (key.includes(`patient_${patientId}`) || key.includes(`user_${patientId}`) || key.includes(`_p${patientId}`) || key.includes(`_p${patientId}_`))) {
             keysToRemove.push(key);
           }
         }
@@ -306,3 +309,5 @@ export class IndexedDBStorageService {
     }
   }
 }
+
+export const IndexedDbService = IndexedDBStorageService;

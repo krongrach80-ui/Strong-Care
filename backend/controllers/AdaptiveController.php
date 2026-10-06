@@ -35,9 +35,10 @@ class AdaptiveController {
                 'status' => 'success',
                 'data' => $records
             ]);
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
+            error_log("AdaptiveController::getRecommendations error: " . $e->getMessage());
             http_response_code(500);
-            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+            echo json_encode(['status' => 'error', 'message' => 'Failed to retrieve recommendations']);
         }
     }
 
@@ -94,9 +95,10 @@ class AdaptiveController {
                     'audit_timestamp' => date('Y-m-d H:i:s')
                 ]
             ]);
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
+            error_log("AdaptiveController::submitApproval error: " . $e->getMessage());
             http_response_code(500);
-            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+            echo json_encode(['status' => 'error', 'message' => 'Failed to record clinical approval']);
         }
     }
 }

@@ -21,19 +21,39 @@ class Patient {
     }
 
     public function create(array $data): int {
-        $patientCode = $data['patient_code'] ?? 'PT-' . date('Y') . '-' . str_pad((string)rand(100, 999), 3, '0', STR_PAD_LEFT);
-        $stmt = $this->db->prepare("
-            INSERT INTO patients (patient_code, name, age, gender, notes)
-            VALUES (:patient_code, :name, :age, :gender, :notes)
-        ");
-        $stmt->execute([
-            'patient_code' => $patientCode,
-            'name' => $data['name'],
-            'age' => (int)($data['age'] ?? 40),
-            'gender' => $data['gender'] ?? 'male',
-            'notes' => $data['notes'] ?? ''
-        ]);
-        return (int)$this->db->lastInsertId();
+        $maxRetries = 10;
+        $attempt = 0;
+
+        while ($attempt < $maxRetries) {
+            $attempt++;
+            if (!empty($data['patient_code']) && $attempt === 1) {
+                $patientCode = $data['patient_code'];
+            } else {
+                $suffix = strtoupper(bin2hex(random_bytes(2))) . '-' . random_int(100, 999);
+                $patientCode = 'PT-' . date('Y') . '-' . $suffix;
+            }
+
+            try {
+                $stmt = $this->db->prepare("
+                    INSERT INTO patients (patient_code, name, age, gender, notes)
+                    VALUES (:patient_code, :name, :age, :gender, :notes)
+                ");
+                $stmt->execute([
+                    'patient_code' => $patientCode,
+                    'name' => $data['name'],
+                    'age' => (int)($data['age'] ?? 40),
+                    'gender' => $data['gender'] ?? 'male',
+                    'notes' => $data['notes'] ?? ''
+                ]);
+                return (int)$this->db->lastInsertId();
+            } catch (PDOException $e) {
+                if ($attempt >= $maxRetries) {
+                    error_log("Patient::create failed after {$maxRetries} attempts: " . $e->getMessage());
+                    throw $e;
+                }
+            }
+        }
+        throw new RuntimeException("Unable to generate unique patient code");
     }
 
     public function update(int $id, array $data): bool {

@@ -81,10 +81,10 @@ export class SafetyEngine {
       isLowConfidenceFailSafe = true;
       violations.push({
         code: 'OUT_OF_FRAME',
-        severity: 'CRITICAL_STOP',
-        title: 'อยู่นอกกรอบกล้อง',
-        message: 'ไม่พบตำแหน่งร่างกาย กรุณากลับเข้ามาในกรอบกล้อง',
-        voiceMessage: 'กรุณากลับเข้ามาในกรอบกล้องให้เห็นลำตัวชัดเจนครับ',
+        severity: 'CAUTION',
+        title: 'อยู่นอกกรอบกล้อง (หยุดนับชั่วคราว)',
+        message: 'ไม่พบตำแหน่งร่างกาย กรุณากลับเข้ามาในกรอบกล้องเพื่อฝึกต่อ',
+        voiceMessage: 'กรุณากลับเข้ามาในกรอบกล้องครับ',
         timestamp: now,
       });
     } else {
@@ -102,18 +102,18 @@ export class SafetyEngine {
 
       confidenceScore = Math.round(avgVisibility * 100);
 
-      // Fail-Safe: If confidence < 48%, AI must NOT assume correct posture or count reps!
-      if (confidenceScore < 48) {
+      // Fail-Safe: If confidence < 40%, pause rep increment
+      if (confidenceScore < 40) {
         isLowConfidenceFailSafe = true;
         violations.push({
           code: 'LOW_CONFIDENCE',
           severity: 'CAUTION',
           title: 'ความมั่นใจต่ำ (Fail-Safe)',
-          message: 'จุดตรวจจับข้อต่อไม่ชัดเจน (หยุดนับ Rep) กรุณาจัดตำแหน่งใหม่',
-          voiceMessage: 'กล้องมองเห็นข้อต่อไม่ชัดเจนครับ กรุณาขยับให้เห็นแขนชัดเจนครับ',
+          message: 'จุดตรวจจับข้อต่อไม่ชัดเจน (หยุดนับ Rep ชั่วคราว) กรุณาจัดตำแหน่งใหม่',
+          voiceMessage: 'ขยับให้เห็นแขนและลำตัวชัดเจนครับ',
           timestamp: now,
           value: confidenceScore,
-          threshold: 48,
+          threshold: 40,
         });
       }
     }

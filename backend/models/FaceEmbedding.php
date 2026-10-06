@@ -93,6 +93,14 @@ class FaceEmbedding {
     }
 
     /**
+     * Delete all facial embeddings in the database (Reset / Re-enrollment)
+     */
+    public function deleteAll(): bool {
+        $stmt = $this->db->prepare("DELETE FROM face_embeddings");
+        return $stmt->execute();
+    }
+
+    /**
      * Compute Cosine Similarity between two N-dimensional float vectors
      * Cosine = (A • B) / (||A|| * ||B||)
      */
@@ -117,4 +125,22 @@ class FaceEmbedding {
         $sim = $dot / (sqrt($normA) * sqrt($normB));
         return max(0.0, min(1.0, $sim));
     }
+
+    /**
+     * Compute Euclidean Distance between two vectors
+     * Distance = sqrt(sum((A[i] - B[i])^2))
+     */
+    public static function euclideanDistance(array $vecA, array $vecB): float {
+        $len = min(count($vecA), count($vecB));
+        if ($len === 0) return 999.0;
+
+        $sumSq = 0.0;
+        for ($i = 0; $i < $len; $i++) {
+            $diff = (float)$vecA[$i] - (float)$vecB[$i];
+            $sumSq += $diff * $diff;
+        }
+
+        return sqrt($sumSq);
+    }
 }
+

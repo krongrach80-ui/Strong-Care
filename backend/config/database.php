@@ -170,6 +170,15 @@ class Database {
                         audit_note TEXT,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+                    CREATE TABLE IF NOT EXISTS auth_tokens (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        token_hash VARCHAR(64) NOT NULL UNIQUE,
+                        patient_id INT NULL,
+                        role VARCHAR(50) DEFAULT 'patient',
+                        expires_at DATETIME NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
                 ");
             } else {
                 $pdo->exec("
@@ -282,6 +291,15 @@ class Database {
                         previous_config TEXT NOT NULL,
                         final_config TEXT NOT NULL,
                         audit_note TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE TABLE IF NOT EXISTS auth_tokens (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        token_hash TEXT NOT NULL UNIQUE,
+                        patient_id INTEGER,
+                        role TEXT DEFAULT 'patient',
+                        expires_at DATETIME NOT NULL,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     );
                 ");

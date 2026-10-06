@@ -12,10 +12,13 @@ export function usePose(videoRef: React.RefObject<HTMLVideoElement>, isCameraAct
   const [fps, setFps] = useState<number>(0);
   const [isMockMode, setIsMockModeState] = useState<boolean>(poseService.getIsMockMode());
 
+  const landmarksRef = useRef<PoseLandmarks | null>(null);
   const animationFrameId = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(performance.now());
   const frameCountRef = useRef<number>(0);
   const noPoseFrameCountRef = useRef<number>(0);
+  const lastVideoTimeRef = useRef<number>(-1);
+  const lastUiUpdateRef = useRef<number>(0);
 
   // Initialize offline models (Pose, Hands, Face)
   useEffect(() => {
@@ -46,11 +49,20 @@ export function usePose(videoRef: React.RefObject<HTMLVideoElement>, isCameraAct
     };
   }, []);
 
-  // When camera becomes active, switch off mock mode so user's real camera feed is tracked
+  // When camera becomes active, verify real landmarker readiness before switching off mock mode
   useEffect(() => {
     if (isCameraActive) {
-      poseService.setMockMode(false);
-      setIsMockModeState(false);
+      const realLandmarker = poseService.getPoseLandmarker();
+      if (!realLandmarker) {
+        // Real model failed to initialize!
+        const errMsg = poseService.getErrorMessage() || 'โมเดลตรวจจับท่าทาง (MediaPipe PoseLandmarker) ไม่พร้อมใช้งาน';
+        console.warn('⚠️ PoseLandmarker is not ready:', errMsg);
+        setModelError(errMsg);
+      } else {
+        poseService.setMockMode(false);
+        setIsMockModeState(false);
+        setModelError(null);
+      }
     }
   }, [isCameraActive]);
 
@@ -59,7 +71,7 @@ export function usePose(videoRef: React.RefObject<HTMLVideoElement>, isCameraAct
     setIsMockModeState(val);
   }, []);
 
-  // Frame processing loop
+  // Frame processing loop with video timestamp gating and React render throttling
   const processFrame = useCallback(() => {
     const now = performance.now();
     frameCountRef.current++;
@@ -72,22 +84,45 @@ export function usePose(videoRef: React.RefObject<HTMLVideoElement>, isCameraAct
 
     if (isMockMode) {
       const mockPose = poseService.generateSyntheticPose(exerciseSlug || 'shoulder_raise');
-      setLandmarks(mockPose);
-      setHandLandmarks(null);
-      setFaceLandmarks(null);
+      landmarksRef.current = mockPose;
+
+      // Throttle React state update to ~22 fps
+      if (now - lastUiUpdateRef.current >= 45) {
+        setLandmarks(mockPose);
+        setHandLandmarks(null);
+        setFaceLandmarks(null);
+        lastUiUpdateRef.current = now;
+      }
     } else if (videoRef.current && isCameraActive && videoRef.current.readyState >= 2) {
-      const results = poseService.detectHolistic(videoRef.current, now);
-      if (results && results.poseLandmarks) {
-        noPoseFrameCountRef.current = 0;
-        setLandmarks(results.poseLandmarks);
-        setHandLandmarks(results.handLandmarks || null);
-        setFaceLandmarks(results.faceLandmarks || null);
-      } else {
-        noPoseFrameCountRef.current++;
-        if (noPoseFrameCountRef.current >= 15) {
-          setLandmarks(null);
-          setHandLandmarks(null);
-          setFaceLandmarks(null);
+      const video = videoRef.current;
+
+      // Video frame check: Avoid running inference on static duplicate frames
+      if (video.currentTime !== lastVideoTimeRef.current) {
+        lastVideoTimeRef.current = video.currentTime;
+
+        const results = poseService.detectHolistic(video, now);
+        if (results && results.poseLandmarks) {
+          noPoseFrameCountRef.current = 0;
+          landmarksRef.current = results.poseLandmarks;
+
+          // Throttle React state updates to ~22 fps to avoid heavy React re-renders
+          if (now - lastUiUpdateRef.current >= 45) {
+            setLandmarks(results.poseLandmarks);
+            setHandLandmarks(results.handLandmarks || null);
+            setFaceLandmarks(results.faceLandmarks || null);
+            lastUiUpdateRef.current = now;
+          }
+        } else {
+          noPoseFrameCountRef.current++;
+          if (noPoseFrameCountRef.current >= 15) {
+            landmarksRef.current = null;
+            if (now - lastUiUpdateRef.current >= 45) {
+              setLandmarks(null);
+              setHandLandmarks(null);
+              setFaceLandmarks(null);
+              lastUiUpdateRef.current = now;
+            }
+          }
         }
       }
     }
@@ -99,6 +134,7 @@ export function usePose(videoRef: React.RefObject<HTMLVideoElement>, isCameraAct
     if (isCameraActive || isMockMode) {
       animationFrameId.current = requestAnimationFrame(processFrame);
     } else {
+      landmarksRef.current = null;
       setLandmarks(null);
       setHandLandmarks(null);
       setFaceLandmarks(null);
@@ -113,6 +149,7 @@ export function usePose(videoRef: React.RefObject<HTMLVideoElement>, isCameraAct
 
   return {
     landmarks,
+    landmarksRef,
     handLandmarks,
     faceLandmarks,
     isModelLoading,

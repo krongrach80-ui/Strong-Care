@@ -4,34 +4,49 @@ import { AngleTelemetry } from './types';
 
 /**
  * AngleEngine
- * Sub-engine responsible for joint vector trigonometry, 3D angle resolution,
- * angular velocity computation, and temporal noise suppression.
+ * Sub-engine responsible for joint vector trigonometry, 2D/3D angle resolution,
+ * angular velocity computation, and noise suppression.
+ *
+ * Optimizations:
+ * - Locks active arm per exercise set to prevent bouncing/jumping between sides
+ * - Uses 2D trigonometry (in camera plane) for high webcam stability
+ * - Calibrated single-stage smoothing for zero perceptible lag
  */
 export class AngleEngine {
   private smoothedAngle: number = 0;
   private prevAngle: number = 0;
   private prevTimestamp: number = 0;
   private angularVelocity: number = 0;
-  private alpha: number = 0.65; // Smoothing factor (0 = infinite smooth, 1 = raw)
+  private alpha: number = 0.75; // Responsive EMA factor
+  private lockedSide: 'left' | 'right' | null = null;
 
-  constructor(smoothingAlpha: number = 0.65) {
+  constructor(smoothingAlpha: number = 0.75) {
     this.alpha = smoothingAlpha;
   }
 
   /**
-   * Reset internal filter state
+   * Reset internal filter state and arm lock
    */
   public reset(): void {
     this.smoothedAngle = 0;
     this.prevAngle = 0;
     this.prevTimestamp = 0;
     this.angularVelocity = 0;
+    this.lockedSide = null;
+  }
+
+  public setLockedSide(side: 'left' | 'right' | null): void {
+    this.lockedSide = side;
+  }
+
+  public getLockedSide(): 'left' | 'right' | null {
+    return this.lockedSide;
   }
 
   /**
    * Compute 3D or 2D angle between 3 points: A -> B (vertex) -> C
    */
-  public calculateJointAngle(a: Landmark, b: Landmark, c: Landmark, use3D: boolean = true): number {
+  public calculateJointAngle(a: Landmark, b: Landmark, c: Landmark, use3D: boolean = false): number {
     if (!a || !b || !c) return 0;
 
     // Vector BA
@@ -132,7 +147,7 @@ export class AngleEngine {
     const { slug } = exercise;
 
     if (slug === 'shoulder_raise') {
-      // Hip - Shoulder - Elbow
+      // Hip - Shoulder - Elbow (2D planar trigonometry for webcam stability)
       const rHip = landmarks[POSE_LANDMARKS.RIGHT_HIP];
       const rShoulder = landmarks[POSE_LANDMARKS.RIGHT_SHOULDER];
       const rElbow = landmarks[POSE_LANDMARKS.RIGHT_ELBOW];
@@ -141,11 +156,21 @@ export class AngleEngine {
       const lShoulder = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
       const lElbow = landmarks[POSE_LANDMARKS.LEFT_ELBOW];
 
-      const rightAngle = this.calculateJointAngle(rHip, rShoulder, rElbow);
-      const leftAngle = this.calculateJointAngle(lHip, lShoulder, lElbow);
+      const rightAngle = this.calculateJointAngle(rHip, rShoulder, rElbow, false);
+      const leftAngle = this.calculateJointAngle(lHip, lShoulder, lElbow, false);
 
-      // Select active arm (higher angle / motion)
-      if (leftAngle > rightAngle + 8) {
+      // Lock side per set or choose active side with strong hysteresis
+      if (!this.lockedSide) {
+        if (leftAngle > rightAngle + 12 && leftAngle > 30) {
+          this.lockedSide = 'left';
+        } else if (rightAngle > leftAngle + 12 && rightAngle > 30) {
+          this.lockedSide = 'right';
+        }
+      }
+
+      const activeSide = this.lockedSide || (leftAngle > rightAngle + 10 ? 'left' : 'right');
+
+      if (activeSide === 'left') {
         return {
           angle: leftAngle,
           jointCenter: lShoulder ? { x: lShoulder.x, y: lShoulder.y } : null,
@@ -160,7 +185,7 @@ export class AngleEngine {
     }
 
     if (slug === 'bicep_curl' || slug === 'elbow_extension') {
-      // Shoulder - Elbow - Wrist
+      // Shoulder - Elbow - Wrist (2D planar trigonometry for stability)
       const rShoulder = landmarks[POSE_LANDMARKS.RIGHT_SHOULDER];
       const rElbow = landmarks[POSE_LANDMARKS.RIGHT_ELBOW];
       const rWrist = landmarks[POSE_LANDMARKS.RIGHT_WRIST];
@@ -169,12 +194,20 @@ export class AngleEngine {
       const lElbow = landmarks[POSE_LANDMARKS.LEFT_ELBOW];
       const lWrist = landmarks[POSE_LANDMARKS.LEFT_WRIST];
 
-      const rightAngle = this.calculateJointAngle(rShoulder, rElbow, rWrist);
-      const leftAngle = this.calculateJointAngle(lShoulder, lElbow, lWrist);
+      const rightAngle = this.calculateJointAngle(rShoulder, rElbow, rWrist, false);
+      const leftAngle = this.calculateJointAngle(lShoulder, lElbow, lWrist, false);
 
       if (slug === 'bicep_curl') {
         // Lower angle = more flexion (active)
-        if (leftAngle < rightAngle - 10 && leftAngle > 20) {
+        if (!this.lockedSide) {
+          if (leftAngle < rightAngle - 15 && leftAngle < 120) {
+            this.lockedSide = 'left';
+          } else if (rightAngle < leftAngle - 15 && rightAngle < 120) {
+            this.lockedSide = 'right';
+          }
+        }
+        const activeSide = this.lockedSide || (leftAngle < rightAngle - 10 ? 'left' : 'right');
+        if (activeSide === 'left') {
           return {
             angle: leftAngle,
             jointCenter: lElbow ? { x: lElbow.x, y: lElbow.y } : null,
@@ -188,7 +221,15 @@ export class AngleEngine {
         };
       } else {
         // Elbow extension: higher angle = more extended
-        if (leftAngle > rightAngle + 10) {
+        if (!this.lockedSide) {
+          if (leftAngle > rightAngle + 15 && leftAngle > 105) {
+            this.lockedSide = 'left';
+          } else if (rightAngle > leftAngle + 15 && rightAngle > 105) {
+            this.lockedSide = 'right';
+          }
+        }
+        const activeSide = this.lockedSide || (leftAngle > rightAngle + 10 ? 'left' : 'right');
+        if (activeSide === 'left') {
           return {
             angle: leftAngle,
             jointCenter: lElbow ? { x: lElbow.x, y: lElbow.y } : null,
@@ -203,8 +244,8 @@ export class AngleEngine {
       }
     }
 
-    if (slug === 'knee_squat') {
-      // Hip - Knee - Ankle
+    if (slug === 'knee_squat' || slug === 'chair_squat') {
+      // Hip - Knee - Ankle (2D planar)
       const rHip = landmarks[POSE_LANDMARKS.RIGHT_HIP];
       const rKnee = landmarks[POSE_LANDMARKS.RIGHT_KNEE];
       const rAnkle = landmarks[POSE_LANDMARKS.RIGHT_ANKLE];
@@ -213,8 +254,8 @@ export class AngleEngine {
       const lKnee = landmarks[POSE_LANDMARKS.LEFT_KNEE];
       const lAnkle = landmarks[POSE_LANDMARKS.LEFT_ANKLE];
 
-      const rightAngle = this.calculateJointAngle(rHip, rKnee, rAnkle);
-      const leftAngle = this.calculateJointAngle(lHip, lKnee, lAnkle);
+      const rightAngle = this.calculateJointAngle(rHip, rKnee, rAnkle, false);
+      const leftAngle = this.calculateJointAngle(lHip, lKnee, lAnkle, false);
 
       // Average knee angle for bilateral squat
       const avgKneeAngle = Math.round(((rightAngle + leftAngle) / 2) * 10) / 10;

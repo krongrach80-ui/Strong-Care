@@ -28,12 +28,12 @@ class SessionController {
         }
 
         $results = $this->resultModel->getBySessionId($id);
-        $session['results'] = $results;
+        $session['results'] = $results ?: [];
 
         // Fetch safety events
         $stmt = $this->db->prepare("SELECT * FROM safety_events WHERE session_id = :sid ORDER BY created_at ASC");
         $stmt->execute([':sid' => $id]);
-        $session['safety_events'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $session['safety_events'] = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
         echo json_encode(['status' => 'success', 'data' => $session]);
     }
@@ -43,6 +43,27 @@ class SessionController {
         if (!$input || empty($input['patient_id']) || empty($input['exercise_id'])) {
             http_response_code(422);
             echo json_encode(['status' => 'error', 'message' => 'patient_id and exercise_id are required']);
+            return;
+        }
+
+        $patientId = (int)$input['patient_id'];
+        $exerciseId = (int)$input['exercise_id'];
+
+        // Validate patient existence
+        $pStmt = $this->db->prepare("SELECT id FROM patients WHERE id = ?");
+        $pStmt->execute([$patientId]);
+        if (!$pStmt->fetch()) {
+            http_response_code(422);
+            echo json_encode(['status' => 'error', 'message' => 'Patient with specified patient_id does not exist']);
+            return;
+        }
+
+        // Validate exercise existence
+        $eStmt = $this->db->prepare("SELECT id FROM exercises WHERE id = ?");
+        $eStmt->execute([$exerciseId]);
+        if (!$eStmt->fetch()) {
+            http_response_code(422);
+            echo json_encode(['status' => 'error', 'message' => 'Exercise with specified exercise_id does not exist']);
             return;
         }
 
@@ -70,7 +91,13 @@ class SessionController {
         }
 
         $session = $this->sessionModel->getById($sessionId);
-        $session['results'] = $this->resultModel->getBySessionId($sessionId);
+        if (!$session) {
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'Failed to load created session']);
+            return;
+        }
+
+        $session['results'] = $this->resultModel->getBySessionId($sessionId) ?: [];
 
         http_response_code(201);
         echo json_encode([
@@ -103,11 +130,18 @@ class SessionController {
         echo json_encode([
             'status' => 'success',
             'message' => 'Results saved successfully',
-            'data' => $allResults
+            'data' => $allResults ?: []
         ]);
     }
 
     public function storeSafetyEvents(int $sessionId): void {
+        $session = $this->sessionModel->getById($sessionId);
+        if (!$session) {
+            http_response_code(404);
+            echo json_encode(['status' => 'error', 'message' => 'Session not found']);
+            return;
+        }
+
         $input = json_decode(file_get_contents('php://input'), true);
         $events = $input['safety_events'] ?? ($input ? [$input] : []);
 

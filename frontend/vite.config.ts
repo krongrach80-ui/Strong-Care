@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import basicSsl from '@vitejs/plugin-basic-ssl';
 import path from 'path';
 
 const apiProxy = {
@@ -13,21 +12,20 @@ const apiProxy = {
 
 export default defineConfig({
   base: './',
-  plugins: [react(), basicSsl()],
+  plugins: [react()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
   },
   server: {
-    port: 5173,
+    port: 3000,
     host: '0.0.0.0',
     proxy: apiProxy,
   },
   preview: {
-    port: 4173,
+    port: 3000,
     host: '0.0.0.0',
     proxy: apiProxy,
   },
 });
-

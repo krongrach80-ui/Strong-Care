@@ -101,6 +101,8 @@ export class OfflineStorageService {
     }
   }
 
+  private static isSyncing = false;
+
   /**
    * ส่งข้อมูลในคิวทั้งหมดขึ้นเซิร์ฟเวอร์
    */
@@ -108,28 +110,36 @@ export class OfflineStorageService {
     syncedCount: number;
     failedCount: number;
   }> {
-    const queue = this.getSyncQueue();
-    if (queue.length === 0) {
+    if (this.isSyncing) {
       return { syncedCount: 0, failedCount: 0 };
     }
-
-    let syncedCount = 0;
-    let failedCount = 0;
-    const remainingQueue: Session[] = [];
-
-    for (const session of queue) {
-      try {
-        await api.saveSession(session);
-        syncedCount++;
-      } catch (err) {
-        console.warn(`Sync failed for session ${session.id}:`, err);
-        failedCount++;
-        remainingQueue.push(session);
+    this.isSyncing = true;
+    try {
+      const queue = this.getSyncQueue();
+      if (queue.length === 0) {
+        return { syncedCount: 0, failedCount: 0 };
       }
-    }
 
-    localStorage.setItem(PENDING_SYNC_QUEUE_KEY, JSON.stringify(remainingQueue));
-    return { syncedCount, failedCount };
+      let syncedCount = 0;
+      let failedCount = 0;
+      const remainingQueue: Session[] = [];
+
+      for (const session of queue) {
+        try {
+          await api.saveSession(session);
+          syncedCount++;
+        } catch (err) {
+          console.warn(`Sync failed for session ${session.id}:`, err);
+          failedCount++;
+          remainingQueue.push(session);
+        }
+      }
+
+      localStorage.setItem(PENDING_SYNC_QUEUE_KEY, JSON.stringify(remainingQueue));
+      return { syncedCount, failedCount };
+    } finally {
+      this.isSyncing = false;
+    }
   }
 
   /**

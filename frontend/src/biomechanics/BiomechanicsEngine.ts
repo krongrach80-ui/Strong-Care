@@ -82,8 +82,8 @@ export class BiomechanicsEngine {
     const romTelemetry = this.romEngine.process(angleTelemetry.currentAngle);
 
     // Layer 4: Real Landmark Confidence Aggregation & Safety Gate
-    const confEval = evaluateLandmarkConfidence(landmarks);
-    const isConfident = !this.isEmergencyStopped && confEval.isReliable && confEval.overallConfidence >= 50 && postureTelemetry.isInFrame && !!landmarks && landmarks.length > 0;
+    const confEval = evaluateLandmarkConfidence(landmarks, this.exercise.slug, 0.35);
+    const isConfident = !this.isEmergencyStopped && confEval.isReliable && confEval.overallConfidence >= 45 && postureTelemetry.isInFrame && !!landmarks && landmarks.length > 0;
 
     const repResult = this.repetitionEngine.process(
       angleTelemetry.currentAngle,

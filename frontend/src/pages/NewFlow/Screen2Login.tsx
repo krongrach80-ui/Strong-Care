@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { ArrowLeft, User, LogIn, UserPlus, Camera, AlertCircle, Sparkles } from 'lucide-react';
+import { ArrowLeft, User, LogIn, UserPlus, Camera, AlertCircle, Sparkles, KeyRound } from 'lucide-react';
 import { Patient } from '../../types/patient';
+import { IS_STATIC_MODE } from '../../config/apiConfig';
+import { api } from '../../services/api';
 
 interface Screen2LoginProps {
   onBack: () => void;
@@ -18,7 +20,9 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
   patients,
 }) => {
   const [selectedPatientId, setSelectedPatientId] = useState<number | ''>('');
+  const [pin, setPin] = useState<string>('');
   const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // สแกนใบหน้าถูกซ่อนไว้เป็นค่าเริ่มต้นเพื่อความปลอดภัยของข้อมูลจริง
   // เปิดใช้งานเมื่อตั้งค่า VITE_ENABLE_FACE_LOGIN=true หรือเพิ่ม ?face_login=1 ใน URL
@@ -28,14 +32,39 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
 
   const selectedPatient = patients.find((p) => p.id === Number(selectedPatientId));
 
-  const handleSubmit = (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!selectedPatientId || !selectedPatient) {
       setSelectionError('กรุณาเลือกโปรไฟล์ผู้ป่วยก่อนเข้าสู่ระบบ');
       return;
     }
-    setSelectionError(null);
-    onLoginSuccess(selectedPatient);
+
+    if (!IS_STATIC_MODE) {
+      if (!pin || pin.trim().length === 0) {
+        setSelectionError('กรุณากรอกรหัส PIN ประจำตัวผู้ป่วย');
+        return;
+      }
+      setIsSubmitting(true);
+      setSelectionError(null);
+      try {
+        const res = await api.login({
+          patient_id: Number(selectedPatientId),
+          pin: pin.trim(),
+        });
+        if (res.patient) {
+          onLoginSuccess(res.patient);
+        } else {
+          onLoginSuccess(selectedPatient);
+        }
+      } catch (err: any) {
+        setSelectionError(err?.message || 'การเข้าสู่ระบบล้มเหลว กรุณาตรวจสอบรหัส PIN');
+      } finally {
+        setIsSubmitting(false);
+      }
+    } else {
+      setSelectionError(null);
+      onLoginSuccess(selectedPatient);
+    }
   };
 
   return (
@@ -61,9 +90,15 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
             <User className="w-10 h-10" />
           </div>
 
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold mb-2">
-            <span>โหมดสาธิต (Demo Mode)</span>
-          </div>
+          {IS_STATIC_MODE ? (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold mb-2">
+              <span>โหมดสาธิต (Demo Mode)</span>
+            </div>
+          ) : (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-bold mb-2">
+              <span>ระบบเข้าสู่ระบบปลอดภัย (Secure Clinic Auth)</span>
+            </div>
+          )}
 
           <h2 className="heading-underline !mb-2">เข้าสู่ระบบผู้ป่วย</h2>
           <p className="text-xs sm:text-sm text-slate-600 font-medium">
@@ -72,9 +107,15 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
         </div>
 
         {/* Notice Banner */}
-        <div className="text-[12px] text-amber-900 bg-amber-50/90 border border-amber-200 rounded-2xl p-3 leading-relaxed">
-          <span className="font-bold">⚠️ หมายเหตุความปลอดภัย:</span> เนื่องจากระบบยังไม่มี Server-side Authentication สำหรับตรวจรหัสผ่านหรือ PIN ในโหมดสาธิตนี้จึงให้เลือกโปรไฟล์ผู้ป่วยที่ลงทะเบียนไว้โดยตรงเพื่อความถูกต้องของข้อมูลฝึก
-        </div>
+        {IS_STATIC_MODE ? (
+          <div className="text-[12px] text-amber-900 bg-amber-50/90 border border-amber-200 rounded-2xl p-3 leading-relaxed">
+            <span className="font-bold">⚠️ โหมดสาธิต (Demo Mode):</span> เลือกโปรไฟล์ผู้ป่วยที่ลงทะเบียนไว้โดยตรงเพื่อทดลองฟังก์ชันการฝึกและคำนวณชีวกลศาสตร์
+          </div>
+        ) : (
+          <div className="text-[12px] text-emerald-900 bg-emerald-50/90 border border-emerald-200 rounded-2xl p-3 leading-relaxed">
+            <span className="font-bold">🔒 ความปลอดภัยทางการแพทย์:</span> ยืนยันตัวตนผ่านเซิร์ฟเวอร์ด้วยรหัส PIN ประจำตัวผู้ป่วย (หรือสแกนใบหน้าชีวมิติ)
+          </div>
+        )}
 
         {/* Selection Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -110,6 +151,29 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
               </p>
             )}
           </div>
+
+          {!IS_STATIC_MODE && (
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                รหัส PIN ประจำตัวผู้ป่วย:
+              </label>
+              <div className="bg-white rounded-2xl border border-emerald-200 focus-within:border-[#1E8A4C] focus-within:ring-2 focus-within:ring-emerald-200 p-2.5 sm:p-3 flex items-center gap-2.5 shadow-sm transition">
+                <KeyRound className="w-5 h-5 text-[#1E8A4C] flex-shrink-0" />
+                <input
+                  type="password"
+                  id="patientPinInput"
+                  value={pin}
+                  onChange={(e) => {
+                    setPin(e.target.value);
+                    setSelectionError(null);
+                  }}
+                  placeholder="กรอก PIN ประจำตัว (เช่น 1234 หรือเลขท้าย 4 ตัว)"
+                  maxLength={10}
+                  className="w-full bg-transparent text-sm font-semibold text-[#0B2B2B] outline-none"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Patient Details Preview if selected */}
           {selectedPatient && (
@@ -153,11 +217,12 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
           <div className="flex flex-col gap-3 pt-2">
             <button
               type="submit"
+              disabled={isSubmitting}
               className="btn-primary-capsule !w-full"
               id="btnLoginSubmit"
             >
               <LogIn className="w-5 h-5" />
-              <span>เข้าสู่ระบบ</span>
+              <span>{isSubmitting ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}</span>
             </button>
 
             <button

@@ -57,4 +57,72 @@ class PatientController {
             ]
         ]);
     }
+
+    public function purge(int $id): void {
+        $patient = $this->patientModel->getById($id);
+        if (!$patient) {
+            http_response_code(404);
+            echo json_encode(['status' => 'error', 'message' => 'Patient not found']);
+            return;
+        }
+
+        $db = Database::getConnection();
+        $db->beginTransaction();
+        try {
+            // Find all session IDs for this patient
+            $sessionStmt = $db->prepare("SELECT id FROM sessions WHERE patient_id = ?");
+            $sessionStmt->execute([$id]);
+            $sessionIds = $sessionStmt->fetchAll(PDO::FETCH_COLUMN);
+
+            if (!empty($sessionIds)) {
+                $inClause = implode(',', array_fill(0, count($sessionIds), '?'));
+                // 1. Delete session_results
+                $delResults = $db->prepare("DELETE FROM session_results WHERE session_id IN ($inClause)");
+                $delResults->execute($sessionIds);
+
+                // 2. Delete safety_events
+                $delSafety = $db->prepare("DELETE FROM safety_events WHERE session_id IN ($inClause)");
+                $delSafety->execute($sessionIds);
+            }
+
+            // 3. Delete sessions
+            $delSessions = $db->prepare("DELETE FROM sessions WHERE patient_id = ?");
+            $delSessions->execute([$id]);
+
+            // 4. Delete face_embeddings
+            $delFace = $db->prepare("DELETE FROM face_embeddings WHERE patient_id = ?");
+            $delFace->execute([$id]);
+
+            // 5. Delete adaptive_recommendations
+            $delAdaptive = $db->prepare("DELETE FROM adaptive_recommendations WHERE patient_id = ?");
+            $delAdaptive->execute([$id]);
+
+            // 6. Delete auth_tokens if table exists
+            try {
+                $delTokens = $db->prepare("DELETE FROM auth_tokens WHERE patient_id = ?");
+                $delTokens->execute([$id]);
+            } catch (Throwable $t) {
+                // Table might not exist yet
+            }
+
+            // 7. Delete patient
+            $delPatient = $db->prepare("DELETE FROM patients WHERE id = ?");
+            $delPatient->execute([$id]);
+
+            $db->commit();
+            http_response_code(200);
+            echo json_encode([
+                'status' => 'success',
+                'success' => true,
+                'message' => 'Patient and all associated clinical & biometric data purged permanently under PDPA.'
+            ]);
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            error_log("Purge patient error: " . $e->getMessage());
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'Failed to purge patient data']);
+        }
+    }
 }

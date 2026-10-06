@@ -25,19 +25,35 @@
 - **สลับมุมซ้าย-ขวา (`⇄`) ได้ทันที**: ป้องกันไม่ให้คลิปวิดีโอบดบังแขนหรือข้อต่อข้างที่กำลังยกฝึก
 - **ปุ่มย่อ-ขยาย (`—`)**: ย่อคลิปเป็นปุ่มลอยเพื่อดูกระจกเต็มจอ หรือขยายกลับมาได้ตลอดเวลา
 
-#### 3. 🧘‍♂️ โปรแกรมยืดเส้นกายภาพบำบัด 11 ท่า (11 Clinical Stretch Program)
-- ครอบคลุมกล้ามเนื้อส่วนบน คอ บ่า ไหล่ แขน และสะบักครบถ้วน
+#### 3. 🧘‍♂️ โปรแกรมยืดเส้นกายภาพบำบัด 11 ท่า (11 Clinical Stretch Program & Posture Evaluator)
+- ครอบคลุมกล้ามเนื้อส่วนบน คอ บ่า ไหล่ แขน และสะบักครบถ้วนทั้ง 11 ท่า
+- **Stretch Posture Evaluator**: ตรวจวัดองศาข้อต่อตามหลักสรีรศาสตร์แบบเรียลไทม์ ยืนยันว่าผู้ป่วยอยู่ในท่าทางที่ถูกต้องจริงก่อนนับเวลาค้างท่า
 - ระบบเลือกเวลาและท่าทาง: กำหนดเวลาค้างท่าแต่ละท่าได้อิสระ (เช่น 15 วินาที, 20 วินาที, 30 วินาที)
 - นับถอยหลังเตรียมพร้อม 3-2-1 และแจ้งเตือนสลับข้างซ้าย-ขวาอัตโนมัติ
 
-#### 4. 🔐 ระบบยืนยันตัวตนยืดหยุ่น เข้าถึงง่ายสำหรับผู้สูงอายุ (Multi-Method Authentication)
-- **รหัสผ่านปกติ (Password)** สำหรับเจ้าหน้าที่หรือผู้ใช้งานทั่วไป
-- **รหัส PIN ตัวเลข 6 หลัก (PIN Mode)**: ใช้งานง่าย ไม่ต้องจำตัวอักษรซับซ้อน ออกแบบเพื่อผู้สูงอายุโดยเฉพาะ
-- **สแกนใบหน้าอัจฉริยะ (Face Login - ทดลอง/Beta)**: ตรวจจับเวกเตอร์ใบหน้า 128 มิติ พร้อม Liveness Detection ป้องกันภาพถ่ายนิ่ง
+#### 4. 🔐 ระบบยืนยันตัวตนชีวมิติอัจฉริยะ (Smart Biometric Authentication & Liveness Detection)
+- **สแกนใบหน้าอัจฉริยะ (Face Login & Enrollment)**:
+  - ขับเคลื่อนด้วย **MediaPipe FaceLandmarker (478 Dense Canonical Facial Mesh Landmarks)** จริง
+  - คำนวณ Bounding Box ของใบหน้าจริงจากจุด Landmarks ทั้งหมด 478 จุด พร้อม Margin 8%
+  - **Head Yaw Pose Estimation**: คำนวณมุมหันศีรษะจากพิกัดปลายจมูก (Landmark 1) เทียบกับโหนกแก้มซ้าย-ขวา (Landmarks 234, 454) พร้อมชดเชยการกลับภาพกล้องหน้า (Mirrored CSS compensation) เพื่อความแม่นยำ
+  - **Neural Blendshape Blink Detection**: ตรวจจับการกะพริบตาผ่าน Blendshapes (`eyeBlinkLeft`, `eyeBlinkRight`) ตรวจสอบช่วงเวลาหลับตา 100–900ms เพื่อป้องกันการหลอกกล้องด้วยภาพถ่ายนิ่ง (Anti-Spoofing Liveness)
+  - **128-D Biometric Geometric Feature Vector**: สร้างเวกเตอร์เรขาคณิต 128 มิติที่อิงจุดศูนย์กลางและปรับสเกลด้วย Inter-Ocular Distance (IOD) และทำ L2-normalization ($||v|| = 1.0$)
+  - **Euclidean Distance Matching**: คำนวณระยะห่างทางคณิตศาสตร์ใน Backend ($\le 0.60$) ไม่เก็บภาพถ่ายใบหน้าจริงของผู้ป่วย เป็นไปตามมาตรฐาน PDPA/HIPAA
+- **รหัส PIN ตัวเลข 6 หลัก (Senior PIN Mode)**: ใช้งานง่าย ไม่ต้องจำตัวอักษรซับซ้อน ออกแบบเพื่อผู้สูงอายุโดยเฉพาะ
+- **รหัสผ่านปกติ (Password)** สำหรับเจ้าหน้าที่และบุคลากรทางการแพทย์
 
-#### 5. 🛡️ Clinical Safety Watchdog (ระบบดูแลความปลอดภัยเรียลไทม์)
-- ตรวจจับองศาข้อต่อที่ผิดรูป (Over-ROM), การเอียงลำตัวชดเชย (Trunk Lean), และการยกไหล่เกร็ง (Shoulder Hike)
-- มีเสียง AI ผู้ช่วยภาษาไทยแจ้งเตือนและสั่งหยุดพักชั่วคราวเพื่อความปลอดภัยทันที
+#### 5. 🛡️ Clinical Safety Watchdog (ระบบความปลอดภัยชีวกลศาสตร์เรียลไทม์)
+- **Exercise-Specific Landmark Visibility**: ประเมินความมั่นใจของจุดข้อต่อเฉพาะที่จำเป็นในแต่ละท่า (เช่น ท่ายกแขนดูไหล่-ศอก, ท่าสควอตดูสะโพก-เข่า-ข้อเท้า) โดยไม่หยุดนับหากข้อต่อที่ไม่เกี่ยวข้องถูกบดบัง
+- **Smooth 2D Trigonometry**: คำนวณมุมข้อต่อบนระนาบ 2D เพื่อลดสัญญาณรบกวนจากมิติความลึก (Z-depth noise) ของเว็บแคม
+- **Active Arm Lock**: ล็อกข้างแขนที่เริ่มเคลื่อนไหวตลอดเซ็ต ป้องกันปัญหามุมสลับข้างไปมา
+- **Non-Sticking RepetitionEngine**: จัดการสถานะ HOLD อย่างต่อเนื่องเมื่องอลึกกว่าเป้าหมาย (Deep ROM) และมีระบบ Time-out 700ms รีเซ็ตหากผ่อนแรงหลุดจากช่วงปลอดภัย
+- **Dynamic Rest/Trigger Thresholds**: รองรับท่าที่เริ่มจากศอกงอ เช่น `elbow_extension` (Rest $95^\circ$, Trigger $105^\circ$)
+- ตรวจจับภาวะอันตราย:
+  - มุมข้อต่อเกินช่วงปลอดภัย (Over-ROM)
+  - ลำตัวเอียงชดเชยรุนแรง (Spine Lean $> 22^\circ$)
+  - การยกบ่าเกร็งกล้ามเนื้อ (Shoulder Hike $> 18^\circ$)
+  - การเคลื่อนไหวกระตุกเร็วผิดปกติ (Erratic Velocity $> 220^\circ$/s)
+- **Smart Pause & Auto-Resume**: หากผู้ป่วยหลุดจากกรอบกล้อง (`OUT_OF_FRAME`) ระบบจะเปลี่ยนเป็นสถานะ `CAUTION` / `NO_DATA` เพื่อหยุดนับรอบชั่วคราว และกลับมานับต่อทันทีเมื่อก้าวกลับเข้าสู่เฟรม
 
 #### 6. 💾 Resilient Offline-First & Privacy Architecture
 - ทำงานได้ทั้งแบบมีเซิร์ฟเวอร์ และแบบ Static บน GitHub Pages ผ่านระบบ Fallback อัตโนมัติ
@@ -45,14 +61,14 @@
 - คิวซิงก์เดี่ยวอัตโนมัติ (Single Sync Queue) เมื่อเซิร์ฟเวอร์กลับมาออนไลน์
 - รองรับสิทธิการลืมข้อมูล (**Right to be Forgotten**): ฟังก์ชัน Purge Patient Data ลบทั้งเวกเตอร์ใบหน้า ผลรายรอบ และประวัติทั้งหมดอย่างปลอดภัย
 
-#### 7. 🩺 ปุ่มแจ้งนักกายภาพบำบัด (Therapist Report)
-- บันทึกองศา ROM สูงสุด คะแนนความแม่นยำ (%) และจำนวนครั้งที่ทำได้สำเร็จ ส่งผลสรุปตรงถึงนักกายภาพบำบัด
+#### 7. 🩺 ส่งรายงานสรุปถึงนักกายภาพบำบัด (Therapist Report)
+- บันทึกองศา ROM สูงสุด คะแนนความแม่นยำ (%) และจำนวนครั้งที่ทำได้สำเร็จ ส่งผลสรุปตรงถึงนักกายภาพบำบัด พร้อมช่องระบุบันทึกอาการจากผู้ป่วย
 
 ---
 
 ### 🛠️ เทคโนโลยีที่ใช้ (Tech Stack)
 - **Frontend**: React 18, TypeScript 5, Vite 5, Tailwind CSS, Lucide Icons, Canvas-Confetti, Zustand
-- **Computer Vision & AI**: Google MediaPipe Pose Landmarker (WebAssembly / WASM), MediaPipe Face Mesh, Web Audio API
+- **Computer Vision & AI**: Google MediaPipe Pose Landmarker (WebAssembly / WASM 0.10.35), MediaPipe FaceLandmarker (478 Canonical Facial Mesh Landmarks & Blendshapes)
 - **Design System**: Strong Care Mint Aesthetic (#1E8A4C, #6FD67F, #E9FCEB), WCAG AAA High Contrast
-- **Backend API**: PHP 8.2 REST API, PDO, MVC Architecture
+- **Backend API**: PHP 8.2 REST API, PDO, MVC Architecture (Output Buffering & Content-Length streaming)
 - **Database**: SQLite 3 / MySQL พร้อม IndexedDB Offline-First Fallback

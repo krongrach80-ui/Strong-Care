@@ -75,7 +75,7 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
   const startCamera = async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        if (typeof window !== 'undefined' && !window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        if (typeof window !== 'undefined' && !window.isSecureContext && window.location.hostname !== 'localhost' && !/^127(?:\.\d+){3}$/.test(window.location.hostname)) {
           setVerifyMessage(`เบราว์เซอร์บล็อกการเข้าถึงกล้องเนื่องจากไม่ได้ใช้ HTTPS (Insecure Context): กรุณาเข้าใช้งานผ่าน HTTPS (https://${window.location.host}) เพื่อความปลอดภัย`);
           return;
         }
@@ -168,10 +168,11 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
       setEnrollStep(1);
       setCapturedEmbeddings({});
       faceService.resetLiveness();
+      faceService.initialize();
       startCamera();
 
       if (initialMode === 'login') {
-        voiceAssistant.speakSystem('กรุณามองกล้องเพื่อเข้าสู่ระบบครับ', { key: 'face_login_open', cooldown: 3000 });
+        voiceAssistant.speakSystem('กรุณามองกล้องและกระพริบตาเพื่อเข้าสู่ระบบครับ', { key: 'face_login_open', cooldown: 3000 });
       } else {
         voiceAssistant.speakSystem('กรุณามองตรงมาที่กล้องครับ', { key: 'face_enroll_step1', cooldown: 3000 });
       }
@@ -184,27 +185,55 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
     };
   }, [isOpen, initialMode]);
 
-  // Real-time Face Tracking Loop
+  // Real-time Face Tracking Loop (Throttled to ~22 fps for performance)
   useEffect(() => {
     if (!cameraActive) return;
 
     let isProcessing = false;
+    let lastProcessTime = 0;
 
-    const processLoop = () => {
-      if (videoRef.current && videoRef.current.readyState >= 2 && !isProcessing) {
+    const processLoop = (now: number) => {
+      if (videoRef.current && videoRef.current.readyState >= 2 && !isProcessing && (now - lastProcessTime >= 45)) {
+        lastProcessTime = now;
         isProcessing = true;
-        const res = faceService.detectFace(videoRef.current);
+        const res = faceService.detectFace(videoRef.current, now);
         detectionRef.current = res;
         setDetection(res);
 
-        if (res && res.detected) {
-          if (res.faceCentered) {
-            setLivenessStatus('ตรวจพบใบหน้าพร้อมสแกน');
+        const liveness = faceService.getLivenessState();
+
+        if (mode === 'enroll') {
+          if (enrollStep === 1) {
+            if (!res || !res.detected) setLivenessStatus('กรุณาขยับหน้าให้อยู่ในกรอบวงรี');
+            else if (!res.faceCentered) setLivenessStatus('กรุณาจัดหน้าให้อยู่กึ่งกลาง');
+            else if (Math.abs(res.yaw) >= 0.14) setLivenessStatus('กรุณามองตรงมาที่กล้อง');
+            else setLivenessStatus('มุมตรงถูกต้อง พร้อมบันทึก');
+          } else if (enrollStep === 2) {
+            if (!res || !res.detected) setLivenessStatus('กรุณาหันหน้าเข้าหากล้อง');
+            else if (res.yaw >= -0.15) setLivenessStatus('กรุณาหันหน้าไปทางซ้ายเล็กน้อย');
+            else setLivenessStatus('ตรวจพบการหันซ้าย พร้อมบันทึก');
+          } else if (enrollStep === 3) {
+            if (!res || !res.detected) setLivenessStatus('กรุณาหันหน้าเข้าหากล้อง');
+            else if (res.yaw <= 0.15) setLivenessStatus('กรุณาหันหน้าไปทางขวาเล็กน้อย');
+            else setLivenessStatus('ตรวจพบการหันขวา พร้อมบันทึก');
           } else {
-            setLivenessStatus('กรุณาขยับหน้าให้อยู่กึ่งกลางกรอบวงรี');
+            if (liveness.blinkDetected) {
+              setLivenessStatus('ยืนยันบุคคลจริง (กระพริบตา) เรียบร้อย');
+            } else {
+              setLivenessStatus('กรุณากระพริบตา 1 ครั้งเพื่อยืนยันบุคคลจริง');
+            }
           }
         } else {
-          setLivenessStatus('กรุณาขยับหน้าให้อยู่ในกรอบวงรี');
+          // Login Mode
+          if (!res || !res.detected) {
+            setLivenessStatus('กรุณาขยับหน้าให้อยู่ในกรอบวงรี');
+          } else if (!res.faceCentered) {
+            setLivenessStatus('กรุณาจัดหน้าให้อยู่กึ่งกลางกรอบ');
+          } else if (!liveness.isRealHuman && !liveness.blinkDetected) {
+            setLivenessStatus('กรุณากระพริบตา 1 ครั้ง (Liveness Check)');
+          } else {
+            setLivenessStatus('ยืนยันบุคคลจริงเรียบร้อย กำลังเข้าสู่ระบบ...');
+          }
         }
         isProcessing = false;
       }
@@ -219,9 +248,23 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [cameraActive]);
+  }, [cameraActive, mode, enrollStep]);
 
-  const isAligned = Boolean(detection?.faceCentered);
+  // Determine alignment strictly based on current step
+  const livenessState = faceService.getLivenessState();
+  const isAligned = Boolean(
+    detection?.detected && (
+      mode === 'login'
+        ? detection.faceCentered && Math.abs(detection.yaw) < 0.18 && (livenessState.isRealHuman || livenessState.blinkDetected)
+        : enrollStep === 1
+        ? detection.faceCentered && Math.abs(detection.yaw) < 0.14
+        : enrollStep === 2
+        ? detection.yaw < -0.15 // User is turning left
+        : enrollStep === 3
+        ? detection.yaw > 0.15  // User is turning right
+        : false
+    )
+  );
 
   // One-Click / Auto Face Login
   const handleFaceLogin = async () => {
@@ -233,6 +276,12 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
 
     if (!curDetection.faceCentered) {
       setVerifyMessage('กรุณาจัดตำแหน่งใบหน้าให้อยู่ตรงกลางกรอบวงรี');
+      return;
+    }
+
+    const live = faceService.getLivenessState();
+    if (!live.isRealHuman && !live.blinkDetected) {
+      setVerifyMessage('กรุณากระพริบตาเพื่อยืนยันว่าเป็นบุคคลจริง (Anti-Spoofing)');
       return;
     }
 
@@ -290,6 +339,16 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
       return;
     }
 
+    // Verify appropriate yaw angle before capture
+    if (angleTag === 'left' && curDetection.yaw >= -0.15) {
+      setVerifyMessage('กรุณาหันหน้าไปทางซ้ายก่อนบันทึก');
+      return;
+    }
+    if (angleTag === 'right' && curDetection.yaw <= 0.15) {
+      setVerifyMessage('กรุณาหันหน้าไปทางขวาก่อนบันทึก');
+      return;
+    }
+
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
       countdownIntervalRef.current = null;
@@ -307,19 +366,19 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
     if (angleTag === 'center') {
       setEnrollStep(2);
       setVerifyMessage('บันทึกมุมตรงสำเร็จ กรุณาหันหน้าไปทางซ้ายเล็กน้อย');
-      voiceAssistant.speakSystem('ดีมากครับ กรุณาขยับใบหน้าไปทางซ้ายเล็กน้อยครับ', { priority: 'instruction', force: true });
+      voiceAssistant.speakSystem('ดีมากครับ กรุณาหันใบหน้าไปทางซ้ายเล็กน้อยครับ', { priority: 'instruction', force: true });
     } else if (angleTag === 'left') {
       setEnrollStep(3);
       setVerifyMessage('บันทึกมุมซ้ายสำเร็จ กรุณาหันหน้าไปทางขวาเล็กน้อย');
-      voiceAssistant.speakSystem('ดีมากครับ ตอนนี้ขยับใบหน้าไปทางขวาเล็กน้อยครับ', { priority: 'instruction', force: true });
+      voiceAssistant.speakSystem('ดีมากครับ ตอนนี้หันใบหน้าไปทางขวาเล็กน้อยครับ', { priority: 'instruction', force: true });
     } else if (angleTag === 'right') {
       setEnrollStep(4);
       setVerifyMessage('บันทึกมุมขวาสำเร็จ กรุณากระพริบตาเพื่อยืนยันบุคคลจริง');
-      voiceAssistant.speakSystem('บันทึกมุมใบหน้าครบแล้วครับ กรอกเพียงชื่อและอายุเพื่อเสร็จสิ้นครับ', { priority: 'instruction', force: true });
+      voiceAssistant.speakSystem('บันทึกมุมใบหน้าครบแล้วครับ กรอกชื่อและอายุเพื่อเสร็จสิ้นครับ', { priority: 'instruction', force: true });
     }
   };
 
-  // Auto-countdown 3 seconds when face is aligned (green oval)
+  // Auto-countdown 3 seconds when condition is met
   useEffect(() => {
     const canAutoCapture =
       isAligned &&
@@ -338,7 +397,7 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
 
     // Cooldown check: if previous attempt was within 2.5s, wait before restarting countdown
     const timeSinceLast = Date.now() - lastAttemptTimeRef.current;
-    const initialDelay = timeSinceLast < 2500 ? 2500 - timeSinceLast : 0;
+    const initialDelay = timeSinceLast < 2200 ? 2200 - timeSinceLast : 0;
 
     let isMounted = true;
     let currentSec = 3;
@@ -349,7 +408,7 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
       audioFeedback.playHoldTick();
 
       if (mode === 'login') {
-        voiceAssistant.speakSystem('จัดใบหน้าตรงแล้วครับ อยู่นิ่งๆ สามวินาทีนะครับ', { key: 'face_aligned_hold', cooldown: 5000 });
+        voiceAssistant.speakSystem('อยู่นิ่งๆ สามวินาทีนะครับ', { key: 'face_aligned_hold', cooldown: 5000 });
       }
 
       countdownIntervalRef.current = setInterval(() => {

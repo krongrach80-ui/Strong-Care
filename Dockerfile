@@ -1,34 +1,45 @@
-# Multi-stage build: Frontend + Backend
+# Stage 1: Build Frontend Assets
 FROM node:20-alpine AS frontend-builder
-WORKDIR /frontend
+WORKDIR /app/frontend
+
 COPY frontend/package*.json ./
 RUN npm install
+
 COPY frontend/ ./
 RUN npm run build
 
-FROM python:3.11-slim
-WORKDIR /app
+# Stage 2: Apache + PHP 8.2 Production Backend
+FROM php:8.2-apache
 
-# Install system dependencies for OpenCV and audio
+# Install SQLite dev headers and PHP extensions (PDO MySQL + PDO SQLite)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    libgomp1 \
-    espeak \
-    ffmpeg \
+    libsqlite3-dev \
+    && docker-php-ext-install pdo pdo_mysql pdo_sqlite \
+    && a2enmod rewrite \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python requirements
-COPY backend/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+# Enable AllowOverride for .htaccess mod_rewrite routing
+RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
 
-# Copy backend code and models
-COPY backend/ ./backend/
-WORKDIR /app/backend
+# Set DocumentRoot directory
+WORKDIR /var/www/html
 
-# Copy built frontend into dist
-COPY --from=frontend-builder /frontend/dist /app/frontend/dist
+# 1. Serve frontend single-page application at root (/)
+COPY --from=frontend-builder /app/frontend/dist /var/www/html
 
-EXPOSE 8000
+# 2. Serve PHP backend API at (/api)
+COPY backend/ /var/www/html/api/
 
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 3. Database schema, seeds, and SQLite persistence
+COPY database/ /var/www/html/database/
+
+# Ensure runtime directories exist with appropriate write permissions
+RUN mkdir -p /var/www/html/api/cache/tts \
+    && mkdir -p /var/www/html/api/cache/ratelimit \
+    && mkdir -p /var/www/html/database \
+    && chown -R www-data:www-data /var/www/html/database /var/www/html/api/cache \
+    && chmod -R 775 /var/www/html/database /var/www/html/api/cache
+
+EXPOSE 80
+
+CMD ["apache2-foreground"]
