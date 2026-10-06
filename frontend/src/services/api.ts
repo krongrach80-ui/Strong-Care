@@ -353,8 +353,9 @@ export const api = {
 
   /**
    * ยืนยันตัวตนด้วยใบหน้า (รองรับทั้งโหมดสาธิตและเซิร์ฟเวอร์จริง)
+   * เกณฑ์ความคล้ายคลึงถูกบริหารจัดการจาก backend config.php ที่เดียว
    */
-  async verifyFace(embedding: number[], threshold: number = 0.82): Promise<any> {
+  async verifyFace(embedding: number[]): Promise<any> {
     if (IS_STATIC_MODE) {
       return {
         status: 'success',
@@ -369,7 +370,7 @@ export const api = {
     const res = await fetch(`${API_BASE}/face/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embedding, threshold }),
+      body: JSON.stringify({ embedding }),
     });
 
     if (!res.ok) {

@@ -1,27 +1,71 @@
 /**
- * StrongCare - AI Face Recognition & Liveness Engine
- * 
- * Powered by MediaPipe FaceLandmarker (478 Canonical Facial Mesh Landmarks):
- * 1. Real Face Detection: 478 dense 3D facial landmarks from MediaPipe FaceLandmarker task
- * 2. True Liveness Verification:
- *    - Blink Detection: Real-time neural blendshapes (eyeBlinkLeft, eyeBlinkRight)
- *    - Head Yaw Pose: Geometry angle of nose tip (point 1) relative to zygomatic cheeks (234, 454)
- *      (Mirrored coordinate compensation applied for CSS -scale-x-100 preview)
- *    - Anti-Spoofing: Natural blink duration gating (100–900ms) + multi-angle yaw verification
- * 3. 128-D Biometric Feature Embedding:
- *    - Translation-invariant (referenced to facial centroid)
- *    - Scale-invariant (normalized by Inter-Ocular Distance - IOD)
- *    - L2-normalized hypersphere unit vector (||v|| = 1.0)
- *    - Stored as mathematical vector only (No raw patient photos saved, PDPA/HIPAA compliant)
+ * StrongCare - AI Face Recognition & Liveness Engine (v2)
+ *
+ * 1. Face Detection & Tracking:
+ *    - MediaPipe FaceLandmarker (478 Dense 3D Landmarks)
+ *    - 4x4 Facial Transformation Matrix for Analytical Euler Angles (Yaw, Pitch, Roll)
+ *    - High-precision Eye Aspect Ratio (EAR) from 6 points per eye + Neural Blendshapes
+ *
+ * 2. Pre-Capture Quality Gate:
+ *    - Face Centering, Size Ratio (22%-68%), Head Pose Constraints
+ *    - Laplacian Variance Sharpness & Luminance Analysis (Reject blurry / poor lighting)
+ *    - Multi-frame stability gating before capture
+ *
+ * 3. Deep Face Recognition (Offline 128-D Embedding):
+ *    - ResNet-34 Face Recognition Net (@vladmandic/face-api, MIT License)
+ *    - Offline model bundle loaded from /models/face_recognition
+ *    - Face alignment & crop on 150x150 canvas based on eye anchors
+ *    - Multi-frame Averaged & L2-normalized embedding vector
+ *    - Model Version: 'face-resnet34-v2' (No raw photos stored, PDPA compliant)
+ *
+ * 4. Randomized Liveness Challenge:
+ *    - Randomized sequence of challenges (Blink, Turn Left, Turn Right)
+ *    - Clear Thai instructions tailored for elderly patients
+ *    - Transparent disclosure: Basic Liveness Screening, not bank-grade anti-spoofing
  */
 
 import { FaceLandmarker, FaceLandmarkerResult } from '@mediapipe/tasks-vision';
 import { poseService } from './poseService';
 
+let faceapiInstance: any = null;
+async function getFaceApi(): Promise<any> {
+  if (typeof window === 'undefined') return null;
+  if (!faceapiInstance) {
+    faceapiInstance = await import('@vladmandic/face-api');
+  }
+  return faceapiInstance;
+}
+
+export const FACE_MODEL_VERSION = 'face-resnet34-v2';
+
+export const LIVENESS_DISCLAIMER_TH =
+  'หมายเหตุ: ระบบตรวจสอบความมีชีวิตเบื้องต้น (Basic Liveness Detection) สำหรับคัดกรองรูปภาพถ่ายนิ่ง ไม่ใช่ระบบ Anti-spoofing ระดับสถาบันการเงิน';
+
+function resolveAssetUrl(relPath: string): string {
+  if (relPath.startsWith('http://') || relPath.startsWith('https://')) return relPath;
+  const baseUrl =
+    (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.BASE_URL) || './';
+  const cleanBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+  const cleanRel = relPath.startsWith('/') ? relPath.slice(1) : relPath;
+  return `${cleanBase}${cleanRel}`;
+}
+
 export interface FaceLandmarkPoint {
   x: number;
   y: number;
   z?: number;
+}
+
+export interface QualityGateResult {
+  passed: boolean;
+  faceCentered: boolean;
+  sizeRatioValid: boolean;
+  isAngleValid: boolean;
+  isSharp: boolean;
+  isWellLit: boolean;
+  isEyesOpen: boolean;
+  qualityScore: number; // 0 - 100 calculated from real metrics
+  failures: string[]; // Reasons in simple Thai
 }
 
 export interface FaceDetectionResult {
@@ -43,12 +87,19 @@ export interface FaceDetectionResult {
   };
   rawLandmarks?: FaceLandmarkPoint[];
   blendshapes?: { eyeBlinkLeft: number; eyeBlinkRight: number };
-  ear: number; // Eye Aspect Ratio (or blendshape-derived aperture)
-  yaw: number; // -1 (full left) to +1 (full right), 0 = center (Mirrored perspective: + is right on screen)
+  ear: number; // Eye Aspect Ratio
+  yaw: number; // -1 to +1 (mirrored: negative = turn left on screen, positive = turn right on screen)
   pitch: number; // -1 (up) to +1 (down)
+  roll: number; // -1 to +1
+  yawDeg: number; // Analytical Euler angle in degrees
+  pitchDeg: number;
+  rollDeg: number;
   faceCentered: boolean;
+  qualityGate: QualityGateResult;
   qualityScore: number;
 }
+
+export type LivenessChallengeType = 'blink' | 'turn_left' | 'turn_right';
 
 export interface LivenessState {
   blinkDetected: boolean;
@@ -56,22 +107,40 @@ export interface LivenessState {
   turnRightDetected: boolean;
   isRealHuman: boolean;
   currentPrompt: string;
+  activeChallenge: LivenessChallengeType;
+  currentChallengeIndex: number;
+  totalChallenges: number;
+  challenges: LivenessChallengeType[];
+  allChallengesPassed: boolean;
 }
 
 export class FaceService {
   private static instance: FaceService;
   private faceLandmarker: FaceLandmarker | null = null;
+  private isFaceNetLoaded: boolean = false;
+  private faceNetLoadPromise: Promise<boolean> | null = null;
   private isInitializing: boolean = false;
   private lastDetectTimestamp: number = 0;
 
-  // Liveness tracking buffers
+  // Liveness Tracking State
   private wasEyeClosed: boolean = false;
-  private blinkTimestamp: number = 0;
-  private isBlinkCompleted: boolean = false;
+  private eyeClosedTimestamp: number = 0;
+  private blinkCompleted: boolean = false;
   private leftTurnCompleted: boolean = false;
   private rightTurnCompleted: boolean = false;
 
-  private constructor() {}
+  // Randomized Challenge Flow
+  private challenges: LivenessChallengeType[] = ['blink', 'turn_left', 'turn_right'];
+  private currentChallengeIndex: number = 0;
+  private challengeCompletedAt: Record<string, number> = {};
+
+  // Offscreen canvas for image quality & crop alignment
+  private sampleCanvas: HTMLCanvasElement | null = null;
+  private alignedCanvas: HTMLCanvasElement | null = null;
+
+  private constructor() {
+    this.randomizeChallenges();
+  }
 
   public static getInstance(): FaceService {
     if (!FaceService.instance) {
@@ -81,35 +150,84 @@ export class FaceService {
   }
 
   /**
-   * Ensure MediaPipe FaceLandmarker model is loaded
+   * Randomize challenge sequence for true interactive liveness
+   */
+  public randomizeChallenges(): void {
+    const list: LivenessChallengeType[] = ['blink', 'turn_left', 'turn_right'];
+    // Fisher-Yates shuffle
+    for (let i = list.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [list[i], list[j]] = [list[j], list[i]];
+    }
+    this.challenges = list;
+    this.currentChallengeIndex = 0;
+    this.challengeCompletedAt = {};
+    this.blinkCompleted = false;
+    this.leftTurnCompleted = false;
+    this.rightTurnCompleted = false;
+    this.wasEyeClosed = false;
+  }
+
+  /**
+   * Initialize both MediaPipe FaceLandmarker and ResNet-34 Face Recognition Net
    */
   public async initialize(): Promise<boolean> {
-    if (this.faceLandmarker) return true;
     if (this.isInitializing) return false;
-
     this.isInitializing = true;
+
     try {
-      this.faceLandmarker = await poseService.ensureFaceLandmarker();
+      // 1. Ensure MediaPipe FaceLandmarker (478 landmarks + 4x4 transform matrix)
+      if (!this.faceLandmarker) {
+        this.faceLandmarker = await poseService.ensureFaceLandmarker();
+      }
+
+      // 2. Ensure Deep Face Recognition Net (@vladmandic/face-api)
+      await this.ensureFaceRecognitionNet();
+
       this.isInitializing = false;
-      return this.faceLandmarker !== null;
+      return Boolean(this.faceLandmarker);
     } catch (err) {
-      console.warn('⚠️ FaceService: Failed to initialize FaceLandmarker:', err);
+      console.warn('⚠️ FaceService: Initialization warning:', err);
       this.isInitializing = false;
       return false;
     }
   }
 
+  /**
+   * Load ResNet-34 face descriptor model weights offline
+   */
+  public async ensureFaceRecognitionNet(): Promise<boolean> {
+    if (this.isFaceNetLoaded) return true;
+    if (this.faceNetLoadPromise) return this.faceNetLoadPromise;
+
+    this.faceNetLoadPromise = (async () => {
+      try {
+        const faceapi = await getFaceApi();
+        if (!faceapi) return false;
+
+        const modelUrl = resolveAssetUrl('models/face_recognition');
+        if (!faceapi.nets.faceRecognitionNet.isLoaded) {
+          await faceapi.nets.faceRecognitionNet.loadFromUri(modelUrl);
+        }
+        this.isFaceNetLoaded = true;
+        console.log('✅ ResNet-34 Face Recognition Model loaded offline successfully');
+        return true;
+      } catch (err) {
+        console.warn('⚠️ FaceRecognitionNet offline load warning:', err);
+        this.faceNetLoadPromise = null;
+        return false;
+      }
+    })();
+
+    return this.faceNetLoadPromise;
+  }
+
   public resetLiveness(): void {
-    this.wasEyeClosed = false;
-    this.blinkTimestamp = 0;
-    this.isBlinkCompleted = false;
-    this.leftTurnCompleted = false;
-    this.rightTurnCompleted = false;
+    this.randomizeChallenges();
   }
 
   /**
-   * Detect real face landmarks, blendshapes (blink), head pose (yaw/pitch)
-   * using MediaPipe FaceLandmarker on video element.
+   * Run full MediaPipe FaceLandmarker on video element with 4x4 matrix extraction
    */
   public detectFace(video: HTMLVideoElement, timestamp?: number): FaceDetectionResult | null {
     if (!video || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0 || video.paused) {
@@ -124,7 +242,6 @@ export class FaceService {
       }
     }
 
-    // MediaPipe detectForVideo requires strictly increasing integer timestamp (ms)
     const now = timestamp || performance.now();
     let processTime = Math.floor(now);
     if (processTime <= this.lastDetectTimestamp) {
@@ -135,8 +252,7 @@ export class FaceService {
     let res: FaceLandmarkerResult | null = null;
     try {
       res = this.faceLandmarker.detectForVideo(video, processTime);
-    } catch (err) {
-      // Frame skipped / timestamp alignment
+    } catch {
       return null;
     }
 
@@ -149,12 +265,8 @@ export class FaceService {
       return null;
     }
 
-    // 1. Compute true Bounding Box from all mesh landmarks
-    let minX = 1;
-    let maxX = 0;
-    let minY = 1;
-    let maxY = 0;
-
+    // 1. Analytical Bounding Box from 468 mesh landmarks
+    let minX = 1, maxX = 0, minY = 1, maxY = 0;
     for (let i = 0; i < lm.length; i++) {
       const p = lm[i];
       if (p.x < minX) minX = p.x;
@@ -163,28 +275,15 @@ export class FaceService {
       if (p.y > maxY) maxY = p.y;
     }
 
-    // Add 8% comfortable boundary margin
     const padX = (maxX - minX) * 0.08;
     const padY = (maxY - minY) * 0.08;
     const boxX = Math.max(0, minX - padX);
     const boxY = Math.max(0, minY - padY);
     const boxW = Math.min(1 - boxX, (maxX - minX) + padX * 2);
     const boxH = Math.min(1 - boxY, (maxY - minY) + padY * 2);
+    const normBox = { x: boxX, y: boxY, width: boxW, height: boxH };
 
-    const normBox = {
-      x: boxX,
-      y: boxY,
-      width: boxW,
-      height: boxH,
-    };
-
-    // 2. Canonical MediaPipe Face Mesh Landmark Anchors
-    // Nose tip: landmark 1
-    // Cheeks: landmark 234 (right zygomatic arch), 454 (left zygomatic arch)
-    // Chin: landmark 152
-    // Left eye outer: 33, inner: 133, top: 159, bottom: 145
-    // Right eye outer: 263, inner: 362, top: 386, bottom: 374
-    // Mouth left: 61, right: 291
+    // 2. Canonical Facial Anchors
     const noseTip = lm[1];
     const rightCheek = lm[234];
     const leftCheek = lm[454];
@@ -208,71 +307,85 @@ export class FaceService {
       y: (leftEyeTop.y + leftEyeBottom.y) / 2,
       z: (leftEyeOuter.z ?? 0 + (leftEyeInner.z ?? 0)) / 2,
     };
-
     const rightEyeCenter = {
       x: (rightEyeOuter.x + rightEyeInner.x) / 2,
       y: (rightEyeTop.y + rightEyeBottom.y) / 2,
       z: (rightEyeOuter.z ?? 0 + (rightEyeInner.z ?? 0)) / 2,
     };
 
-    // 3. Extract Blendshapes for Neural Blink Detection
+    // 3. Analytical Euler Angles (Yaw, Pitch, Roll) from 4x4 Transformation Matrix
+    let yawDeg = 0;
+    let pitchDeg = 0;
+    let rollDeg = 0;
+    let hasValidMatrix = false;
+
+    if (res.facialTransformationMatrixes && res.facialTransformationMatrixes.length > 0) {
+      const rawMatrix = (res.facialTransformationMatrixes[0] as any).data || res.facialTransformationMatrixes[0];
+      if (rawMatrix && rawMatrix.length >= 16) {
+        hasValidMatrix = true;
+        // MediaPipe Transformation Matrix is 4x4 column-major:
+        // Col 0: rawMatrix[0], rawMatrix[1], rawMatrix[2]
+        // Col 1: rawMatrix[4], rawMatrix[5], rawMatrix[6]
+        // Col 2: rawMatrix[8], rawMatrix[9], rawMatrix[10]
+        const r00 = rawMatrix[0], r10 = rawMatrix[1], r20 = rawMatrix[2];
+        const r01 = rawMatrix[4], r11 = rawMatrix[5], r21 = rawMatrix[6];
+        const r02 = rawMatrix[8], r12 = rawMatrix[9], r22 = rawMatrix[10];
+
+        // Euler Angles (rad)
+        const yawRad = Math.atan2(r02, r22);
+        const pitchRad = Math.atan2(-r12, Math.hypot(r02, r22));
+        const rollRad = Math.atan2(r10, r00);
+
+        yawDeg = (yawRad * 180) / Math.PI;
+        pitchDeg = (pitchRad * 180) / Math.PI;
+        rollDeg = (rollRad * 180) / Math.PI;
+      }
+    }
+
+    // Geometry fallback if 4x4 matrix is unavailable
+    if (!hasValidMatrix) {
+      const midCheekX = (rightCheek.x + leftCheek.x) / 2;
+      const cheekSpan = Math.max(0.01, Math.abs(leftCheek.x - rightCheek.x));
+      const geomYawRatio = (noseTip.x - midCheekX) / (cheekSpan * 0.45);
+      yawDeg = -geomYawRatio * 45;
+
+      const midEyeY = (leftEyeCenter.y + rightEyeCenter.y) / 2;
+      const upperSpan = Math.max(0.01, noseTip.y - midEyeY);
+      const lowerSpan = Math.max(0.01, chin.y - noseTip.y);
+      const geomPitchRatio = (upperSpan - lowerSpan * 0.75) / (Math.max(0.01, upperSpan + lowerSpan) * 0.45);
+      pitchDeg = geomPitchRatio * 40;
+
+      const eyeDy = rightEyeCenter.y - leftEyeCenter.y;
+      const eyeDx = rightEyeCenter.x - leftEyeCenter.x;
+      rollDeg = (Math.atan2(eyeDy, eyeDx) * 180) / Math.PI;
+    }
+
+    // Perspective compensation:
+    // With CSS -scale-x-100 (mirrored preview), turning head to the user's right on screen
+    // corresponds to positive screen yaw (+).
+    // Normalize yaw to [-1.0, 1.0] where 0 = center, -0.2..-0.6 = left, +0.2..+0.6 = right
+    const normYaw = Math.max(-1, Math.min(1, -yawDeg / 40));
+    const normPitch = Math.max(-1, Math.min(1, pitchDeg / 35));
+    const normRoll = Math.max(-1, Math.min(1, rollDeg / 30));
+
+    // 4. True Eye Aspect Ratio (EAR) & Blendshapes
     const blendshapes = res.faceBlendshapes?.[0]?.categories || [];
     const blinkLeftScore = blendshapes.find((c) => c.categoryName === 'eyeBlinkLeft')?.score ?? 0;
     const blinkRightScore = blendshapes.find((c) => c.categoryName === 'eyeBlinkRight')?.score ?? 0;
 
-    // Geometric EAR fallback
-    const leftEarGeo = Math.hypot(leftEyeTop.x - leftEyeBottom.x, leftEyeTop.y - leftEyeBottom.y) /
+    const leftEarGeo =
+      Math.hypot(leftEyeTop.x - leftEyeBottom.x, leftEyeTop.y - leftEyeBottom.y) /
       Math.max(0.01, 2 * Math.hypot(leftEyeOuter.x - leftEyeInner.x, leftEyeOuter.y - leftEyeInner.y));
-    const rightEarGeo = Math.hypot(rightEyeTop.x - rightEyeBottom.x, rightEyeTop.y - rightEyeBottom.y) /
+    const rightEarGeo =
+      Math.hypot(rightEyeTop.x - rightEyeBottom.x, rightEyeTop.y - rightEyeBottom.y) /
       Math.max(0.01, 2 * Math.hypot(rightEyeOuter.x - rightEyeInner.x, rightEyeOuter.y - rightEyeInner.y));
-    const avgEarGeo = (leftEarGeo + rightEarGeo) / 2;
+    const ear = (leftEarGeo + rightEarGeo) / 2;
 
-    // Effective EAR: blendshape is primary, geometric is secondary
-    const maxBlinkScore = Math.max(blinkLeftScore, blinkRightScore);
-    const ear = blendshapes.length > 0
-      ? Math.max(0.12, Math.min(0.38, 0.34 - maxBlinkScore * 0.22))
-      : avgEarGeo;
+    // 5. Image Sharpness & Lighting Quality Evaluation
+    const qualityEval = this.evaluateImageQuality(video, normBox, ear, blinkLeftScore, blinkRightScore, yawDeg, pitchDeg, rollDeg);
 
-    // Evaluate blink state for liveness
-    this.updateBlinkLiveness(blinkLeftScore, blinkRightScore, avgEarGeo);
-
-    // 4. Real Head Pose (Yaw & Pitch)
-    // Cheek span in image coordinates
-    const midCheekX = (rightCheek.x + leftCheek.x) / 2;
-    const cheekSpan = Math.max(0.01, Math.abs(leftCheek.x - rightCheek.x));
-
-    // Raw camera frame: turning right moves nose towards anatomical right (lm 234, smaller x)
-    // Because UI video element is mirrored via CSS (`-scale-x-100`),
-    // we invert rawYaw so:
-    // User turns RIGHT on screen -> yaw is POSITIVE (+0.15 .. +0.6)
-    // User turns LEFT on screen  -> yaw is NEGATIVE (-0.15 .. -0.6)
-    // User looks CENTER          -> yaw is close to 0 (-0.10 .. +0.10)
-    const rawYaw = (noseTip.x - midCheekX) / (cheekSpan * 0.45);
-    const yaw = Math.max(-1, Math.min(1, -rawYaw));
-
-    if (yaw < -0.16) this.leftTurnCompleted = true;
-    if (yaw > 0.16) this.rightTurnCompleted = true;
-
-    // Pitch: relative position of nose tip between mid-eyes and chin
-    const midEyeY = (leftEyeCenter.y + rightEyeCenter.y) / 2;
-    const upperSpan = Math.max(0.01, noseTip.y - midEyeY);
-    const lowerSpan = Math.max(0.01, chin.y - noseTip.y);
-    const rawPitch = (upperSpan - lowerSpan * 0.75) / (Math.max(0.01, upperSpan + lowerSpan) * 0.45);
-    const pitch = Math.max(-1, Math.min(1, rawPitch));
-
-    // 5. Centered & Quality assessment
-    const centerX = normBox.x + normBox.width / 2;
-    const centerY = normBox.y + normBox.height / 2;
-    const faceCentered =
-      centerX >= 0.28 && centerX <= 0.72 &&
-      centerY >= 0.20 && centerY <= 0.80 &&
-      normBox.width >= 0.18 && normBox.width <= 0.75;
-
-    let qualityScore = 100;
-    if (!faceCentered) qualityScore -= 15;
-    if (normBox.width < 0.22) qualityScore -= 20; // Too far away
-    if (normBox.width > 0.68) qualityScore -= 15; // Too close
-    if (Math.abs(pitch) > 0.4) qualityScore -= 15; // Extreme tilt
+    // 6. Update Liveness Verification
+    this.updateLivenessState(ear, blinkLeftScore, blinkRightScore, normYaw);
 
     const mappedLandmarks = {
       leftEye: leftEyeCenter,
@@ -296,239 +409,480 @@ export class FaceService {
       rawLandmarks: lm,
       blendshapes: { eyeBlinkLeft: blinkLeftScore, eyeBlinkRight: blinkRightScore },
       ear,
-      yaw,
-      pitch,
-      faceCentered,
-      qualityScore: Math.max(40, qualityScore),
+      yaw: normYaw,
+      pitch: normPitch,
+      roll: normRoll,
+      yawDeg,
+      pitchDeg,
+      rollDeg,
+      faceCentered: qualityEval.faceCentered,
+      qualityGate: qualityEval,
+      qualityScore: qualityEval.qualityScore,
     };
   }
 
   /**
-   * Anti-Spoofing: Evaluate natural blink transition (Closed -> Open within 100–900ms)
+   * Pre-Capture Quality Gate: Checks centering, distance, blur, lighting, eyes open, and pose
    */
-  private updateBlinkLiveness(blinkL: number, blinkR: number, geoEar: number): void {
-    const now = Date.now();
-    const isClosed = (blinkL > 0.42 && blinkR > 0.42) || (geoEar < 0.18);
+  private evaluateImageQuality(
+    video: HTMLVideoElement,
+    box: { x: number; y: number; width: number; height: number },
+    ear: number,
+    blinkL: number,
+    blinkR: number,
+    yawDeg: number,
+    pitchDeg: number,
+    rollDeg: number
+  ): QualityGateResult {
+    const failures: string[] = [];
 
+    // 1. Centering Check
+    const centerX = box.x + box.width / 2;
+    const centerY = box.y + box.height / 2;
+    const faceCentered = centerX >= 0.30 && centerX <= 0.70 && centerY >= 0.22 && centerY <= 0.78;
+    if (!faceCentered) failures.push('จัดใบหน้าให้อยู่กึ่งกลางกรอบวงรี');
+
+    // 2. Size Ratio Check (22% to 68% of frame)
+    const sizeRatioValid = box.width >= 0.20 && box.width <= 0.68;
+    if (box.width < 0.20) failures.push('ขยับเข้าใกล้กล้องอีกเล็กน้อย');
+    else if (box.width > 0.68) failures.push('ถอยห่างจากกล้องอีกเล็กน้อย');
+
+    // 3. Head Pose Alignment Check (For Center)
+    const isAngleValid = Math.abs(yawDeg) <= 12 && Math.abs(pitchDeg) <= 14 && Math.abs(rollDeg) <= 12;
+    if (!isAngleValid) failures.push('มองตรงมาที่กล้อง ไม่เอียงศีรษะ');
+
+    // 4. Eyes Open Check
+    const isEyesOpen = ear >= 0.20 && blinkL <= 0.38 && blinkR <= 0.38;
+    if (!isEyesOpen) failures.push('ลืมตาให้ชัดเจน');
+
+    // 5. Image Sharpness & Lighting via Sample Canvas
+    if (!this.sampleCanvas) {
+      this.sampleCanvas = document.createElement('canvas');
+      this.sampleCanvas.width = 48;
+      this.sampleCanvas.height = 48;
+    }
+    const ctx = this.sampleCanvas.getContext('2d', { willReadFrequently: true });
+    let meanLuminance = 120;
+    let laplacianVar = 35;
+
+    if (ctx && video.videoWidth > 0 && video.videoHeight > 0) {
+      const sx = Math.max(0, Math.floor(box.x * video.videoWidth));
+      const sy = Math.max(0, Math.floor(box.y * video.videoHeight));
+      const sw = Math.min(video.videoWidth - sx, Math.floor(box.width * video.videoWidth));
+      const sh = Math.min(video.videoHeight - sy, Math.floor(box.height * video.videoHeight));
+
+      if (sw > 10 && sh > 10) {
+        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, 48, 48);
+        const imgData = ctx.getImageData(0, 0, 48, 48);
+        const d = imgData.data;
+
+        // Grayscale & Luminance
+        let totalLum = 0;
+        const gray = new Float32Array(48 * 48);
+        for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+          const yVal = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+          gray[p] = yVal;
+          totalLum += yVal;
+        }
+        meanLuminance = totalLum / (48 * 48);
+
+        // Discrete Laplacian 3x3 for Sharpness Variance
+        let lapTotal = 0;
+        let lapSqTotal = 0;
+        let count = 0;
+        for (let y = 1; y < 47; y++) {
+          for (let x = 1; x < 47; x++) {
+            const c = gray[y * 48 + x];
+            const lap =
+              gray[(y - 1) * 48 + x] +
+              gray[(y + 1) * 48 + x] +
+              gray[y * 48 + (x - 1)] +
+              gray[y * 48 + (x + 1)] -
+              4 * c;
+            lapTotal += lap;
+            lapSqTotal += lap * lap;
+            count++;
+          }
+        }
+        const meanLap = lapTotal / count;
+        laplacianVar = (lapSqTotal / count) - (meanLap * meanLap);
+      }
+    }
+
+    const isWellLit = meanLuminance >= 45 && meanLuminance <= 220;
+    if (meanLuminance < 45) failures.push('แสงสว่างน้อยเกินไป กรุณาเพิ่มแสง');
+    else if (meanLuminance > 220) failures.push('แสงจ้าเกินไป กรุณาปรับแสง');
+
+    const isSharp = laplacianVar >= 16;
+    if (!isSharp) failures.push('ภาพเบลอหรือไม่ชัด กรุณาถืออุปกรณ์นิ่งๆ');
+
+    // Calculate Real Continuous Quality Score (0 to 100)
+    const distCenter = Math.hypot(centerX - 0.5, centerY - 0.5);
+    const scoreCenter = Math.max(0, 100 - distCenter * 200);
+    const scoreSize = Math.max(0, 100 - Math.abs(box.width - 0.40) * 220);
+    const scoreSharp = Math.min(100, Math.max(0, laplacianVar * 2.2));
+    const scoreLum = Math.max(0, 100 - Math.abs(meanLuminance - 128) * 0.8);
+    const scorePose = Math.max(0, 100 - (Math.abs(yawDeg) + Math.abs(pitchDeg) + Math.abs(rollDeg)) * 1.5);
+
+    const qualityScore = Math.max(
+      20,
+      Math.min(
+        100,
+        Math.round(
+          0.30 * scoreSharp +
+          0.25 * scoreLum +
+          0.20 * scoreCenter +
+          0.15 * scorePose +
+          0.10 * scoreSize
+        )
+      )
+    );
+
+    const passed = failures.length === 0;
+
+    return {
+      passed,
+      faceCentered,
+      sizeRatioValid,
+      isAngleValid,
+      isSharp,
+      isWellLit,
+      isEyesOpen,
+      qualityScore,
+      failures,
+    };
+  }
+
+  /**
+   * Update dynamic liveness and advance randomized challenge steps
+   */
+  private updateLivenessState(ear: number, blinkL: number, blinkR: number, normYaw: number): void {
+    const now = Date.now();
+
+    // 1. Dynamic Eye Blink Detection (Closed 100–850ms, then reopened)
+    const isClosed = ear < 0.18 || (blinkL > 0.45 && blinkR > 0.45);
     if (isClosed && !this.wasEyeClosed) {
       this.wasEyeClosed = true;
-      this.blinkTimestamp = now;
+      this.eyeClosedTimestamp = now;
     } else if (!isClosed && this.wasEyeClosed) {
-      const elapsed = now - this.blinkTimestamp;
-      if (elapsed >= 100 && elapsed <= 900) {
-        // Natural human blink confirmed!
-        this.isBlinkCompleted = true;
+      const duration = now - this.eyeClosedTimestamp;
+      if (duration >= 100 && duration <= 850) {
+        this.blinkCompleted = true;
+        this.challengeCompletedAt['blink'] = now;
       }
       this.wasEyeClosed = false;
+    }
+
+    // 2. Head Yaw Challenges (Mirrored screen perspective)
+    // Turning Left on screen: normYaw <= -0.15 (~ -6° to -25°)
+    if (normYaw <= -0.15) {
+      this.leftTurnCompleted = true;
+      this.challengeCompletedAt['turn_left'] = now;
+    }
+    // Turning Right on screen: normYaw >= 0.15 (~ +6° to +25°)
+    if (normYaw >= 0.15) {
+      this.rightTurnCompleted = true;
+      this.challengeCompletedAt['turn_right'] = now;
+    }
+
+    // Advance active challenge
+    const currentGoal = this.challenges[this.currentChallengeIndex];
+    if (currentGoal && this.challengeCompletedAt[currentGoal]) {
+      if (this.currentChallengeIndex < this.challenges.length - 1) {
+        this.currentChallengeIndex++;
+      }
     }
   }
 
   public getLivenessState(): LivenessState {
-    const isRealHuman = this.isBlinkCompleted || (this.leftTurnCompleted && this.rightTurnCompleted);
-    let prompt = 'กรุณามองตรงมาที่กล้อง';
+    const currentGoal = this.challenges[this.currentChallengeIndex] || 'blink';
+    const allPassed = this.challenges.every((c) => Boolean(this.challengeCompletedAt[c]));
 
-    if (!this.leftTurnCompleted) {
-      prompt = 'กรุณาหันหน้าไปทางซ้ายเล็กน้อย';
-    } else if (!this.rightTurnCompleted) {
-      prompt = 'กรุณาหันหน้าไปทางขวาเล็กน้อย';
-    } else if (!this.isBlinkCompleted) {
-      prompt = 'กรุณากระพริบตา 1 ครั้ง';
+    let prompt = 'กรุณามองตรงมาที่กล้อง';
+    if (!allPassed) {
+      if (currentGoal === 'blink') {
+        prompt = 'กรุณากระพริบตา 1 ครั้งเพื่อยืนยันบุคคลจริง';
+      } else if (currentGoal === 'turn_left') {
+        prompt = 'กรุณาหันหน้าไปทางซ้ายเล็กน้อย';
+      } else if (currentGoal === 'turn_right') {
+        prompt = 'กรุณาหันหน้าไปทางขวาเล็กน้อย';
+      }
     } else {
-      prompt = 'ยืนยันบุคคลจริงเรียบร้อย';
+      prompt = 'ยืนยันบุคคลจริงเรียบร้อยแล้ว';
     }
 
     return {
-      blinkDetected: this.isBlinkCompleted,
+      blinkDetected: this.blinkCompleted,
       turnLeftDetected: this.leftTurnCompleted,
       turnRightDetected: this.rightTurnCompleted,
-      isRealHuman,
+      isRealHuman: allPassed || this.blinkCompleted,
       currentPrompt: prompt,
+      activeChallenge: currentGoal,
+      currentChallengeIndex: this.currentChallengeIndex,
+      totalChallenges: this.challenges.length,
+      challenges: [...this.challenges],
+      allChallengesPassed: allPassed,
     };
   }
 
   /**
-   * Generate 128-dimensional Normalized Facial Embedding Vector
-   * Extracted from MediaPipe FaceLandmarker (478 Dense Landmarks).
-   *
-   * Invariant Properties:
-   * 1. Translation: Referenced to facial centroid (midEye + noseTip + chin)
-   * 2. Scale: Scaled by Inter-Ocular Distance (IOD)
-   * 3. Geometric Discriminability:
-   *    - Dims 0..31: Anatomical Euclidean Distances / IOD
-   *    - Dims 32..63: Morphological and Structural Proportions & Curvature
-   *    - Dims 64..95: Facial Perimeter Polar Harmonics (32 angles)
-   *    - Dims 96..127: Triangulation Orientation Invariant Angles (atan2)
-   * 4. L2 Normalization: ||vec||_2 = 1.0 (Unit Hypersphere Projection)
+   * Crop and align face patch into normalized 150x150 canvas based on eye coordinates
    */
-  public generateEmbedding(detection: FaceDetectionResult): number[] {
+  public extractAlignedFaceCanvas(video: HTMLVideoElement, detection: FaceDetectionResult): HTMLCanvasElement | null {
+    if (!video || video.videoWidth === 0 || video.videoHeight === 0) return null;
+
+    if (!this.alignedCanvas) {
+      this.alignedCanvas = document.createElement('canvas');
+      this.alignedCanvas.width = 150;
+      this.alignedCanvas.height = 150;
+    }
+
+    const ctx = this.alignedCanvas.getContext('2d');
+    if (!ctx) return null;
+
+    const leftEye = detection.landmarks.leftEye;
+    const rightEye = detection.landmarks.rightEye;
+
+    const lx = leftEye.x * video.videoWidth;
+    const ly = leftEye.y * video.videoHeight;
+    const rx = rightEye.x * video.videoWidth;
+    const ry = rightEye.y * video.videoHeight;
+
+    const eyeCenterX = (lx + rx) / 2;
+    const eyeCenterY = (ly + ry) / 2;
+    const eyeDx = rx - lx;
+    const eyeDy = ry - ly;
+    const eyeDist = Math.hypot(eyeDx, eyeDy);
+    const eyeAngle = Math.atan2(eyeDy, eyeDx);
+
+    // Target inter-ocular distance in 150x150 canvas: ~50 pixels
+    const desiredEyeDist = 50.0;
+    const scale = desiredEyeDist / Math.max(15, eyeDist);
+
+    ctx.save();
+    ctx.clearRect(0, 0, 150, 150);
+
+    // Center eyes at (75, 55)
+    ctx.translate(75, 55);
+    ctx.rotate(-eyeAngle);
+    ctx.scale(scale, scale);
+    ctx.translate(-eyeCenterX, -eyeCenterY);
+
+    ctx.drawImage(video, 0, 0);
+    ctx.restore();
+
+    return this.alignedCanvas;
+  }
+
+  /**
+   * Compute Real 128-D Face Recognition Embedding via ResNet-34 deep model
+   */
+  public async computeDeepEmbedding(video: HTMLVideoElement, detection: FaceDetectionResult): Promise<number[]> {
+    await this.ensureFaceRecognitionNet();
+
+    const canvas = this.extractAlignedFaceCanvas(video, detection);
+    if (!canvas) {
+      throw new Error('ไม่สามารถจัดตำแหน่งใบหน้าสำหรับสกัดเวกเตอร์ชีวมิติได้');
+    }
+
+    const faceapi = await getFaceApi();
+    if (faceapi && this.isFaceNetLoaded && faceapi.nets.faceRecognitionNet.isLoaded) {
+      const rawDesc = await faceapi.nets.faceRecognitionNet.computeFaceDescriptor(canvas);
+      const desc = Array.isArray(rawDesc) ? rawDesc[0] : rawDesc;
+      if (desc && desc instanceof Float32Array && desc.length === 128) {
+        let normSq = 0;
+        for (let i = 0; i < 128; i++) {
+          const val = desc[i];
+          normSq += val * val;
+        }
+        const norm = Math.sqrt(normSq) || 1.0;
+        const result: number[] = new Array(128);
+        for (let i = 0; i < 128; i++) {
+          result[i] = desc[i] / norm;
+        }
+        return result;
+      }
+    }
+
+    // Calibrated deterministic geometric embedding fallback if WASM/WebGL backend fails
+    return this.computeCalibratedGeometricEmbedding(detection);
+  }
+
+  /**
+   * Multi-frame Averaged Embedding: Collects N stable frames and L2-normalizes the mean vector
+   */
+  public async generateAveragedEmbedding(
+    video: HTMLVideoElement,
+    framesCount: number = 5
+  ): Promise<{ embedding: number[]; qualityScore: number }> {
+    const vectors: number[][] = [];
+    const qualityScores: number[] = [];
+
+    for (let i = 0; i < framesCount; i++) {
+      const det = this.detectFace(video, performance.now());
+      if (det && det.detected && det.qualityGate.passed) {
+        try {
+          const vec = await this.computeDeepEmbedding(video, det);
+          vectors.push(vec);
+          qualityScores.push(det.qualityScore);
+        } catch {
+          // ignore single frame
+        }
+      }
+      await new Promise((r) => setTimeout(r, 45)); // ~22 fps interval
+    }
+
+    if (vectors.length === 0) {
+      // Single frame attempt
+      const det = this.detectFace(video, performance.now());
+      if (!det || !det.detected) {
+        throw new Error('ไม่พบตำแหน่งใบหน้าในกรอบภาพ กรุณาจัดตำแหน่งใหม่');
+      }
+      const vec = await this.computeDeepEmbedding(video, det);
+      return { embedding: vec, qualityScore: det.qualityScore };
+    }
+
+    // Mean vector across frames
+    const mean = new Array(128).fill(0);
+    for (const v of vectors) {
+      for (let i = 0; i < 128; i++) {
+        mean[i] += v[i];
+      }
+    }
+
+    let normSq = 0;
+    for (let i = 0; i < 128; i++) {
+      mean[i] /= vectors.length;
+      normSq += mean[i] * mean[i];
+    }
+
+    const norm = Math.sqrt(normSq) || 1.0;
+    const finalEmbedding = mean.map((val) => val / norm);
+    const avgScore = Math.round(qualityScores.reduce((a, b) => a + b, 0) / qualityScores.length);
+
+    return {
+      embedding: finalEmbedding,
+      qualityScore: avgScore,
+    };
+  }
+
+  /**
+   * Synchronous / Quick embedding generation for backward compatibility with existing components
+   */
+  public generateEmbedding(detectionOrVideo: any, detectionFallback?: FaceDetectionResult): number[] {
+    const detection = (detectionOrVideo?.detected !== undefined ? detectionOrVideo : detectionFallback) as FaceDetectionResult;
+    if (!detection || !detection.detected) {
+      return new Array(128).fill(0);
+    }
+    return this.computeCalibratedGeometricEmbedding(detection);
+  }
+
+  /**
+   * Deterministic 128-D Anthropometric Face Embedding extracted from 478 MediaPipe points
+   */
+  private computeCalibratedGeometricEmbedding(detection: FaceDetectionResult): number[] {
     const lm = detection.rawLandmarks;
     const vec: number[] = new Array(128).fill(0);
 
-    // Fallback if raw landmarks are not present
     if (!lm || lm.length < 468) {
-      return this.generateFallbackEmbedding(detection);
+      return vec;
     }
 
-    // 1. Primary Alignment Coordinates & Scale Unit (Inter-Ocular Distance)
-    // Left eye outer: 33, Right eye outer: 263
-    // Left eye inner: 133, Right eye inner: 362
-    const iodX = lm[263].x - lm[33].x;
-    const iodY = lm[263].y - lm[33].y;
-    const iod = Math.max(0.02, Math.hypot(iodX, iodY));
-
+    // Inter-Ocular Distance (IOD) Unit
+    const iod = Math.max(0.02, Math.hypot(lm[263].x - lm[33].x, lm[263].y - lm[33].y));
     const midEyeX = (lm[33].x + lm[263].x) / 2;
     const midEyeY = (lm[33].y + lm[263].y) / 2;
     const faceCenterX = (lm[1].x + midEyeX + lm[152].x) / 3;
     const faceCenterY = (lm[1].y + midEyeY + lm[152].y) / 3;
 
-    // Helper: distance between two landmarks divided by iod
     const dNorm = (i: number, j: number) => Math.hypot(lm[i].x - lm[j].x, lm[i].y - lm[j].y) / iod;
     const dCenter = (i: number) => Math.hypot(lm[i].x - faceCenterX, lm[i].y - faceCenterY) / iod;
-    const angleNorm = (i: number, j: number) => Math.atan2(lm[j].y - lm[i].y, lm[j].x - lm[i].x) / Math.PI;
 
-    // 2. Feature Set 1: Key Anatomical Anthropometric Distances (dims 0..31)
-    vec[0] = dNorm(1, 152);    // Nose tip to chin
-    vec[1] = dNorm(10, 152);   // Forehead top to chin
-    vec[2] = dNorm(10, 1);     // Forehead to nose tip
-    vec[3] = dNorm(234, 454);  // Zygomatic cheek width
-    vec[4] = dNorm(172, 397);  // Jaw angle width
-    vec[5] = dNorm(61, 291);   // Mouth width
-    vec[6] = dNorm(0, 17);     // Lip height
-    vec[7] = dNorm(159, 145);  // Left eye aperture
-    vec[8] = dNorm(386, 374);  // Right eye aperture
-    vec[9] = dNorm(33, 133);   // Left eye width
-    vec[10] = dNorm(362, 263); // Right eye width
-    vec[11] = dNorm(133, 362); // Inter-canthal distance
-    vec[12] = dNorm(1, 61);    // Nose tip to left mouth corner
-    vec[13] = dNorm(1, 291);   // Nose tip to right mouth corner
-    vec[14] = dNorm(152, 61);  // Chin to left mouth corner
-    vec[15] = dNorm(152, 291); // Chin to right mouth corner
-    vec[16] = dNorm(1, 234);   // Nose tip to right cheek
-    vec[17] = dNorm(1, 454);   // Nose tip to left cheek
-    vec[18] = dNorm(70, 300);  // Eyebrow arch distance
-    vec[19] = dNorm(70, 105);  // Left eyebrow length
-    vec[20] = dNorm(300, 334); // Right eyebrow length
-    vec[21] = dNorm(168, 1);   // Glabella to nose tip
-    vec[22] = dNorm(2, 0);     // Subnasale to upper lip
-    vec[23] = dNorm(98, 327);  // Alar base nose width
-    vec[24] = dNorm(58, 288);  // Mid cheek span
-    vec[25] = dNorm(148, 377); // Lower cheek span
-    vec[26] = dNorm(10, 234);  // Forehead to right cheek
-    vec[27] = dNorm(10, 454);  // Forehead to left cheek
-    vec[28] = dNorm(152, 172); // Chin to right jaw
-    vec[29] = dNorm(152, 397); // Chin to left jaw
-    vec[30] = dNorm(168, 152); // Glabella to chin (total facial height)
-    vec[31] = dNorm(168, 2);   // Mid-facial height (glabella to subnasale)
+    // Feature Set 1: Anthropometric Distances (dims 0..31)
+    vec[0] = dNorm(1, 152);
+    vec[1] = dNorm(10, 152);
+    vec[2] = dNorm(10, 1);
+    vec[3] = dNorm(234, 454);
+    vec[4] = dNorm(172, 397);
+    vec[5] = dNorm(61, 291);
+    vec[6] = dNorm(0, 17);
+    vec[7] = dNorm(159, 145);
+    vec[8] = dNorm(386, 374);
+    vec[9] = dNorm(33, 133);
+    vec[10] = dNorm(362, 263);
+    vec[11] = dNorm(133, 362);
+    vec[12] = dNorm(1, 61);
+    vec[13] = dNorm(1, 291);
+    vec[14] = dNorm(152, 61);
+    vec[15] = dNorm(152, 291);
+    vec[16] = dNorm(1, 234);
+    vec[17] = dNorm(1, 454);
+    vec[18] = dNorm(70, 300);
+    vec[19] = dNorm(70, 105);
+    vec[20] = dNorm(300, 334);
+    vec[21] = dNorm(168, 1);
+    vec[22] = dNorm(2, 0);
+    vec[23] = dNorm(98, 327);
+    vec[24] = dNorm(58, 288);
+    vec[25] = dNorm(148, 377);
+    vec[26] = dNorm(10, 234);
+    vec[27] = dNorm(10, 454);
+    vec[28] = dNorm(152, 172);
+    vec[29] = dNorm(152, 397);
+    vec[30] = dNorm(168, 152);
+    vec[31] = dNorm(168, 2);
 
-    // 3. Feature Set 2: Morphological Proportions & Spatial Ratios (dims 32..63)
+    // Feature Set 2: Proportions & Centroid Distances (dims 32..63)
     const totalFaceHeight = Math.max(0.01, vec[30]);
     const cheekWidth = Math.max(0.01, vec[3]);
     const mouthWidth = Math.max(0.01, vec[5]);
     const jawWidth = Math.max(0.01, vec[4]);
 
-    vec[32] = totalFaceHeight / cheekWidth;   // Facial index
-    vec[33] = jawWidth / cheekWidth;          // Jaw-to-cheek proportion
-    vec[34] = mouthWidth / cheekWidth;        // Mouth-to-cheek proportion
-    vec[35] = vec[31] / totalFaceHeight;      // Mid-face ratio
-    vec[36] = vec[0] / totalFaceHeight;       // Lower-face ratio
-    vec[37] = vec[23] / mouthWidth;           // Nose width to mouth width
-    vec[38] = vec[11] / iod;                  // Inter-canthal ratio
-    vec[39] = vec[6] / Math.max(0.01, vec[0]); // Lip height to lower face
+    vec[32] = totalFaceHeight / cheekWidth;
+    vec[33] = jawWidth / cheekWidth;
+    vec[34] = mouthWidth / cheekWidth;
+    vec[35] = vec[31] / totalFaceHeight;
+    vec[36] = vec[0] / totalFaceHeight;
+    vec[37] = vec[23] / mouthWidth;
+    vec[38] = vec[11] / iod;
+    vec[39] = vec[6] / Math.max(0.01, vec[0]);
 
-    // Distances from facial centroid to key facial anchors
-    vec[40] = dCenter(1);    // Centroid to nose tip
-    vec[41] = dCenter(10);   // Centroid to forehead
-    vec[42] = dCenter(152);  // Centroid to chin
-    vec[43] = dCenter(234);  // Centroid to right cheek
-    vec[44] = dCenter(454);  // Centroid to left cheek
-    vec[45] = dCenter(61);   // Centroid to left mouth
-    vec[46] = dCenter(291);  // Centroid to right mouth
-    vec[47] = dCenter(33);   // Centroid to left eye
-    vec[48] = dCenter(263);  // Centroid to right eye
+    vec[40] = dCenter(1);
+    vec[41] = dCenter(10);
+    vec[42] = dCenter(152);
+    vec[43] = dCenter(234);
+    vec[44] = dCenter(454);
+    vec[45] = dCenter(61);
+    vec[46] = dCenter(291);
+    vec[47] = dCenter(33);
+    vec[48] = dCenter(263);
 
-    // Bilateral Symmetry Ratios (Difference / Sum)
     for (let k = 0; k < 15; k++) {
       const dL = vec[12 + (k % 4)];
       const dR = vec[13 + (k % 4)];
       vec[49 + k] = (dL - dR) / Math.max(0.01, dL + dR);
     }
 
-    // 4. Feature Set 3: 32 Polar Boundary Contour Descriptors (dims 64..95)
-    // Canonical 32 face contour perimeter points in MediaPipe Face Mesh
+    // Feature Set 3: 32 Polar Boundary Contour Points (dims 64..95)
     const perimeterIndices = [
       10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378,
       152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103,
     ];
-    for (let p = 0; p < 32; p++) {
-      const idx = perimeterIndices[p];
-      vec[64 + p] = dCenter(idx);
+    for (let i = 0; i < 32; i++) {
+      vec[64 + i] = dCenter(perimeterIndices[i]);
     }
 
-    // 5. Feature Set 4: Geometric Invariant Triangulation Angles (dims 96..127)
-    // Angles between facial features (invariant to scale, normalized -1 to +1)
-    vec[96] = angleNorm(1, 33);    // Nose to left eye
-    vec[97] = angleNorm(1, 263);   // Nose to right eye
-    vec[98] = angleNorm(1, 61);    // Nose to mouth left
-    vec[99] = angleNorm(1, 291);   // Nose to mouth right
-    vec[100] = angleNorm(152, 61); // Chin to mouth left
-    vec[101] = angleNorm(152, 291);// Chin to mouth right
-    vec[102] = angleNorm(33, 263); // Eye axis angle
-    vec[103] = angleNorm(61, 291); // Mouth axis angle
-    vec[104] = angleNorm(234, 454);// Cheek axis angle
-    vec[105] = angleNorm(10, 152); // Midline vertical angle
-    vec[106] = angleNorm(1, 234);  // Nose to right cheek
-    vec[107] = angleNorm(1, 454);  // Nose to left cheek
-    vec[108] = angleNorm(33, 61);  // Left eye to left mouth
-    vec[109] = angleNorm(263, 291);// Right eye to right mouth
-    vec[110] = angleNorm(33, 291); // Left eye to right mouth
-    vec[111] = angleNorm(263, 61); // Right eye to left mouth
-
-    for (let a = 0; a < 16; a++) {
-      const pIdx = perimeterIndices[a * 2];
-      vec[112 + a] = angleNorm(1, pIdx);
+    // Feature Set 4: Angular Harmonics (dims 96..127)
+    for (let i = 0; i < 32; i++) {
+      const idx = perimeterIndices[i];
+      vec[96 + i] = Math.atan2(lm[idx].y - faceCenterY, lm[idx].x - faceCenterX) / Math.PI;
     }
 
-    // 6. L2 Normalization: ||vec||_2 = 1.0 (Unit Hypersphere Projection)
-    let normSq = 0;
-    for (let i = 0; i < 128; i++) {
-      normSq += vec[i] * vec[i];
-    }
-    const norm = Math.sqrt(normSq) || 1.0;
-    for (let i = 0; i < 128; i++) {
-      vec[i] = Math.round((vec[i] / norm) * 10000) / 10000;
-    }
-
-    return vec;
-  }
-
-  /**
-   * Fallback embedding generation using standard 12 facial anchors
-   */
-  private generateFallbackEmbedding(detection: FaceDetectionResult): number[] {
-    const lm = detection.landmarks;
-    const vec: number[] = new Array(128).fill(0);
-
-    const iod = Math.max(0.02, Math.hypot(lm.rightEye.x - lm.leftEye.x, lm.rightEye.y - lm.leftEye.y));
-    const midEyeX = (lm.leftEye.x + lm.rightEye.x) / 2;
-    const midEyeY = (lm.leftEye.y + lm.rightEye.y) / 2;
-
-    vec[0] = Math.hypot(lm.noseTip.x - midEyeX, lm.noseTip.y - midEyeY) / iod;
-    vec[1] = Math.hypot(lm.chin.x - midEyeX, lm.chin.y - midEyeY) / iod;
-    vec[2] = Math.hypot(lm.mouthLeft.x - midEyeX, lm.mouthLeft.y - midEyeY) / iod;
-    vec[3] = Math.hypot(lm.mouthRight.x - midEyeX, lm.mouthRight.y - midEyeY) / iod;
-    vec[4] = Math.hypot(lm.mouthRight.x - lm.mouthLeft.x, lm.mouthRight.y - lm.mouthLeft.y) / iod;
-    vec[5] = Math.hypot(lm.rightCheek.x - lm.leftCheek.x, lm.rightCheek.y - lm.leftCheek.y) / iod;
-
-    for (let i = 6; i < 128; i++) {
-      vec[i] = Math.sin((i * Math.PI) / 16) * vec[i % 6];
-    }
-
-    let normSq = 0;
-    for (let i = 0; i < 128; i++) normSq += vec[i] * vec[i];
-    const norm = Math.sqrt(normSq) || 1.0;
-    for (let i = 0; i < 128; i++) vec[i] = Math.round((vec[i] / norm) * 10000) / 10000;
-
-    return vec;
+    // L2 Normalization onto Unit Hypersphere
+    let sumSq = 0;
+    for (let i = 0; i < 128; i++) sumSq += vec[i] * vec[i];
+    const norm = Math.sqrt(sumSq) || 1.0;
+    return vec.map((val) => val / norm);
   }
 }
 

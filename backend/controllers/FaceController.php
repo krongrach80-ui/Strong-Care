@@ -24,10 +24,14 @@ class FaceController {
             http_response_code(422);
             echo json_encode([
                 'status' => 'error',
-                'message' => 'ข้อมูล Face Embedding ไม่ถูกต้องหรือว่างเปล่า'
+                'message' => 'ข้อมูลเวกเตอร์ใบหน้า (Face Embedding) ไม่ถูกต้องหรือว่างเปล่า'
             ]);
             return;
         }
+
+        $config = require __DIR__ . '/../config/config.php';
+        $threshold = (float)($config['face_auth']['similarity_threshold'] ?? 0.82);
+        $modelVersion = $config['face_auth']['model_version'] ?? 'face-resnet34-v2';
 
         $patientId = $input['patient_id'] ?? null;
 
@@ -62,6 +66,29 @@ class FaceController {
             return;
         }
 
+        // Duplicate Face Check: Ensure this face is not already enrolled under another patient
+        $existingProfiles = $this->faceModel->getAllWithPatient($modelVersion);
+        foreach ($input['embeddings'] as $item) {
+            $candidateVec = $item['embedding'] ?? $item;
+            if (!is_array($candidateVec) || count($candidateVec) === 0) continue;
+
+            foreach ($existingProfiles as $existing) {
+                if ((int)$existing['patient_id'] !== (int)$patientId && is_array($existing['embedding'])) {
+                    $sim = FaceEmbedding::cosineSimilarity($candidateVec, $existing['embedding']);
+                    if ($sim >= $threshold) {
+                        http_response_code(409);
+                        echo json_encode([
+                            'status' => 'error',
+                            'code' => 'DUPLICATE_FACE',
+                            'message' => 'ใบหน้านี้ได้ลงทะเบียนไว้แล้วในระบบของผู้ป่วยท่านอื่น (' . $existing['patient_name'] . ') ไม่สามารถลงทะเบียนซ้ำได้',
+                            'similarity' => round($sim, 4),
+                        ]);
+                        return;
+                    }
+                }
+            }
+        }
+
         $enrolledCount = 0;
         foreach ($input['embeddings'] as $item) {
             $vec = $item['embedding'] ?? $item;
@@ -69,25 +96,27 @@ class FaceController {
                 $angleTag = $item['angle_tag'] ?? 'center';
                 $qualityScore = (float)($item['quality_score'] ?? 100.0);
 
-                $this->faceModel->store($patientId, $vec, $angleTag, $qualityScore);
+                $this->faceModel->store((int)$patientId, $vec, $angleTag, $qualityScore, $modelVersion);
                 $enrolledCount++;
             }
         }
 
-        $patient = $this->patientModel->getById($patientId);
+        $patient = $this->patientModel->getById((int)$patientId);
 
         http_response_code(201);
         echo json_encode([
             'status' => 'success',
             'message' => 'บันทึกข้อมูลใบหน้า (Face Enrollment) สำเร็จเรียบร้อย',
             'patient' => $patient,
-            'enrolled_embeddings' => $enrolledCount
+            'enrolled_embeddings' => $enrolledCount,
+            'model_version' => $modelVersion
         ]);
     }
 
     /**
      * POST /api/face/verify
      * Compares candidate face embedding against all enrolled profiles in DB
+     * Enforces unified threshold, Top1 vs Top2 separation margin, and model_version validation
      */
     public function verify(): void {
         $input = json_decode(file_get_contents('php://input'), true);
@@ -107,17 +136,18 @@ class FaceController {
             header('Retry-After: 300');
             echo json_encode([
                 'status' => 'error',
-                'message' => 'ระบบระงับการเข้าสู่ระบบชั่วคราวเนื่องจากพยายามล้มเหลวหลายครั้ง กรุณารอ 5 นาทีแล้วลองใหม่'
+                'message' => 'ระบบระงับการเข้าสู่ระบบชั่วคราวเนื่องจากพยายามเกินกำหนด กรุณารอ 5 นาทีแล้วลองใหม่อีกครั้ง'
             ]);
             return;
         }
 
         $candidateVec = $input['embedding'];
         $config = require __DIR__ . '/../config/config.php';
-        // Unified matching threshold from configuration (0.82+)
         $threshold = (float)($config['face_auth']['similarity_threshold'] ?? 0.82);
+        $marginThreshold = (float)($config['face_auth']['margin_threshold'] ?? 0.08);
+        $modelVersion = $config['face_auth']['model_version'] ?? 'face-resnet34-v2';
 
-        $enrolled = $this->faceModel->getAllWithPatient();
+        $enrolled = $this->faceModel->getAllWithPatient($modelVersion);
 
         if (empty($enrolled)) {
             echo json_encode([
@@ -125,32 +155,61 @@ class FaceController {
                 'match' => false,
                 'similarity' => 0.0,
                 'threshold' => round($threshold * 100, 2),
-                'message' => 'ยังไม่มีข้อมูลใบหน้าที่ลงทะเบียนในระบบ กรุณาลงทะเบียนก่อน'
+                'message' => 'ยังไม่มีข้อมูลใบหน้าที่ลงทะเบียนด้วยโมเดลเวอร์ชันปัจจุบัน (' . $modelVersion . ') กรุณาลงทะเบียนใบหน้าใหม่'
             ]);
             return;
         }
 
-        // Compare against every enrolled embedding
-        $bestMatch = null;
-        $highestSimilarity = 0.0;
-        $matchedAngle = '';
-
+        // Aggregate highest similarity per patient profile
+        $patientMatches = [];
         foreach ($enrolled as $record) {
             $targetVec = $record['embedding'];
             if (!is_array($targetVec)) continue;
 
             $sim = FaceEmbedding::cosineSimilarity($candidateVec, $targetVec);
+            $pId = (int)$record['patient_id'];
 
-            if ($sim > $highestSimilarity) {
-                $highestSimilarity = $sim;
-                $bestMatch = $record;
-                $matchedAngle = $record['angle_tag'];
+            if (!isset($patientMatches[$pId]) || $sim > $patientMatches[$pId]['similarity']) {
+                $patientMatches[$pId] = [
+                    'patient' => $record,
+                    'similarity' => $sim,
+                    'angle_matched' => $record['angle_tag'] ?? 'center'
+                ];
             }
         }
 
-        $similarityPct = round($highestSimilarity * 100, 1);
+        if (empty($patientMatches)) {
+            echo json_encode([
+                'status' => 'fail',
+                'match' => false,
+                'similarity' => 0.0,
+                'threshold' => round($threshold * 100, 2),
+                'message' => 'ไม่พบข้อมูลใบหน้าที่สามารถเปรียบเทียบได้'
+            ]);
+            return;
+        }
 
-        if ($highestSimilarity >= $threshold && $bestMatch !== null) {
+        // Sort patients by similarity descending
+        uasort($patientMatches, fn($a, $b) => $b['similarity'] <=> $a['similarity']);
+        $sortedList = array_values($patientMatches);
+
+        $top1 = $sortedList[0];
+        $top2 = count($sortedList) > 1 ? $sortedList[1] : null;
+
+        $top1Sim = (float)$top1['similarity'];
+        $top2Sim = $top2 ? (float)$top2['similarity'] : 0.0;
+        $margin = $top2 ? ($top1Sim - $top2Sim) : 1.0;
+
+        $similarityPct = round($top1Sim * 100, 1);
+        $bestMatch = $top1['patient'];
+        $matchedAngle = $top1['angle_matched'];
+
+        // Condition 1: Similarity exceeds calibrated threshold
+        $meetsThreshold = $top1Sim >= $threshold;
+        // Condition 2: Top-1 vs Top-2 margin separation check (prevents ambiguous identity mix-ups)
+        $meetsMargin = ($top2 === null) || ($margin >= $marginThreshold);
+
+        if ($meetsThreshold && $meetsMargin) {
             RateLimiter::reset('face_login', $ip);
 
             // Issue secure session token
@@ -171,15 +230,17 @@ class FaceController {
                     ':expires_at' => $expiresAt
                 ]);
             } catch (Throwable $t) {
-                // Ignore if unable to insert
+                // Ignore if token insert warning
             }
 
             echo json_encode([
                 'status' => 'success',
                 'match' => true,
-                'similarity' => round($highestSimilarity, 4),
+                'similarity' => round($top1Sim, 4),
                 'similarity_percent' => $similarityPct,
-                'euclidean_distance' => round(sqrt(max(0.0, 2 - 2 * $highestSimilarity)), 4),
+                'top2_similarity' => round($top2Sim, 4),
+                'margin' => round($margin, 4),
+                'euclidean_distance' => round(sqrt(max(0.0, 2 - 2 * $top1Sim)), 4),
                 'threshold' => round($threshold * 100, 2),
                 'angle_matched' => $matchedAngle,
                 'patient' => [
@@ -196,14 +257,25 @@ class FaceController {
             ]);
         } else {
             RateLimiter::recordFailure('face_login', $ip, 300);
+
+            $failReason = '';
+            if ($meetsThreshold && !$meetsMargin) {
+                $failReason = 'ระบบตรวจพบความคล้ายคลึงระหว่างผู้ป่วย 2 ท่านใกล้เคียงกันเกินไป เพื่อความปลอดภัยกรุณาจัดแสงให้ชัดเจนและมองตรงมาที่กล้อง';
+            } else {
+                $failReason = 'ไม่พบข้อมูลใบหน้าที่ตรงกัน (ความคล้าย ' . $similarityPct . '% ต่ำกว่าเกณฑ์ ' . round($threshold * 100) . '%) กรุณาลองใหม่หรือสมัครสมาชิก';
+            }
+
             echo json_encode([
                 'status' => 'fail',
                 'match' => false,
-                'similarity' => round($highestSimilarity, 4),
+                'similarity' => round($top1Sim, 4),
                 'similarity_percent' => $similarityPct,
-                'euclidean_distance' => round(sqrt(max(0.0, 2 - 2 * $highestSimilarity)), 4),
+                'top2_similarity' => round($top2Sim, 4),
+                'margin' => round($margin, 4),
+                'margin_required' => $marginThreshold,
+                'euclidean_distance' => round(sqrt(max(0.0, 2 - 2 * $top1Sim)), 4),
                 'threshold' => round($threshold * 100, 2),
-                'message' => 'ไม่พบข้อมูลใบหน้าที่ตรงกัน (ความคล้าย ' . $similarityPct . '% ต่ำกว่าเกณฑ์ ' . round($threshold * 100) . '%) กรุณาลองใหม่หรือสมัครสมาชิก'
+                'message' => $failReason
             ]);
         }
     }

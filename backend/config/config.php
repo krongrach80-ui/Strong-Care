@@ -75,6 +75,8 @@ return [
         'allowed_headers' => ['Content-Type', 'Authorization', 'X-Requested-With'],
     ],
     'face_auth' => [
+        'model_version' => getenv('FACE_MODEL_VERSION') ?: 'face-resnet34-v2',
         'similarity_threshold' => (float)(getenv('FACE_SIMILARITY_THRESHOLD') ?: 0.82),
+        'margin_threshold' => (float)(getenv('FACE_MARGIN_THRESHOLD') ?: 0.08),
     ]
 ];

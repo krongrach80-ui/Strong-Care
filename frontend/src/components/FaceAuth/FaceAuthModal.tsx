@@ -15,7 +15,7 @@ import {
   User,
   Volume2,
 } from 'lucide-react';
-import { faceService, FaceDetectionResult } from '../../services/faceService';
+import { faceService, FaceDetectionResult, LIVENESS_DISCLAIMER_TH } from '../../services/faceService';
 import { api } from '../../services/api';
 import { usePatientStore } from '../../store/patientStore';
 import { audioFeedback } from '../../services/audioService';
@@ -60,9 +60,9 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
   // Enrollment Steps: 1: Center, 2: Left, 3: Right, 4: Blink/Details, 5: Done
   const [enrollStep, setEnrollStep] = useState<number>(1);
   const [capturedEmbeddings, setCapturedEmbeddings] = useState<{
-    center?: number[];
-    left?: number[];
-    right?: number[];
+    center?: { embedding: number[]; qualityScore: number };
+    left?: { embedding: number[]; qualityScore: number };
+    right?: { embedding: number[]; qualityScore: number };
   }>({});
   const [enrollName, setEnrollName] = useState<string>('');
   const [enrollAge, setEnrollAge] = useState<number>(65);
@@ -205,34 +205,40 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
         if (mode === 'enroll') {
           if (enrollStep === 1) {
             if (!res || !res.detected) setLivenessStatus('กรุณาขยับหน้าให้อยู่ในกรอบวงรี');
-            else if (!res.faceCentered) setLivenessStatus('กรุณาจัดหน้าให้อยู่กึ่งกลาง');
-            else if (Math.abs(res.yaw) >= 0.14) setLivenessStatus('กรุณามองตรงมาที่กล้อง');
-            else setLivenessStatus('มุมตรงถูกต้อง พร้อมบันทึก');
+            else if (!res.qualityGate.faceCentered) setLivenessStatus('กรุณาจัดหน้าให้อยู่กึ่งกลาง');
+            else if (!res.qualityGate.isSharp) setLivenessStatus('ภาพเบลอ กรุณาถืออุปกรณ์นิ่งๆ');
+            else if (!res.qualityGate.isWellLit) setLivenessStatus('แสงสว่างไม่พอดี กรุณาปรับแสง');
+            else if (Math.abs(res.yawDeg) > 10) setLivenessStatus('กรุณามองตรงมาที่กล้อง');
+            else setLivenessStatus(`มุมตรงถูกต้อง พร้อมบันทึก (คุณภาพ ${res.qualityScore}%)`);
           } else if (enrollStep === 2) {
             if (!res || !res.detected) setLivenessStatus('กรุณาหันหน้าเข้าหากล้อง');
-            else if (res.yaw >= -0.15) setLivenessStatus('กรุณาหันหน้าไปทางซ้ายเล็กน้อย');
-            else setLivenessStatus('ตรวจพบการหันซ้าย พร้อมบันทึก');
+            else if (res.yawDeg > -14) setLivenessStatus('กรุณาหันหน้าไปทางซ้ายเล็กน้อย (~15°)');
+            else setLivenessStatus(`ตรวจพบการหันซ้าย พร้อมบันทึก (คุณภาพ ${res.qualityScore}%)`);
           } else if (enrollStep === 3) {
             if (!res || !res.detected) setLivenessStatus('กรุณาหันหน้าเข้าหากล้อง');
-            else if (res.yaw <= 0.15) setLivenessStatus('กรุณาหันหน้าไปทางขวาเล็กน้อย');
-            else setLivenessStatus('ตรวจพบการหันขวา พร้อมบันทึก');
+            else if (res.yawDeg < 14) setLivenessStatus('กรุณาหันหน้าไปทางขวาเล็กน้อย (~15°)');
+            else setLivenessStatus(`ตรวจพบการหันขวา พร้อมบันทึก (คุณภาพ ${res.qualityScore}%)`);
           } else {
             if (liveness.blinkDetected) {
               setLivenessStatus('ยืนยันบุคคลจริง (กระพริบตา) เรียบร้อย');
             } else {
-              setLivenessStatus('กรุณากระพริบตา 1 ครั้งเพื่อยืนยันบุคคลจริง');
+              setLivenessStatus(liveness.currentPrompt);
             }
           }
         } else {
           // Login Mode
           if (!res || !res.detected) {
             setLivenessStatus('กรุณาขยับหน้าให้อยู่ในกรอบวงรี');
-          } else if (!res.faceCentered) {
+          } else if (!res.qualityGate.faceCentered) {
             setLivenessStatus('กรุณาจัดหน้าให้อยู่กึ่งกลางกรอบ');
-          } else if (!liveness.isRealHuman && !liveness.blinkDetected) {
-            setLivenessStatus('กรุณากระพริบตา 1 ครั้ง (Liveness Check)');
+          } else if (!res.qualityGate.isSharp) {
+            setLivenessStatus('ภาพเบลอ กรุณาถืออุปกรณ์นิ่งๆ');
+          } else if (!res.qualityGate.isWellLit) {
+            setLivenessStatus('แสงสว่างไม่พอดี กรุณาปรับแสง');
+          } else if (!liveness.allChallengesPassed && !liveness.isRealHuman) {
+            setLivenessStatus(liveness.currentPrompt);
           } else {
-            setLivenessStatus('ยืนยันบุคคลจริงเรียบร้อย กำลังเข้าสู่ระบบ...');
+            setLivenessStatus(`ยืนยันบุคคลจริงเรียบร้อย (คุณภาพ ${res.qualityScore}%) พร้อมเข้าสู่ระบบ`);
           }
         }
         isProcessing = false;
@@ -250,23 +256,23 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
     };
   }, [cameraActive, mode, enrollStep]);
 
-  // Determine alignment strictly based on current step
+  // Determine alignment strictly based on current step and real quality criteria
   const livenessState = faceService.getLivenessState();
   const isAligned = Boolean(
     detection?.detected && (
       mode === 'login'
-        ? detection.faceCentered && Math.abs(detection.yaw) < 0.18 && (livenessState.isRealHuman || livenessState.blinkDetected)
+        ? detection.qualityGate.passed && (livenessState.allChallengesPassed || livenessState.isRealHuman)
         : enrollStep === 1
-        ? detection.faceCentered && Math.abs(detection.yaw) < 0.14
+        ? detection.qualityGate.passed && Math.abs(detection.yawDeg) <= 10
         : enrollStep === 2
-        ? detection.yaw < -0.15 // User is turning left
+        ? detection.qualityGate.sizeRatioValid && detection.yawDeg <= -14
         : enrollStep === 3
-        ? detection.yaw > 0.15  // User is turning right
+        ? detection.qualityGate.sizeRatioValid && detection.yawDeg >= 14
         : false
     )
   );
 
-  // One-Click / Auto Face Login
+  // One-Click / Auto Face Login using Multi-frame Averaged Deep Embedding
   const handleFaceLogin = async () => {
     const curDetection = detectionRef.current || detection;
     if (!curDetection || !curDetection.detected) {
@@ -274,14 +280,14 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
       return;
     }
 
-    if (!curDetection.faceCentered) {
-      setVerifyMessage('กรุณาจัดตำแหน่งใบหน้าให้อยู่ตรงกลางกรอบวงรี');
+    if (!curDetection.qualityGate.passed) {
+      setVerifyMessage(curDetection.qualityGate.failures[0] || 'กรุณาจัดตำแหน่งใบหน้าให้อยู่ตรงกลางกรอบวงรี');
       return;
     }
 
     const live = faceService.getLivenessState();
-    if (!live.isRealHuman && !live.blinkDetected) {
-      setVerifyMessage('กรุณากระพริบตาเพื่อยืนยันว่าเป็นบุคคลจริง (Anti-Spoofing)');
+    if (!live.isRealHuman && !live.allChallengesPassed) {
+      setVerifyMessage(live.currentPrompt || 'กรุณากระพริบตาหรือหันศีรษะเพื่อยืนยันบุคคลจริง (Liveness Check)');
       return;
     }
 
@@ -291,12 +297,15 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
     }
     setCountdown(null);
     setIsVerifying(true);
-    setVerifyMessage('กำลังเปรียบเทียบข้อมูลใบหน้า...');
-
-    const embedding = faceService.generateEmbedding(curDetection);
+    setVerifyMessage('กำลังเปรียบเทียบข้อมูลใบหน้าด้วยโมเดลชีวมิติระดับลึก (ResNet-34)...');
 
     try {
-      const res = await api.verifyFace(embedding, 0.80);
+      // Collect multi-frame averaged deep embedding
+      const averaged = videoRef.current
+        ? await faceService.generateAveragedEmbedding(videoRef.current, 5)
+        : { embedding: faceService.generateEmbedding(curDetection), qualityScore: curDetection.qualityScore };
+
+      const res = await api.verifyFace(averaged.embedding);
 
       if (res.status === 'success' && res.match && res.patient) {
         setVerifySuccess(true);
@@ -311,7 +320,6 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
           chime: true,
         });
 
-        // Update active patient
         selectPatient(res.patient);
 
         setTimeout(() => {
@@ -324,29 +332,41 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
       }
     } catch (err) {
       console.warn('Verify error:', err);
-      setVerifyMessage('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์');
+      setVerifyMessage('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์ กรุณาลองใหม่อีกครั้ง');
     } finally {
       setIsVerifying(false);
       lastAttemptTimeRef.current = Date.now();
     }
   };
 
-  // Step-by-Step Face Capture for Enrollment
-  const captureCurrentAngle = (angleTag: 'center' | 'left' | 'right') => {
+  // Step-by-Step Face Capture for Enrollment with Multi-Frame Averaging
+  const captureCurrentAngle = async (angleTag: 'center' | 'left' | 'right') => {
     const curDetection = detectionRef.current || detection;
     if (!curDetection || !curDetection.detected) {
       setVerifyMessage('กรุณาจัดตำแหน่งใบหน้าให้อยู่ในกรอบ');
       return;
     }
 
-    // Verify appropriate yaw angle before capture
-    if (angleTag === 'left' && curDetection.yaw >= -0.15) {
-      setVerifyMessage('กรุณาหันหน้าไปทางซ้ายก่อนบันทึก');
-      return;
-    }
-    if (angleTag === 'right' && curDetection.yaw <= 0.15) {
-      setVerifyMessage('กรุณาหันหน้าไปทางขวาก่อนบันทึก');
-      return;
+    // Verify true angle range and quality gate before capture
+    if (angleTag === 'center') {
+      if (!curDetection.qualityGate.passed) {
+        setVerifyMessage(curDetection.qualityGate.failures[0] || 'กรุณาจัดตำแหน่งใบหน้าให้ตรงตามคำแนะนำ');
+        return;
+      }
+      if (Math.abs(curDetection.yawDeg) > 10) {
+        setVerifyMessage('กรุณามองตรงมาที่กล้องก่อนบันทึกมุมตรง');
+        return;
+      }
+    } else if (angleTag === 'left') {
+      if (curDetection.yawDeg > -14) {
+        setVerifyMessage('กรุณาหันหน้าไปทางซ้ายให้ถึงองศาที่กำหนด (ประมาณ 15 องศา)');
+        return;
+      }
+    } else if (angleTag === 'right') {
+      if (curDetection.yawDeg < 14) {
+        setVerifyMessage('กรุณาหันหน้าไปทางขวาให้ถึงองศาที่กำหนด (ประมาณ 15 องศา)');
+        return;
+      }
     }
 
     if (countdownIntervalRef.current) {
@@ -358,23 +378,31 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
     audioFeedback.playCameraShutter();
     setTimeout(() => setShowShutterFlash(false), 280);
 
-    const vec = faceService.generateEmbedding(curDetection);
+    setVerifyMessage('กำลังประมวลผลเวกเตอร์ใบหน้า...');
 
-    setCapturedEmbeddings((prev) => ({ ...prev, [angleTag]: vec }));
-    lastAttemptTimeRef.current = Date.now();
+    try {
+      const averaged = videoRef.current
+        ? await faceService.generateAveragedEmbedding(videoRef.current, 5)
+        : { embedding: faceService.generateEmbedding(curDetection), qualityScore: curDetection.qualityScore };
 
-    if (angleTag === 'center') {
-      setEnrollStep(2);
-      setVerifyMessage('บันทึกมุมตรงสำเร็จ กรุณาหันหน้าไปทางซ้ายเล็กน้อย');
-      voiceAssistant.speakSystem('ดีมากครับ กรุณาหันใบหน้าไปทางซ้ายเล็กน้อยครับ', { priority: 'instruction', force: true });
-    } else if (angleTag === 'left') {
-      setEnrollStep(3);
-      setVerifyMessage('บันทึกมุมซ้ายสำเร็จ กรุณาหันหน้าไปทางขวาเล็กน้อย');
-      voiceAssistant.speakSystem('ดีมากครับ ตอนนี้หันใบหน้าไปทางขวาเล็กน้อยครับ', { priority: 'instruction', force: true });
-    } else if (angleTag === 'right') {
-      setEnrollStep(4);
-      setVerifyMessage('บันทึกมุมขวาสำเร็จ กรุณากระพริบตาเพื่อยืนยันบุคคลจริง');
-      voiceAssistant.speakSystem('บันทึกมุมใบหน้าครบแล้วครับ กรอกชื่อและอายุเพื่อเสร็จสิ้นครับ', { priority: 'instruction', force: true });
+      setCapturedEmbeddings((prev) => ({ ...prev, [angleTag]: averaged }));
+      lastAttemptTimeRef.current = Date.now();
+
+      if (angleTag === 'center') {
+        setEnrollStep(2);
+        setVerifyMessage(`บันทึกมุมตรงสำเร็จ (คุณภาพ ${averaged.qualityScore}%) กรุณาหันหน้าไปทางซ้ายเล็กน้อย`);
+        voiceAssistant.speakSystem('ดีมากครับ ตอนนี้ค่อยๆ หันใบหน้าไปทางซ้ายเล็กน้อยครับ', { priority: 'instruction', force: true });
+      } else if (angleTag === 'left') {
+        setEnrollStep(3);
+        setVerifyMessage(`บันทึกมุมซ้ายสำเร็จ (คุณภาพ ${averaged.qualityScore}%) กรุณาหันหน้าไปทางขวาเล็กน้อย`);
+        voiceAssistant.speakSystem('ดีมากครับ ตอนนี้หันใบหน้าไปทางขวาเล็กน้อยครับ', { priority: 'instruction', force: true });
+      } else if (angleTag === 'right') {
+        setEnrollStep(4);
+        setVerifyMessage(`บันทึกมุมขวาสำเร็จ (คุณภาพ ${averaged.qualityScore}%) กรุณากระพริบตาเพื่อยืนยันบุคคลจริง`);
+        voiceAssistant.speakSystem('บันทึกมุมใบหน้าครบแล้วครับ กรอกชื่อและอายุเพื่อเสร็จสิ้นครับ', { priority: 'instruction', force: true });
+      }
+    } catch (err: any) {
+      setVerifyMessage(err?.message || 'ไม่สามารถสกัดเวกเตอร์ชีวมิติได้ กรุณาลองใหม่');
     }
   };
 
@@ -395,7 +423,6 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
       return;
     }
 
-    // Cooldown check: if previous attempt was within 2.5s, wait before restarting countdown
     const timeSinceLast = Date.now() - lastAttemptTimeRef.current;
     const initialDelay = timeSinceLast < 2200 ? 2200 - timeSinceLast : 0;
 
@@ -418,7 +445,6 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
           setCountdown(currentSec);
           audioFeedback.playHoldTick();
         } else {
-          // Time's up: 0 -> Trigger auto capture!
           if (countdownIntervalRef.current) {
             clearInterval(countdownIntervalRef.current);
             countdownIntervalRef.current = null;
@@ -449,7 +475,7 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
     };
   }, [isAligned, isVerifying, verifySuccess, mode, enrollStep]);
 
-  // Complete Enrollment
+  // Complete Enrollment: Requires verified center angle and real quality score
   const handleEnrollSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!enrollName.trim()) {
@@ -461,28 +487,35 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
       return;
     }
 
+    if (!capturedEmbeddings.center) {
+      setVerifyMessage('จำเป็นต้องบันทึกภาพใบหน้ามุมตรงก่อนลงทะเบียน');
+      return;
+    }
+
     setIsSavingEnroll(true);
-    setVerifyMessage('กำลังบันทึกข้อมูลใบหน้าและลงทะเบียน...');
+    setVerifyMessage('กำลังตรวจสอบและบันทึกข้อมูลใบหน้าลงทะเบียน...');
     voiceAssistant.speakSystem('กำลังบันทึกข้อมูลใบหน้าครับ', { priority: 'instruction', force: true });
 
     const embeddingsList: any[] = [];
     if (capturedEmbeddings.center) {
-      embeddingsList.push({ angle_tag: 'center', embedding: capturedEmbeddings.center, quality_score: 98 });
-    }
-    if (capturedEmbeddings.left) {
-      embeddingsList.push({ angle_tag: 'left', embedding: capturedEmbeddings.left, quality_score: 95 });
-    }
-    if (capturedEmbeddings.right) {
-      embeddingsList.push({ angle_tag: 'right', embedding: capturedEmbeddings.right, quality_score: 95 });
-    }
-
-    // Fallback if user skipped side angles
-    const curDet = detectionRef.current || detection;
-    if (embeddingsList.length === 0 && curDet) {
       embeddingsList.push({
         angle_tag: 'center',
-        embedding: faceService.generateEmbedding(curDet),
-        quality_score: 90,
+        embedding: capturedEmbeddings.center.embedding,
+        quality_score: capturedEmbeddings.center.qualityScore,
+      });
+    }
+    if (capturedEmbeddings.left) {
+      embeddingsList.push({
+        angle_tag: 'left',
+        embedding: capturedEmbeddings.left.embedding,
+        quality_score: capturedEmbeddings.left.qualityScore,
+      });
+    }
+    if (capturedEmbeddings.right) {
+      embeddingsList.push({
+        angle_tag: 'right',
+        embedding: capturedEmbeddings.right.embedding,
+        quality_score: capturedEmbeddings.right.qualityScore,
       });
     }
 
@@ -518,8 +551,8 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
       } else {
         setVerifyMessage(res.message || 'บันทึกข้อมูลไม่สำเร็จ');
       }
-    } catch (err) {
-      setVerifyMessage('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์');
+    } catch (err: any) {
+      setVerifyMessage(err?.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์');
     } finally {
       setIsSavingEnroll(false);
     }
@@ -968,6 +1001,11 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
               </div>
             </div>
           )}
+
+          {/* Liveness & Privacy Disclaimer */}
+          <div className="mt-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-500 text-center leading-relaxed">
+            {LIVENESS_DISCLAIMER_TH}
+          </div>
         </div>
       </div>
     </div>

@@ -16,7 +16,7 @@ class FaceEmbedding {
         array $embedding,
         string $angleTag = 'center',
         float $qualityScore = 100.0,
-        string $modelVersion = 'physio-face-v1'
+        string $modelVersion = 'face-resnet34-v2'
     ): int {
         $embeddingJson = json_encode($embedding);
 
@@ -38,9 +38,10 @@ class FaceEmbedding {
 
     /**
      * Fetch all enrolled embeddings joined with patient profile
+     * Optionally filtered by model_version to isolate legacy model embeddings
      */
-    public function getAllWithPatient(): array {
-        $stmt = $this->db->query("
+    public function getAllWithPatient(?string $modelVersion = 'face-resnet34-v2'): array {
+        $sql = "
             SELECT 
                 fe.id AS embedding_id,
                 fe.patient_id,
@@ -56,8 +57,20 @@ class FaceEmbedding {
                 p.notes AS patient_notes
             FROM face_embeddings fe
             JOIN patients p ON fe.patient_id = p.id
-            ORDER BY fe.patient_id ASC, fe.id ASC
-        ");
+        ";
+
+        if ($modelVersion !== null) {
+            $sql .= " WHERE fe.model_version = :model_version ";
+        }
+
+        $sql .= " ORDER BY fe.patient_id ASC, fe.id ASC";
+
+        $stmt = $this->db->prepare($sql);
+        if ($modelVersion !== null) {
+            $stmt->execute([':model_version' => $modelVersion]);
+        } else {
+            $stmt->execute();
+        }
 
         $rows = $stmt->fetchAll();
         foreach ($rows as &$row) {

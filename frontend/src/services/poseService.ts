@@ -49,12 +49,11 @@ export class PoseService {
     return PoseService.instance;
   }
 
-  private isDevOrDemo(): boolean {
+  private isExplicitDemoMode(): boolean {
     return (
-      Boolean(import.meta.env.DEV) ||
-      (typeof window !== 'undefined' &&
-        (new URLSearchParams(window.location.search).get('demo') === '1' ||
-         window.location.search.includes('mock=1')))
+      typeof window !== 'undefined' &&
+      (new URLSearchParams(window.location.search).get('demo') === '1' ||
+       window.location.search.includes('mock=1'))
     );
   }
 
@@ -125,10 +124,10 @@ export class PoseService {
         }
 
         if (!this.landmarker) {
-          this.initPromise = null; // Reset so user/component can retry!
-          if (this.isDevOrDemo()) {
+          this.initPromise = null; // Reset so user/component can retry
+          if (this.isExplicitDemoMode()) {
             this.isMockMode = true;
-            console.info('ℹ️ เข้าสู่โหมดจำลองท่าทาง (Mock Mode) สำหรับ Dev หรือ ?demo=1');
+            console.info('ℹ️ เข้าสู่โหมดจำลองท่าทาง (Mock Mode) เนื่องจากระบุ ?demo=1 หรือ mock=1');
           } else {
             this.isMockMode = false;
             this.errorMessage = 'ไม่สามารถดาวน์โหลดโมเดลตรวจจับท่าทาง (MediaPipe) ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต';
@@ -141,8 +140,8 @@ export class PoseService {
         return true;
       } catch (err) {
         console.warn('⚠️ MediaPipe Vision initialization error:', err);
-        this.initPromise = null; // Reset so retry is possible!
-        if (this.isDevOrDemo()) {
+        this.initPromise = null; // Reset so retry is possible
+        if (this.isExplicitDemoMode()) {
           this.isMockMode = true;
         } else {
           this.isMockMode = false;
@@ -210,7 +209,7 @@ export class PoseService {
             minFacePresenceConfidence: 0.35,
             minTrackingConfidence: 0.35,
             outputFaceBlendshapes: true,
-            outputFacialTransformationMatrixes: false,
+            outputFacialTransformationMatrixes: true,
           }
         );
         console.log('✅ MediaPipe FaceLandmarker loaded on-demand');
@@ -238,8 +237,8 @@ export class PoseService {
   }
 
   public setMockMode(enabled: boolean): void {
-    if (enabled && !this.isDevOrDemo()) {
-      console.warn('⚠️ ไม่อนุญาตให้เปิด Mock Mode บน Production เว้นแต่จะมี ?demo=1 ใน URL');
+    if (enabled && !this.isExplicitDemoMode()) {
+      console.warn('⚠️ ไม่อนุญาตให้เปิด Mock Mode เว้นแต่จะมี ?demo=1 ใน URL หรือผู้ใช้เลือกทดสอบ');
       return;
     }
     this.isMockMode = enabled;
