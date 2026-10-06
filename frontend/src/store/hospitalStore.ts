@@ -4,6 +4,7 @@ import {
   UserRole,
   UserStatus,
   PhysicalTherapist,
+  HospitalExercise,
   TreatmentPlan,
   ActivityLog,
   PatientSymptomReport,
@@ -19,6 +20,13 @@ const INITIAL_THERAPISTS: PhysicalTherapist[] = [
     phone: '081-456-7890',
     email: 'thanakorn.w@strongcare.hospital',
     activePatientsCount: 14,
+    assignedCases: [
+      'นายสมชาย ใจดี (P-0012)',
+      'นางมาลี รักสุข (P-0013)',
+      'นายวิชัย แก้วมณี (P-0021)',
+      'นายสุรศักดิ์ พิพัฒน์ (P-0028)',
+    ],
+    bio: 'วุฒิบัตรกายภาพบำบัดระบบกล้ามเนื้อและกระดูก จุฬาลงกรณ์มหาวิทยาลัย ประสบการณ์คลินิก 8 ปี เชี่ยวชาญการรักษาข้อไหล่ติดและกระดูกสันหลัง',
     status: 'active',
     licenseNumber: 'กภ.12458',
   },
@@ -30,6 +38,12 @@ const INITIAL_THERAPISTS: PhysicalTherapist[] = [
     phone: '089-765-4321',
     email: 'pimchanok.s@strongcare.hospital',
     activePatientsCount: 18,
+    assignedCases: [
+      'นางสุดา ศรีอ่อน (P-0008)',
+      'นายประเสริฐ มั่นคง (P-0034)',
+      'นางกัญญา บุญมา (P-0035)',
+    ],
+    bio: 'ปริญญาโทกายภาพบำบัดระบบประสาท มหาวิทยาลัยมหิดล เชี่ยวชาญการฟื้นฟูผู้ป่วยหลอดเลือดสมองและผู้สูงอายุหลังผ่าตัด ประสบการณ์ 6 ปี',
     status: 'active',
     licenseNumber: 'กภ.15890',
   },
@@ -41,6 +55,11 @@ const INITIAL_THERAPISTS: PhysicalTherapist[] = [
     phone: '086-112-3344',
     email: 'waranyoo.r@strongcare.hospital',
     activePatientsCount: 9,
+    assignedCases: [
+      'นายสมบูรณ์ ชัยเวช (P-0040)',
+      'นางอรพินท์ ภักดี (P-0042)',
+    ],
+    bio: 'กายภาพบำบัดฟื้นฟูสมรรถภาพหัวใจและปอด มหาวิทยาลัยเชียงใหม่ ประสบการณ์ 5 ปี ดูแลผู้ป่วยฟื้นฟูสมรรถภาพการหายใจ',
     status: 'active',
     licenseNumber: 'กภ.18902',
   },
@@ -54,6 +73,7 @@ const INITIAL_USERS: UserAccount[] = [
     role: 'admin',
     status: 'active',
     code: 'ADM-01',
+    password: 'admin*password',
     phone: '02-555-0199',
     email: 'director@strongcare.hospital',
     created_at: '2026-01-10',
@@ -66,6 +86,7 @@ const INITIAL_USERS: UserAccount[] = [
     role: 'therapist',
     status: 'active',
     code: 'T-003',
+    password: 'pt*pass123',
     phone: '081-456-7890',
     email: 'thanakorn.w@strongcare.hospital',
     created_at: '2026-01-15',
@@ -78,6 +99,7 @@ const INITIAL_USERS: UserAccount[] = [
     role: 'therapist',
     status: 'active',
     code: 'T-007',
+    password: 'pt*pass456',
     phone: '089-765-4321',
     email: 'pimchanok.s@strongcare.hospital',
     created_at: '2026-01-20',
@@ -90,12 +112,18 @@ const INITIAL_USERS: UserAccount[] = [
     role: 'patient',
     status: 'active',
     code: 'P-0012',
+    password: '1234',
     assignedTherapistName: 'กภ. ธนากร วงศ์สวัสดิ์',
     assignedTherapistId: 1,
     phone: '081-998-1122',
+    email: 'somchai.j@gmail.com',
     age: 68,
     gender: 'male',
     diagnosis: 'ข้อไหล่ติดระยะฟื้นฟู (Frozen Shoulder - Subacute Phase)',
+    chiefComplaint: 'ปวดไหล่ขวาเรื้อรัง ยกแขนไม่สุด ปวดแปลบตอนเอื้อมหยิบของสูงมา 1 เดือน ขยับสะบักติดขัด',
+    patientBackground: 'ความดันโลหิตสูงเล็กน้อย (ควบคุมได้ดีด้วยยา), ไม่มีประวัติผ่าตัดใหญ่, เดินออกกำลังกายเช้าสม่ำเสมอ',
+    treatmentOutcome: 'ROM กางแขนข้างลำตัวเพิ่มจาก 65° เป็น 88°, ความปวดลดลงจาก 6/10 เหลือ 2/10, ทำกายภาพสม่ำเสมอ 94%',
+    therapistNotes: 'คนไข้ให้ความร่วมมือดีมาก กล้ามเนื้อไหล่คลายตัวขึ้น แนะนำให้รักษาระดับการยืดแขนอย่างนุ่มนวล หลีกเลี่ยงการยกของหนักเกิน 3 กก.',
     created_at: '2026-02-01',
     last_active: 'วันนี้ 10:15',
   },
@@ -106,12 +134,18 @@ const INITIAL_USERS: UserAccount[] = [
     role: 'patient',
     status: 'active',
     code: 'P-0013',
+    password: '1234',
     assignedTherapistName: 'กภ. ธนากร วงศ์สวัสดิ์',
     assignedTherapistId: 1,
     phone: '084-332-9900',
+    email: 'malee.r@gmail.com',
     age: 72,
     gender: 'female',
     diagnosis: 'ข้อเข่าเสื่อมระยะที่ 2 และกล้ามเนื้อต้นขาอ่อนแรง (Knee OA Grade 2)',
+    chiefComplaint: 'ปวดตึงข้อเข่าทั้งสองข้างเวลายืนนานและเดินขึ้นบันได มีเสียงกรอบแกรบในข้อเข่า',
+    patientBackground: 'มีภาวะกระดูกบางระยะเริ่มต้น ทานแคลเซียมเสริมประจำ ไม่มีโรคหัวใจ',
+    treatmentOutcome: 'สามารถลุกยืนจากเก้าอี้ได้มั่นคงขึ้น อาการเสียวข้อเข่าลดลง กำลังกล้ามเนื้อ Quadriceps เพิ่มขึ้น 1 ระดับ',
+    therapistNotes: 'ฝึกย่อเข่าแบบมีเก้าอี้พยุงอย่างระมัดระวัง เข่าต้องไม่เลยปลายเท้า เน้นเพิ่มความแข็งแรงกล้ามเนื้อรอบข้อเข่า',
     created_at: '2026-02-05',
     last_active: 'เมื่อวานนี้',
   },
@@ -122,11 +156,17 @@ const INITIAL_USERS: UserAccount[] = [
     role: 'patient',
     status: 'active',
     code: 'P-0021',
-    assignedTherapistName: 'ยังไม่ได้กำหนด',
+    password: '1234',
+    assignedTherapistName: 'กภ. ธนากร วงศ์สวัสดิ์',
+    assignedTherapistId: 1,
     phone: '089-445-5667',
     age: 65,
     gender: 'male',
     diagnosis: 'ปวดหลังส่วนล่างเรื้อรัง (Chronic Low Back Pain)',
+    chiefComplaint: 'ปวดเมื่อยเอวและสะโพกเวลานั่งทำงานหรือขับรถนาน นั่งเกิน 30 นาทีแล้วลุกยาก',
+    patientBackground: 'ทำงานออฟฟิศเดิม ไม่มีประวัติหมอนรองกระดูกทับเส้นประสาท',
+    treatmentOutcome: 'ความยืดหยุ่นกล้ามเนื้อลำตัวและสะโพกดีขึ้น 15%, ลดการปวดตึงช่วงเช้า',
+    therapistNotes: 'เน้นท่ายืดสะโพกบนเก้าอี้และบิดลำตัวคลายหลัง หลีกเลี่ยงการก้มยกของหนักโดยงอหลัง',
     created_at: '2026-02-12',
     last_active: '3 วันที่แล้ว',
   },
@@ -137,12 +177,17 @@ const INITIAL_USERS: UserAccount[] = [
     role: 'patient',
     status: 'suspended',
     code: 'P-0008',
+    password: '1234',
     assignedTherapistName: 'กภ. พิมพ์ชนก สุขเกษม',
     assignedTherapistId: 2,
     phone: '087-654-3210',
     age: 75,
     gender: 'female',
     diagnosis: 'ฟื้นฟูหลังผ่าตัดเปลี่ยนข้อสะโพกเทียม (Post THA)',
+    chiefComplaint: 'กังวลเรื่องการก้าวเดินและทรงตัวหลังผ่าตัดข้อสะโพก กล้ามเนื้อสะโพกข้างซ้ายยังเกร็งตึง',
+    patientBackground: 'ผ่าตัดเปลี่ยนข้อสะโพกข้างซ้ายมา 2 เดือน แผลผ่าตัดติดเรียบร้อย',
+    treatmentOutcome: 'ทรงตัวบนขาข้างซ้ายได้มั่นคงขึ้น เดินโดยใช้ไม้เท้าช่วยพยุงได้ระยะทาง 50 เมตรต่อเนื่อง',
+    therapistNotes: 'ห้ามงอข้อสะโพกเกิน 90 องศาเด็ดขาด ฝึกเดินทรงตัวพร้อมผู้ดูแลประกบใกล้ชิด',
     created_at: '2026-01-18',
     last_active: '1 สัปดาห์ที่แล้ว',
   },
@@ -153,12 +198,17 @@ const INITIAL_USERS: UserAccount[] = [
     role: 'patient',
     status: 'active',
     code: 'P-0034',
+    password: '1234',
     assignedTherapistName: 'กภ. พิมพ์ชนก สุขเกษม',
     assignedTherapistId: 2,
     phone: '082-111-2233',
     age: 70,
     gender: 'male',
     diagnosis: 'โรคหลอดเลือดสมองระยะฟื้นตัว กล้ามเนื้อซีกขวาอ่อนแรง (Post Stroke Hemiparesis)',
+    chiefComplaint: 'แขนและขาข้างขวายกได้ช้า กล้ามเนื้อเกร็งเล็กน้อยตอนเช้า ต้องการฝึกเดินและหยิบจับสิ่งของ',
+    patientBackground: 'หลอดเลือดสมองตีบมา 6 เดือน ได้รับยาละลายลิ่มเลือดสม่ำเสมอ ความดันปกติ',
+    treatmentOutcome: 'สามารถยกเข่าขวาสลับซ้ายได้มั่นคงขึ้น การสวิงแขนขวาขณะเดินเป็นธรรมชาติขึ้น',
+    therapistNotes: 'เน้นท่ากางแขนและยกเข่าสลับข้างแบบมีราวจับ ฝึกต่อเนื่องวันละ 15 นาที',
     created_at: '2026-02-20',
     last_active: 'วันนี้ 09:30',
   },
@@ -169,13 +219,178 @@ const INITIAL_USERS: UserAccount[] = [
     role: 'patient',
     status: 'active',
     code: 'P-0035',
-    assignedTherapistName: 'ยังไม่ได้กำหนด',
+    password: '1234',
+    assignedTherapistName: 'กภ. พิมพ์ชนก สุขเกษม',
+    assignedTherapistId: 2,
     phone: '085-889-9001',
     age: 63,
     gender: 'female',
     diagnosis: 'กลุ่มอาการปวดกล้ามเนื้อคอบ่าเรื้อรัง (Myofascial Pain Syndrome)',
+    chiefComplaint: 'ปวดตึงกล้ามเนื้อต้นคอร้าวขึ้นศีรษะ กล้ามเนื้อ Trapezius เกร็งแข็ง',
+    patientBackground: 'มีภาวะนอนหลับไม่สนิทจากการเกร็งกล้ามเนื้อคอ',
+    treatmentOutcome: 'อาการปวดศีรษะลดลง สามารถเอียงคอซ้าย-ขวาได้มุมกว้างขึ้น 20°',
+    therapistNotes: 'ฝึกท่ายืดคอด้านข้างและยืดอกเปิดไหล่ ประคบอุ่นบริเวณบ่าก่อนยืดกล้ามเนื้อ',
     created_at: '2026-02-22',
     last_active: 'วันนี้ 11:20',
+  },
+];
+
+const INITIAL_EXERCISES: HospitalExercise[] = [
+  {
+    id: 1,
+    name: 'กางแขนยกด้านข้าง',
+    englishName: 'Shoulder Abduction / Raise',
+    category: 'ฟื้นฟูข้อไหล่',
+    targetJoint: 'ข้อไหล่ (Shoulder)',
+    targetAngle: 90,
+    holdSeconds: 3,
+    description: 'ยืนหรือนั่งหลังตรง ยกแขนทั้งสองข้างกางออกด้านข้างลำตัวจนถึงระดับระนาบหัวไหล่',
+    cautions: 'ระวังอย่ายกไหล่เกร็งชิดใบหู (Shoulder Hike) และลำตัวต้องไม่เอียงชดเชย',
+    svgType: 'shoulder_raise',
+  },
+  {
+    id: 2,
+    name: 'ยืดคอด้านข้าง',
+    englishName: 'Neck Lateral Stretch',
+    category: 'ยืดเหยียดคอบ่า',
+    targetJoint: 'กระดูกคอ (Cervical Spine)',
+    targetAngle: 30,
+    holdSeconds: 20,
+    description: 'นั่งหลังตรง เอียงศีรษะให้หูเข้าหาหัวไหล่ช้าๆ ใช้มือช่วยประคองเบาๆ',
+    cautions: 'ห้ามออกแรงดึงกระชาก และไม่ต้องเกร็งยกหัวไหล่ขึ้นมารับศีรษะ',
+    svgType: 'neck_lateral',
+  },
+  {
+    id: 3,
+    name: 'ยืดคอก้มไปข้างหน้า',
+    englishName: 'Neck Flexion Stretch',
+    category: 'ยืดเหยียดคอบ่า',
+    targetJoint: 'กระดูกคอ (Cervical Spine)',
+    targetAngle: 35,
+    holdSeconds: 20,
+    description: 'นั่งหลังตรง ประสานมือวางท้ายทอย ก้มศีรษะให้คางชิดหน้าอกเบาๆ',
+    cautions: 'หลังต้องตรง ไม่งอหลังส่วนบนตามลงไป หายใจเข้าออกสม่ำเสมอ',
+    svgType: 'neck_flexion',
+  },
+  {
+    id: 4,
+    name: 'ยืดหัวไหล่ข้ามลำตัว',
+    englishName: 'Cross-Body Shoulder Stretch',
+    category: 'ฟื้นฟูข้อไหล่',
+    targetJoint: 'ข้อไหล่ด้านหลัง (Posterior Capsule)',
+    targetAngle: 75,
+    holdSeconds: 20,
+    description: 'ยกแขนพาดข้ามหน้าอก ใช้แขนอีกข้างกดประคองข้อศอกเข้าหาตัว',
+    cautions: 'รักษาแนวกระดูกสันหลังให้ตรง ไม่บิดหมุนลำตัวตามแขน',
+    svgType: 'shoulder_cross',
+  },
+  {
+    id: 5,
+    name: 'ยืดต้นแขนด้านหลัง',
+    englishName: 'Overhead Triceps Stretch',
+    category: 'ฟื้นฟูข้อไหล่',
+    targetJoint: 'ข้อไหล่และกล้ามเนื้อ Triceps',
+    targetAngle: 120,
+    holdSeconds: 20,
+    description: 'ยกแขนงอศอกไปด้านหลังศีรษะ ใช้มืออีกข้างกดประคองข้อศอกลงเบาๆ',
+    cautions: 'ไม่เงยคอหรือแอ่นหลังจนเกินไป หากมีอาการปวดไหล่ให้ผ่อนมุมลง',
+    svgType: 'triceps_overhead',
+  },
+  {
+    id: 6,
+    name: 'ยืดอกเปิดหัวไหล่',
+    englishName: 'Chest Opener Stretch',
+    category: 'ฟื้นฟูข้อไหล่และหลัง',
+    targetJoint: 'กล้ามเนื้อหน้าอก (Pectoralis)',
+    targetAngle: 110,
+    holdSeconds: 15,
+    description: 'ประสานมือด้านหลังลำตัว ยืดอกขึ้น ดึงสะบักสองข้างเข้าหากันเบาๆ',
+    cautions: 'ระวังอย่าแอ่นหลังส่วนล่าง ให้เกร็งหน้าท้องประคองกระดูกสันหลัง',
+    svgType: 'chest_open',
+  },
+  {
+    id: 7,
+    name: 'ยืดลำตัวด้านข้าง',
+    englishName: 'Side Bend Stretch',
+    category: 'ยืดเหยียดแกนกลางลำตัว',
+    targetJoint: 'กระดูกสันหลังและเอว (Lateral Spine)',
+    targetAngle: 25,
+    holdSeconds: 20,
+    description: 'ยกแขนข้างหนึ่งขึ้นเหนือศีรษะ เอนลำตัวไปด้านตรงข้ามช้าๆ',
+    cautions: 'ไม่ก้มตัวไปข้างหน้า ลำตัวต้องอยู่ในระนาบเดิมตลอดเวลา',
+    svgType: 'side_bend',
+  },
+  {
+    id: 8,
+    name: 'บิดลำตัวคลายหลัง',
+    englishName: 'Seated Torso Twist',
+    category: 'ยืดเหยียดแกนกลางลำตัว',
+    targetJoint: 'กระดูกสันหลังส่วนอกและเอว (Thoracolumbar Spine)',
+    targetAngle: 30,
+    holdSeconds: 15,
+    description: 'นั่งเก้าอี้หลังตรง บิดลำตัวไปด้านข้าง ใช้มือจับพนักพิงช่วยประคอง',
+    cautions: 'สะโพกทั้งสองข้างต้องแนบติดเบาะเก้าอี้ ไม่ยกก้นขึ้นขณะบิดตัว',
+    svgType: 'torso_twist',
+  },
+  {
+    id: 9,
+    name: 'ยืดต้นขาด้านหน้า',
+    englishName: 'Standing Quadriceps Stretch',
+    category: 'ฟื้นฟูข้อเข่าและขา',
+    targetJoint: 'ข้อเข่าและข้อสะโพก (Quadriceps)',
+    targetAngle: 110,
+    holdSeconds: 20,
+    description: 'ยืนจับเก้าอี้พยุง งอเข่าไปด้านหลัง ใช้มือจับข้อเท้าดึงเข้าหาสะโพก',
+    cautions: 'เข่าทั้งสองข้างชิดกัน ไม่กางเข่าออกด้านข้าง และลำตัวต้องตั้งตรง',
+    svgType: 'quadriceps',
+  },
+  {
+    id: 10,
+    name: 'ยืดต้นขาด้านหลัง',
+    englishName: 'Seated Hamstrings Stretch',
+    category: 'ฟื้นฟูข้อเข่าและขา',
+    targetJoint: 'ข้อสะโพกและต้นขาด้านหลัง (Hamstrings)',
+    targetAngle: 45,
+    holdSeconds: 20,
+    description: 'นั่งริมเก้าอี้ เหยียดขาข้างหนึ่งตรง โน้มลำตัวจากข้อสะโพกไปข้างหน้า',
+    cautions: 'รักษาหลังให้ตรง ไม่งอหลังก้มตัว และปลายเท้ากระดกขึ้นเล็กน้อย',
+    svgType: 'hamstrings',
+  },
+  {
+    id: 11,
+    name: 'ยืดกล้ามเนื้อน่อง',
+    englishName: 'Wall Calf Stretch',
+    category: 'ฟื้นฟูข้อเท้าและขา',
+    targetJoint: 'ข้อเท้าและกล้ามเนื้อน่อง (Gastrocnemius)',
+    targetAngle: 30,
+    holdSeconds: 20,
+    description: 'ยืนดันผนัง ก้าวขาข้างหนึ่งไปด้านหลัง ส้นเท้าแนบพื้น ขาหลังเหยียดตรง',
+    cautions: 'ส้นเท้าหลังต้องติดพื้นตลอดเวลา ปลายเท้าชี้ตรงไปข้างหน้า',
+    svgType: 'calf',
+  },
+  {
+    id: 12,
+    name: 'ยืดสะโพกบนเก้าอี้',
+    englishName: 'Seated Piriformis Stretch',
+    category: 'ฟื้นฟูข้อสะโพกและหลัง',
+    targetJoint: 'ข้อสะโพกด้านหลัง (Piriformis)',
+    targetAngle: 35,
+    holdSeconds: 20,
+    description: 'นั่งเก้าอี้ ยกข้อเท้าข้างหนึ่งพาดบนเข่าอีกข้าง แล้วโน้มตัวไปข้างหน้าช้าๆ',
+    cautions: 'รักษาแนวกระดูกสันหลังให้ตรง ไม่กดเข่าแรงจนเกิดอาการปวดแปลบ',
+    svgType: 'piriformis_seated',
+  },
+  {
+    id: 13,
+    name: 'ย่อเข่าเก้าอี้พยุง',
+    englishName: 'Supported Chair Squat',
+    category: 'ฟื้นฟูข้อเข่าและขา',
+    targetJoint: 'ข้อเข่าและกล้ามเนื้อขา (Knee Extension)',
+    targetAngle: 90,
+    holdSeconds: 3,
+    description: 'ยืนจับพนักพิงเก้าอี้ ย่อเข่าลงคล้ายกำลังจะนั่งเก้าอี้ แล้วดันตัวขึ้น',
+    cautions: 'หัวเข่าต้องไม่เลยปลายเท้า ระวังเข่าบิดเข้าด้านใน',
+    svgType: 'knee_squat',
   },
 ];
 
@@ -228,6 +443,8 @@ const INITIAL_LOGS: ActivityLog[] = [
     action: 'เข้าสู่ระบบ (Login)',
     category: 'AUTH',
     details: 'เข้าสู่ระบบผู้ดูแลระบบจากสถานีตู้ส่วนกลาง (IP: 192.168.1.108)',
+    device: 'Windows 11 / Chrome 124 (Admin Workstation 01)',
+    ipAddress: '192.168.1.108',
   },
   {
     id: 2,
@@ -238,6 +455,8 @@ const INITIAL_LOGS: ActivityLog[] = [
     action: 'ปรับแผนการรักษา (Update Prescription)',
     category: 'TREATMENT',
     details: 'ปรับเพิ่มจำนวนครั้งท่า shoulder_raise ของนายสมชาย ใจดี (P-0012) จาก 8 เป็น 10 ครั้ง',
+    device: 'macOS Sonoma / Safari 17.4 (Therapist iPad Pro)',
+    ipAddress: '192.168.1.115',
   },
   {
     id: 3,
@@ -248,6 +467,8 @@ const INITIAL_LOGS: ActivityLog[] = [
     action: 'กำหนดนักกายภาพบำบัดผู้รับผิดชอบ',
     category: 'PATIENT',
     details: 'มอบหมายคนไข้ นายประเสริฐ มั่นคง (P-0034) ให้ กภ. พิมพ์ชนก สุขเกษม ดูแล',
+    device: 'Windows 11 / Chrome 124 (Admin Workstation 01)',
+    ipAddress: '192.168.1.108',
   },
   {
     id: 4,
@@ -258,6 +479,8 @@ const INITIAL_LOGS: ActivityLog[] = [
     action: 'สแกนใบหน้าเข้าใช้งานตู้ (Biometric Kiosk Login)',
     category: 'AUTH',
     details: 'ยืนยันตัวตนด้วยใบหน้าสำเร็จ (Cosine: 0.86, Liveness: Blink + Yaw Right)',
+    device: 'Android 14 / StrongCare Kiosk Station A',
+    ipAddress: '192.168.1.120',
   },
   {
     id: 5,
@@ -268,6 +491,8 @@ const INITIAL_LOGS: ActivityLog[] = [
     action: 'ลงทะเบียนคนไข้ใหม่ & สแกนใบหน้า (Reception Onboarding)',
     category: 'PATIENT',
     details: 'ลงทะเบียนคนไข้ใหม่ กัญญา บุญมา (P-0035) พร้อมบันทึกเวกเตอร์ชีวมิติ 128 มิติ',
+    device: 'Windows 10 / Firefox 125 (Reception Counter 01)',
+    ipAddress: '192.168.1.105',
   },
 ];
 
@@ -305,8 +530,11 @@ interface HospitalState {
   currentUserId: number;
   users: UserAccount[];
   therapists: PhysicalTherapist[];
+  exercises: HospitalExercise[];
   treatmentPlans: TreatmentPlan[];
   activityLogs: ActivityLog[];
+  bannedDevices: string[];
+  bannedIps: string[];
   symptomReports: PatientSymptomReport[];
   aiSettings: AiSystemSettings;
 
@@ -328,14 +556,23 @@ interface HospitalState {
   updateTherapist: (id: number, data: Partial<PhysicalTherapist>) => void;
   deleteTherapist: (id: number) => void;
 
+  // Exercise Library Management
+  addExercise: (exercise: Omit<HospitalExercise, 'id'>) => HospitalExercise;
+  deleteExercise: (id: number) => void;
+
   // Treatment Plans
   saveTreatmentPlan: (plan: Omit<TreatmentPlan, 'id' | 'createdAt'> & { id?: number }) => void;
   deleteTreatmentPlan: (id: number) => void;
 
-  // Symptoms & Logs
+  // Symptoms & Logs & Security (Kick/Ban)
   reportSymptom: (report: Omit<PatientSymptomReport, 'id' | 'reportedAt' | 'status'>) => void;
   reviewSymptom: (id: number, reply: string) => void;
-  addActivityLog: (action: string, category: ActivityLog['category'], details: string) => void;
+  addActivityLog: (action: string, category: ActivityLog['category'], details: string, device?: string, ipAddress?: string) => void;
+  kickSession: (logId: number) => void;
+  banDevice: (device: string) => void;
+  unbanDevice: (device: string) => void;
+  banIp: (ip: string) => void;
+  unbanIp: (ip: string) => void;
 
   // AI Configuration
   updateAiSettings: (settings: Partial<AiSystemSettings>) => void;
@@ -346,8 +583,11 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
   currentUserId: 1,
   users: INITIAL_USERS,
   therapists: INITIAL_THERAPISTS,
+  exercises: INITIAL_EXERCISES,
   treatmentPlans: INITIAL_TREATMENT_PLANS,
   activityLogs: INITIAL_LOGS,
+  bannedDevices: ['Linux / Curl Automation Client', 'Unknown Android Emulator #99'],
+  bannedIps: ['198.51.100.44', '203.0.113.19'],
   symptomReports: INITIAL_SYMPTOM_REPORTS,
   aiSettings: {
     similarityThreshold: 0.82,
@@ -417,7 +657,10 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
 
   resetUserPassword: (id, newPin = '1234') => {
     const user = get().users.find((u) => u.id === id);
-    get().addActivityLog('รีเซ็ตรหัสผ่าน/PIN', 'AUTH', `รีเซ็ตรหัสผ่านของผู้ใช้งาน ${user?.name} เป็น PIN ค่าเริ่มต้น`);
+    set((state) => ({
+      users: state.users.map((u) => (u.id === id ? { ...u, password: newPin } : u)),
+    }));
+    get().addActivityLog('รีเซ็ตรหัสผ่าน/PIN', 'AUTH', `รีเซ็ตรหัสผ่านของผู้ใช้งาน ${user?.name} เป็น PIN ค่าเริ่มต้น: ${newPin}`);
     return newPin;
   },
 
@@ -464,6 +707,22 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       therapists: state.therapists.filter((t) => t.id !== id),
     }));
     get().addActivityLog('ลบข้อมูลนักกายภาพบำบัด', 'THERAPIST', `ลบนักกายภาพ ID: ${id}`);
+  },
+
+  addExercise: (exerciseData) => {
+    const newId = Math.max(0, ...get().exercises.map((e) => e.id)) + 1;
+    const newExercise: HospitalExercise = { ...exerciseData, id: newId };
+    set((state) => ({ exercises: [newExercise, ...state.exercises] }));
+    get().addActivityLog('เพิ่มท่าทางกายภาพบำบัด', 'TREATMENT', `เพิ่มท่าใหม่: ${newExercise.name} (${newExercise.englishName})`);
+    return newExercise;
+  },
+
+  deleteExercise: (id) => {
+    const exercise = get().exercises.find((e) => e.id === id);
+    set((state) => ({
+      exercises: state.exercises.filter((e) => e.id !== id),
+    }));
+    get().addActivityLog('ลบท่าทางกายภาพบำบัด', 'TREATMENT', `ลบท่า: ${exercise?.name || id}`);
   },
 
   saveTreatmentPlan: (planData) => {
@@ -520,7 +779,7 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
     get().addActivityLog('ตอบกลับอาการคนไข้', 'THERAPIST', `นักกายภาพตอบกลับรายงานอาการ ID: ${id}`);
   },
 
-  addActivityLog: (action, category, details) => {
+  addActivityLog: (action, category, details, device, ipAddress) => {
     const user = get().users.find((u) => u.id === get().currentUserId);
     const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
     const newId = Math.max(0, ...get().activityLogs.map((l) => l.id)) + 1;
@@ -533,8 +792,50 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       action,
       category,
       details,
+      device: device || 'Windows 11 / Chrome (Workstation)',
+      ipAddress: ipAddress || '192.168.1.100',
     };
     set((state) => ({ activityLogs: [log, ...state.activityLogs].slice(0, 200) }));
+  },
+
+  kickSession: (logId) => {
+    const log = get().activityLogs.find((l) => l.id === logId);
+    if (!log) return;
+    get().addActivityLog(
+      'เตะเซสชันออกจากการเชื่อมต่อ (Kick Session)',
+      'SYSTEM',
+      `เตะเซสชันของ ${log.userName} (${log.device || 'ไม่ทราบอุปกรณ์'}) ที่เชื่อมต่อจาก IP ${log.ipAddress || 'N/A'}`
+    );
+  },
+
+  banDevice: (device) => {
+    if (!device) return;
+    set((state) => ({
+      bannedDevices: state.bannedDevices.includes(device) ? state.bannedDevices : [...state.bannedDevices, device],
+    }));
+    get().addActivityLog('แบนอุปกรณ์ (Ban Device Fingerprint)', 'SYSTEM', `แบนอุปกรณ์: ${device}`);
+  },
+
+  unbanDevice: (device) => {
+    set((state) => ({
+      bannedDevices: state.bannedDevices.filter((d) => d !== device),
+    }));
+    get().addActivityLog('ปลดแบนอุปกรณ์ (Unban Device)', 'SYSTEM', `ปลดแบนอุปกรณ์: ${device}`);
+  },
+
+  banIp: (ip) => {
+    if (!ip) return;
+    set((state) => ({
+      bannedIps: state.bannedIps.includes(ip) ? state.bannedIps : [...state.bannedIps, ip],
+    }));
+    get().addActivityLog('แบนที่อยู่ IP (Ban IP Address)', 'SYSTEM', `แบนที่อยู่ IP: ${ip}`);
+  },
+
+  unbanIp: (ip) => {
+    set((state) => ({
+      bannedIps: state.bannedIps.filter((i) => i !== ip),
+    }));
+    get().addActivityLog('ปลดแบนที่อยู่ IP (Unban IP Address)', 'SYSTEM', `ปลดแบน IP: ${ip}`);
   },
 
   updateAiSettings: (newSettings) => {

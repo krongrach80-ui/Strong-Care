@@ -12,6 +12,7 @@ export interface UserAccount {
   role: UserRole;
   status: UserStatus;
   code: string; // e.g. P-0012, T-003, ADM-01
+  password?: string;
   assignedTherapistName?: string;
   assignedTherapistId?: number;
   phone?: string;
@@ -19,6 +20,10 @@ export interface UserAccount {
   age?: number;
   gender?: 'male' | 'female' | 'other';
   diagnosis?: string;
+  chiefComplaint?: string;       // ประวัติการซักประวัติ
+  patientBackground?: string;    // ประวัติคนไข้ตามปกติ / โรคประจำตัว
+  treatmentOutcome?: string;     // ผลการรักษา
+  therapistNotes?: string;       // โน้ต/ข้อความคำแนะนำจากนักกายภาพ
   created_at: string;
   last_active?: string;
 }
@@ -31,8 +36,23 @@ export interface PhysicalTherapist {
   phone: string;
   email: string;
   activePatientsCount: number;
+  assignedCases?: string[];      // รายชื่อเคสที่รับผิดชอบ
+  bio?: string;                  // ประวัติส่วนตัว & การศึกษา
   status: 'active' | 'on_leave';
   licenseNumber: string;
+}
+
+export interface HospitalExercise {
+  id: number;
+  name: string;
+  englishName: string;
+  category: string;
+  targetJoint: string;
+  targetAngle: number;
+  holdSeconds: number;
+  description: string;
+  cautions: string;
+  svgType?: string;
 }
 
 export interface PrescribedExercise {
@@ -69,6 +89,10 @@ export interface ActivityLog {
   action: string;
   category: 'AUTH' | 'PATIENT' | 'THERAPIST' | 'TREATMENT' | 'SYSTEM' | 'AI';
   details: string;
+  device?: string;       // อุปกรณ์/เบราว์เซอร์
+  ipAddress?: string;    // IP Address
+  isBannedDevice?: boolean;
+  isBannedIp?: boolean;
 }
 
 export interface PatientSymptomReport {
