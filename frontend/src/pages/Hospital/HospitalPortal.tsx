@@ -35,6 +35,7 @@ import {
   UserCheck,
   AlertTriangle,
   Sparkles,
+  ShieldAlert,
 } from 'lucide-react';
 import { useHospitalStore } from '../../store/hospitalStore';
 import { UserAccount, UserRole, PhysicalTherapist, HospitalExercise, ActivityLog } from '../../types/hospital';
@@ -43,6 +44,9 @@ import { AddUserModal } from '../../components/Hospital/AddUserModal';
 import { EditUserModal } from '../../components/Hospital/EditUserModal';
 import { ChangePasswordModal } from '../../components/Hospital/ChangePasswordModal';
 import { DeleteUserModal } from '../../components/Hospital/DeleteUserModal';
+import { AddExerciseModal } from '../../components/Hospital/AddExerciseModal';
+import { EditExerciseModal } from '../../components/Hospital/EditExerciseModal';
+import { DeleteExerciseModal } from '../../components/Hospital/DeleteExerciseModal';
 
 interface HospitalPortalProps {
   onClose: () => void;
@@ -76,6 +80,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
     addTherapist,
     updateTherapist,
     addExercise,
+    updateExercise,
     deleteExercise,
     kickSession,
     banDevice,
@@ -370,27 +375,8 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
   const [exerciseSearch, setExerciseSearch] = useState<string>('');
   const [exerciseCategoryFilter, setExerciseCategoryFilter] = useState<string>('all');
   const [isAddExerciseOpen, setIsAddExerciseOpen] = useState<boolean>(false);
+  const [editingExercise, setEditingExercise] = useState<HospitalExercise | null>(null);
   const [deletingExercise, setDeletingExercise] = useState<HospitalExercise | null>(null);
-
-  const [newExerciseForm, setNewExerciseForm] = useState<{
-    name: string;
-    englishName: string;
-    category: string;
-    targetJoint: string;
-    targetAngle: number;
-    holdSeconds: number;
-    description: string;
-    cautions: string;
-  }>({
-    name: '',
-    englishName: '',
-    category: 'ฟื้นฟูข้อไหล่และแขน',
-    targetJoint: 'ข้อไหล่ (Shoulder)',
-    targetAngle: 90,
-    holdSeconds: 3,
-    description: '',
-    cautions: '',
-  });
 
   const filteredExercises = useMemo(() => {
     return exercises.filter((ex) => {
@@ -405,36 +391,6 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
       return matchCat && matchQ;
     });
   }, [exercises, exerciseCategoryFilter, exerciseSearch]);
-
-  const handleAddExerciseSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newExerciseForm.name.trim()) {
-      showToast('กรุณากรอกชื่อท่าทางกายภาพ');
-      return;
-    }
-    const created = addExercise({
-      name: newExerciseForm.name.trim(),
-      englishName: newExerciseForm.englishName.trim() || newExerciseForm.name.trim(),
-      category: newExerciseForm.category,
-      targetJoint: newExerciseForm.targetJoint,
-      targetAngle: Number(newExerciseForm.targetAngle) || 90,
-      holdSeconds: Number(newExerciseForm.holdSeconds) || 3,
-      description: newExerciseForm.description || 'ฝึกอย่างช้าๆ รักษาสมดุลของร่างกาย',
-      cautions: newExerciseForm.cautions || 'หยุดทันทีหากรู้สึกปวดแปลบหรือเวียนศีรษะ',
-    });
-    setIsAddExerciseOpen(false);
-    showToast(`เพิ่มท่าทางกายภาพสำเร็จ: ${created.name}`);
-    setNewExerciseForm({
-      name: '',
-      englishName: '',
-      category: 'ฟื้นฟูข้อไหล่และแขน',
-      targetJoint: 'ข้อไหล่ (Shoulder)',
-      targetAngle: 90,
-      holdSeconds: 3,
-      description: '',
-      cautions: '',
-    });
-  };
 
   // =========================================================================
   // 5. STATE FOR USAGE / ACTIVITY LOG (Tab 5: logs - Admin only)
@@ -1475,79 +1431,157 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
               </div>
 
               {/* Exercises Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {filteredExercises.map((exercise) => (
-                  <div
-                    key={exercise.id}
-                    className="bg-white rounded-3xl p-6 border border-emerald-100 shadow-sm space-y-4 hover:border-emerald-300 transition flex flex-col justify-between"
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 font-mono text-xs font-bold border border-emerald-200">
-                          {exercise.category}
-                        </span>
-                        <div className="text-right">
-                          <span className="font-extrabold text-sm text-emerald-700">
-                            เป้าหมาย {exercise.targetAngle}°
-                          </span>
-                          <span className="text-[11px] text-slate-400 block">
-                            ค้าง {exercise.holdSeconds} วิ
-                          </span>
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="font-extrabold text-base text-[#0F2F2B]">{exercise.name}</div>
-                        <div className="text-xs text-slate-400 font-medium">{exercise.englishName}</div>
-                      </div>
-
-                      <div className="text-xs text-slate-600 bg-emerald-50/50 p-3 rounded-2xl border border-emerald-100 space-y-1">
-                        <div>
-                          <strong>ข้อต่อเป้าหมาย:</strong>{' '}
-                          <span className="text-emerald-900 font-bold">{exercise.targetJoint}</span>
-                        </div>
-                        <p className="text-[11px] text-slate-600 mt-1 leading-relaxed">
-                          {exercise.description}
-                        </p>
-                      </div>
-
-                      {exercise.cautions && (
-                        <div className="text-xs text-rose-700 bg-rose-50/60 p-2.5 rounded-2xl border border-rose-100 flex items-start gap-1.5">
-                          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-rose-500" />
-                          <span className="text-[11px] leading-tight">
-                            <strong>ข้อควรระวัง:</strong> {exercise.cautions}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Delete and Action buttons */}
-                    <div className="pt-3 border-t border-emerald-50 flex items-center justify-between">
-                      <button
-                        onClick={() => setDeletingExercise(exercise)}
-                        className="text-xs font-bold text-rose-600 hover:text-rose-800 transition flex items-center gap-1 cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>ลบท่านี้</span>
-                      </button>
-
-                      {onLaunchKioskExercise && (
-                        <button
-                          onClick={() => {
-                            onLaunchKioskExercise(exercise.id);
-                            showToast(`เริ่มท่าฝึก ${exercise.name} บนหน้าจอจำลอง`);
-                            onClose();
-                          }}
-                          className="px-3.5 py-1.5 rounded-full bg-emerald-100 text-emerald-800 hover:bg-emerald-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                        >
-                          <Play className="w-3 h-3" />
-                          <span>ทดสอบที่ตู้</span>
-                        </button>
-                      )}
-                    </div>
+              {filteredExercises.length === 0 ? (
+                <div className="bg-white rounded-3xl p-12 text-center border border-emerald-100 shadow-sm space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 mx-auto flex items-center justify-center">
+                    <Dumbbell className="w-8 h-8" />
                   </div>
-                ))}
-              </div>
+                  <div>
+                    <h4 className="font-bold text-base text-[#0F2F2B]">ไม่พบท่าทางกายภาพที่ตรงกับเงื่อนไข</h4>
+                    <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                      ลองเปลี่ยนคำค้นหา หรือเลือกหมวดหมู่อื่น หรือกดปุ่มเพิ่มท่าทางกายภาพใหม่ลงในคลัง
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-center gap-2 pt-2">
+                    {(exerciseSearch || exerciseCategoryFilter !== 'all') && (
+                      <button
+                        onClick={() => {
+                          setExerciseSearch('');
+                          setExerciseCategoryFilter('all');
+                        }}
+                        className="px-4 py-2 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-bold hover:bg-emerald-100 transition cursor-pointer"
+                      >
+                        ล้างตัวกรองทั้งหมด
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setIsAddExerciseOpen(true)}
+                      className="px-4 py-2 rounded-full bg-[#10B981] text-white text-xs font-bold hover:bg-emerald-600 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ เพิ่มท่าทางใหม่</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {filteredExercises.map((exercise) => (
+                    <div
+                      key={exercise.id}
+                      className="bg-white rounded-3xl p-6 border border-emerald-100 shadow-sm space-y-4 hover:border-emerald-300 transition flex flex-col justify-between"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 font-mono text-[11px] font-bold border border-emerald-200">
+                              {exercise.category}
+                            </span>
+                            {exercise.difficulty && (
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                  exercise.difficulty === 'easy'
+                                    ? 'bg-emerald-100/70 text-emerald-800 border-emerald-200'
+                                    : exercise.difficulty === 'medium'
+                                    ? 'bg-amber-100/70 text-amber-800 border-amber-200'
+                                    : 'bg-rose-100/70 text-rose-800 border-rose-200'
+                                }`}
+                              >
+                                {exercise.difficulty === 'easy'
+                                  ? 'ง่าย'
+                                  : exercise.difficulty === 'medium'
+                                  ? 'ปานกลาง'
+                                  : 'ยาก'}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <span className="font-extrabold text-sm text-emerald-700">
+                              เป้าหมาย {exercise.targetAngle}°
+                            </span>
+                            <span className="text-[11px] text-slate-400 block font-medium">
+                              ค้าง {exercise.holdSeconds} วิ
+                              {exercise.sets && exercise.repsPerSet
+                                ? ` • ${exercise.sets}×${exercise.repsPerSet}`
+                                : ''}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="font-extrabold text-base text-[#0F2F2B]">{exercise.name}</div>
+                          <div className="text-xs text-slate-400 font-medium">{exercise.englishName}</div>
+                        </div>
+
+                        <div className="text-xs text-slate-600 bg-emerald-50/50 p-3 rounded-2xl border border-emerald-100 space-y-1">
+                          <div>
+                            <strong>ข้อต่อเป้าหมาย:</strong>{' '}
+                            <span className="text-emerald-900 font-bold">{exercise.targetJoint}</span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 mt-1 leading-relaxed">
+                            {exercise.description}
+                          </p>
+                        </div>
+
+                        {exercise.cautions && (
+                          <div className="text-xs text-rose-700 bg-rose-50/60 p-2.5 rounded-2xl border border-rose-100 flex items-start gap-1.5">
+                            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-rose-500" />
+                            <span className="text-[11px] leading-tight">
+                              <strong>ข้อควรระวัง:</strong> {exercise.cautions}
+                            </span>
+                          </div>
+                        )}
+
+                        {exercise.contraindications && (
+                          <div className="text-xs text-amber-800 bg-amber-50/70 p-2.5 rounded-2xl border border-amber-200/80 flex items-start gap-1.5">
+                            <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-amber-600" />
+                            <span className="text-[11px] leading-tight">
+                              <strong>ข้อห้าม:</strong> {exercise.contraindications}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Card Action Buttons */}
+                      <div className="pt-3 border-t border-emerald-50 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setEditingExercise(exercise)}
+                            className="px-2.5 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition flex items-center gap-1 cursor-pointer border border-emerald-200"
+                            title="แก้ไขข้อมูลท่าทางกายภาพนี้"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>แก้ไข</span>
+                          </button>
+
+                          <button
+                            onClick={() => setDeletingExercise(exercise)}
+                            className="px-2.5 py-1.5 rounded-full hover:bg-rose-50 text-rose-600 hover:text-rose-800 text-xs font-bold transition flex items-center gap-1 cursor-pointer border border-transparent hover:border-rose-200"
+                            title="ลบท่านี้ออกจากคลัง"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>ลบท่านี้</span>
+                          </button>
+                        </div>
+
+                        {onLaunchKioskExercise && (
+                          <button
+                            onClick={() => {
+                              onLaunchKioskExercise(exercise.id);
+                              showToast(`เริ่มท่าฝึก ${exercise.name} บนหน้าจอจำลอง`);
+                              onClose();
+                            }}
+                            className="px-3.5 py-1.5 rounded-full bg-emerald-100 text-emerald-800 hover:bg-emerald-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-sm"
+                            title="เปิดทดสอบเซสชันฝึกบนตู้จำลอง Kiosk"
+                          >
+                            <Play className="w-3 h-3" />
+                            <span>ทดสอบที่ตู้</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -2472,191 +2506,34 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
       {/* ==================================================================== */}
       {/* 11. ADD EXERCISE MODAL (Tab 4: exercises)                            */}
       {/* ==================================================================== */}
-      {isAddExerciseOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F2F2B]/60 backdrop-blur-sm animate-fadeIn"
-          onClick={() => setIsAddExerciseOpen(false)}
-        >
-          <div
-            className="w-full max-w-lg bg-white rounded-3xl p-6 shadow-2xl border border-emerald-200 space-y-4 max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between pb-2 border-b border-emerald-100">
-              <h4 className="font-bold text-base text-[#0F2F2B]">เพิ่มท่าทางกายภาพบำบัดใหม่</h4>
-              <button
-                onClick={() => setIsAddExerciseOpen(false)}
-                className="p-1 rounded-full text-slate-400 hover:bg-slate-100 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddExerciseSubmit} className="space-y-3.5 text-xs font-semibold">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-700 mb-1">ชื่อท่าทาง (ภาษาไทย):</label>
-                  <input
-                    type="text"
-                    value={newExerciseForm.name}
-                    onChange={(e) => setNewExerciseForm({ ...newExerciseForm, name: e.target.value })}
-                    placeholder="เช่น กางแขนยกหัวไหล่"
-                    className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-sm font-bold outline-none"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 mb-1">English Name:</label>
-                  <input
-                    type="text"
-                    value={newExerciseForm.englishName}
-                    onChange={(e) => setNewExerciseForm({ ...newExerciseForm, englishName: e.target.value })}
-                    placeholder="e.g. Lateral Arm Raise"
-                    className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-sm outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-slate-700 mb-1">หมวดหมู่:</label>
-                  <select
-                    value={newExerciseForm.category}
-                    onChange={(e) => setNewExerciseForm({ ...newExerciseForm, category: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-xs outline-none bg-white font-bold"
-                  >
-                    <option value="ฟื้นฟูข้อไหล่และแขน">ฟื้นฟูข้อไหล่และแขน</option>
-                    <option value="ฟื้นฟูข้อเข่าและขา">ฟื้นฟูข้อเข่าและขา</option>
-                    <option value="ฟื้นฟูข้อสะโพกและหลัง">ฟื้นฟูข้อสะโพกและหลัง</option>
-                    <option value="ฟื้นฟูข้อเท้าและขา">ฟื้นฟูข้อเท้าและขา</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-700 mb-1">องศาเป้าหมาย (°):</label>
-                  <input
-                    type="number"
-                    value={newExerciseForm.targetAngle}
-                    onChange={(e) =>
-                      setNewExerciseForm({ ...newExerciseForm, targetAngle: parseInt(e.target.value) || 0 })
-                    }
-                    className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-sm outline-none font-bold text-center"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 mb-1">เวลาค้าง (วินาที):</label>
-                  <input
-                    type="number"
-                    value={newExerciseForm.holdSeconds}
-                    onChange={(e) =>
-                      setNewExerciseForm({ ...newExerciseForm, holdSeconds: parseInt(e.target.value) || 0 })
-                    }
-                    className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-sm outline-none font-bold text-center"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-700 mb-1">ข้อต่อเป้าหมาย:</label>
-                <input
-                  type="text"
-                  value={newExerciseForm.targetJoint}
-                  onChange={(e) => setNewExerciseForm({ ...newExerciseForm, targetJoint: e.target.value })}
-                  placeholder="เช่น ข้อไหล่ (Shoulder Abduction)"
-                  className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-sm outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-700 mb-1">คำอธิบายวิธีฝึกปฏิบัติ:</label>
-                <textarea
-                  rows={2}
-                  value={newExerciseForm.description}
-                  onChange={(e) => setNewExerciseForm({ ...newExerciseForm, description: e.target.value })}
-                  placeholder="คำแนะนำท่าทาง เช่น ยืนตรง กางแขนทั้งสองข้างขึ้นขนานกับพื้นช้าๆ..."
-                  className="w-full p-3 rounded-2xl border border-emerald-200 text-sm outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-700 mb-1">ข้อควรระวังทางการแพทย์ (Cautions):</label>
-                <input
-                  type="text"
-                  value={newExerciseForm.cautions}
-                  onChange={(e) => setNewExerciseForm({ ...newExerciseForm, cautions: e.target.value })}
-                  placeholder="เช่น ไม่ยกไหล่เอียง ไม่แอ่นหลังเกินเกณฑ์"
-                  className="w-full px-3.5 py-2.5 rounded-2xl border border-emerald-200 text-sm outline-none"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-emerald-100">
-                <button
-                  type="button"
-                  onClick={() => setIsAddExerciseOpen(false)}
-                  className="px-4 py-2 rounded-full border border-slate-300 text-slate-600 font-bold cursor-pointer"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-full bg-[#10B981] text-white font-bold shadow-md hover:bg-emerald-600 transition cursor-pointer"
-                >
-                  ยืนยันเพิ่มท่า
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <AddExerciseModal
+        isOpen={isAddExerciseOpen}
+        onClose={() => setIsAddExerciseOpen(false)}
+        onSubmitExercise={addExercise}
+        onSuccessToast={showToast}
+      />
 
       {/* ==================================================================== */}
-      {/* 12. DELETE EXERCISE CONFIRMATION MODAL                               */}
+      {/* 12. EDIT EXERCISE MODAL (Tab 4: exercises)                           */}
       {/* ==================================================================== */}
-      {deletingExercise && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F2F2B]/60 backdrop-blur-sm animate-fadeIn"
-          onClick={() => setDeletingExercise(null)}
-        >
-          <div
-            className="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl border border-rose-200 text-center space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 mx-auto flex items-center justify-center">
-              <Trash2 className="w-6 h-6" />
-            </div>
+      <EditExerciseModal
+        isOpen={!!editingExercise}
+        onClose={() => setEditingExercise(null)}
+        exercise={editingExercise}
+        onUpdateExercise={updateExercise}
+        onSuccessToast={showToast}
+      />
 
-            <div>
-              <h4 className="font-bold text-base text-[#0F2F2B]">ยืนยันการลบท่าทางกายภาพ?</h4>
-              <p className="text-xs text-slate-500 mt-1">
-                คุณกำลังจะลบท่า <strong>{deletingExercise.name}</strong> ({deletingExercise.englishName}) ออกจากคลังท่า
-              </p>
-            </div>
-
-            <div className="flex gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeletingExercise(null)}
-                className="flex-1 py-2.5 rounded-2xl border border-slate-300 text-slate-600 text-xs font-bold cursor-pointer"
-              >
-                ยกเลิก
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  deleteExercise(deletingExercise.id);
-                  showToast(`ลบท่า ${deletingExercise.name} เรียบร้อยแล้ว`);
-                  setDeletingExercise(null);
-                }}
-                className="flex-1 py-2.5 rounded-2xl bg-rose-600 text-white text-xs font-bold shadow-md hover:bg-rose-700 transition cursor-pointer"
-              >
-                ยืนยันลบ
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ==================================================================== */}
+      {/* 13. DELETE EXERCISE CONFIRMATION MODAL (Tab 4: exercises)            */}
+      {/* ==================================================================== */}
+      <DeleteExerciseModal
+        isOpen={!!deletingExercise}
+        onClose={() => setDeletingExercise(null)}
+        exercise={deletingExercise}
+        onConfirmDelete={deleteExercise}
+        onSuccessToast={showToast}
+      />
     </div>
   );
 };

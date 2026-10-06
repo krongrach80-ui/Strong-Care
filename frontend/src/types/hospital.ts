@@ -53,6 +53,10 @@ export interface HospitalExercise {
   description: string;
   cautions: string;
   svgType?: string;
+  difficulty?: 'easy' | 'medium' | 'hard';
+  repsPerSet?: number;
+  sets?: number;
+  contraindications?: string;
 }
 
 export interface PrescribedExercise {

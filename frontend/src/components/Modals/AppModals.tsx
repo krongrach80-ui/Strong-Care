@@ -676,6 +676,16 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
 
             <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1">
               <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
+                <span>🏋️</span>
+                <span>Exercise Library Full CRUD</span>
+              </div>
+              <p className="text-slate-600 text-[11px] leading-relaxed">
+                โมดอลเพิ่ม/แก้ไข/ยืนยันลบท่ากายภาพครบวงจร แบ่ง 3 ส่วนชัดเจน (พื้นฐาน, ชีวกลศาสตร์ ROM/เซ็ต/ครั้ง, ข้อควรระวัง) พร้อม Toast แบบ Real-time
+              </p>
+            </div>
+
+            <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1 sm:col-span-2">
+              <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
                 <span>🤖</span>
                 <span>ResNet-34 Face Biometrics</span>
               </div>
