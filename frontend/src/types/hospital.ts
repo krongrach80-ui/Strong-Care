@@ -38,7 +38,7 @@ export interface PhysicalTherapist {
   activePatientsCount: number;
   assignedCases?: string[];      // รายชื่อเคสที่รับผิดชอบ
   bio?: string;                  // ประวัติส่วนตัว & การศึกษา
-  status: 'active' | 'on_leave';
+  status: 'active' | 'on_leave' | 'suspended';
   licenseNumber: string;
 }
 
