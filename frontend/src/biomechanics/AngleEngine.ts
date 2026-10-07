@@ -19,12 +19,23 @@ export class AngleEngine {
   private prevAngle: number = 0;
   private prevTimestamp: number = 0;
   private angularVelocity: number = 0;
-  private alpha: number = 0.75;
+  private alpha: number = 2 / (8 + 1); // Default: 8-frame EMA smoothing factor (2/9 ≈ 0.2222)
+  private smoothingSpan: number = 8;
+  private frameHistory: number[] = [];
   private lockedSide: 'left' | 'right' | 'bilateral' | null = null;
   private aspectRatio: number = 1.0;
 
-  constructor(smoothingAlpha: number = 0.75, aspectRatio: number = 1.0) {
-    this.alpha = smoothingAlpha;
+  constructor(smoothingAlphaOrSpan: number = 8, aspectRatio: number = 1.0) {
+    if (smoothingAlphaOrSpan > 1) {
+      this.smoothingSpan = smoothingAlphaOrSpan;
+      this.alpha = 2 / (smoothingAlphaOrSpan + 1);
+    } else if (smoothingAlphaOrSpan > 0) {
+      this.alpha = smoothingAlphaOrSpan;
+      this.smoothingSpan = Math.max(1, Math.round(2 / smoothingAlphaOrSpan - 1));
+    } else {
+      this.alpha = 2 / (8 + 1);
+      this.smoothingSpan = 8;
+    }
     this.aspectRatio = aspectRatio > 0 ? aspectRatio : 1.0;
   }
 
@@ -59,6 +70,7 @@ export class AngleEngine {
     this.prevTimestamp = 0;
     this.angularVelocity = 0;
     this.lockedSide = null;
+    this.frameHistory = [];
   }
 
   public setLockedSide(side: 'left' | 'right' | 'bilateral' | null): void {
@@ -161,7 +173,15 @@ export class AngleEngine {
 
     const { angle: rawAngle, jointCenter, side } = this.extractExerciseAngle(landmarks, exercise);
 
-    // Apply Exponential Moving Average (EMA)
+    // Track 8-frame sliding window history
+    if (rawAngle > 0) {
+      this.frameHistory.push(rawAngle);
+      if (this.frameHistory.length > this.smoothingSpan) {
+        this.frameHistory.shift();
+      }
+    }
+
+    // Apply Exponential Moving Average (EMA) with 8-frame smoothing factor
     if (this.smoothedAngle === 0) {
       this.smoothedAngle = rawAngle;
     } else {

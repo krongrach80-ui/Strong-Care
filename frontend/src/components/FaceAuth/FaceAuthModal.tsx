@@ -226,15 +226,21 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
             }
           }
         } else {
-          // Login Mode
+          // Login Mode: Pre-scan quality checks
           if (!res || !res.detected) {
-            setLivenessStatus('กรุณาขยับหน้าให้อยู่ในกรอบวงรี');
+            setLivenessStatus('กรุณาจัดใบหน้าให้อยู่ในกรอบวงรี');
           } else if (!res.qualityGate.faceCentered) {
-            setLivenessStatus('กรุณาจัดหน้าให้อยู่กึ่งกลางกรอบ');
-          } else if (!res.qualityGate.isSharp) {
-            setLivenessStatus('ภาพเบลอ กรุณาถืออุปกรณ์นิ่งๆ');
+            setLivenessStatus('จัดใบหน้าให้อยู่กึ่งกลางกรอบวงรี');
+          } else if (!res.qualityGate.sizeRatioValid) {
+            if (res.box.width < 0.20) setLivenessStatus('ขยับเข้าใกล้กล้องอีกเล็กน้อย');
+            else setLivenessStatus('ถอยห่างจากกล้องอีกเล็กน้อย');
+          } else if (!res.qualityGate.isAngleValid) {
+            setLivenessStatus('ใบหน้าเอียงเกินไป กรุณามองตรงมาที่กล้อง');
           } else if (!res.qualityGate.isWellLit) {
-            setLivenessStatus('แสงสว่างไม่พอดี กรุณาปรับแสง');
+            const lightMsg = res.qualityGate.failures.find((f) => f.includes('แสง')) || 'แสงสว่างไม่พอดี กรุณาปรับแสง';
+            setLivenessStatus(lightMsg);
+          } else if (!res.qualityGate.isSharp) {
+            setLivenessStatus('ภาพเบลอหรือไม่ชัด กรุณาถืออุปกรณ์นิ่งๆ');
           } else if (!liveness.allChallengesPassed && !liveness.isRealHuman) {
             setLivenessStatus(liveness.currentPrompt);
           } else {

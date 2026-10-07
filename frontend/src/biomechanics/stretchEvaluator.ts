@@ -6,6 +6,10 @@ export interface StretchEvaluationResult {
   isHoldingPose: boolean;
   score: number; // 0 to 100
   currentAngle: number;
+  targetAngle: number;
+  tolerance: number;
+  jointName: string;
+  isWithinTargetBand: boolean;
   feedback: string;
 }
 
@@ -48,6 +52,10 @@ export function evaluateStretchPose(
       isHoldingPose: false,
       score: 0,
       currentAngle: 0,
+      targetAngle: 90,
+      tolerance: 10,
+      jointName: 'ข้อต่อ',
+      isWithinTargetBand: false,
       feedback: 'ไม่พบตำแหน่งร่างกายในกรอบกล้อง',
     };
   }
@@ -55,7 +63,7 @@ export function evaluateStretchPose(
   const ar = aspectRatio > 0 ? aspectRatio : 1.0;
   const spec = getPoseSpec(stretch.id);
   const targetAngle = stretch.scoring?.targetAngleDeg ?? spec.targetAngleDeg;
-  const tolerance = stretch.scoring?.toleranceDeg ?? spec.toleranceDeg;
+  const tolerance = 10; // Standard target band ±10°
 
   const nose = landmarks[POSE_LANDMARKS.NOSE];
   const lEar = landmarks[POSE_LANDMARKS.LEFT_EAR];
@@ -79,10 +87,12 @@ export function evaluateStretchPose(
   const id = stretch.id;
   let isHolding = false;
   let measuredAngle = 0;
+  let jointName = 'ข้อต่อ';
   let feedback = 'ทำท่าทางตามภาพตัวอย่าง';
 
   switch (id) {
     case 'stretch_neck_lateral': {
+      jointName = 'คอ';
       // Lateral neck stretch: ear line vs shoulder line tilt or nose to shoulder vertical inclination
       if (lEar && rEar && ls && rs) {
         const earTilt = (Math.atan2(rEar.y - lEar.y, (rEar.x - lEar.x) * ar) * 180) / Math.PI;
@@ -99,6 +109,7 @@ export function evaluateStretchPose(
     }
 
     case 'stretch_neck_flexion': {
+      jointName = 'คอ';
       // Neck flexion: Chin tucked down towards chest
       if (nose && midShoulder) {
         const dy = midShoulder.y - nose.y;
@@ -112,6 +123,7 @@ export function evaluateStretchPose(
     }
 
     case 'stretch_shoulder_cross': {
+      jointName = 'ไหล่';
       // Cross-body shoulder stretch: active arm wrist crossed over center line
       const activeWrist = activeSide === 'left' ? lw : rw;
       const activeShoulder = activeSide === 'left' ? ls : rs;
@@ -127,6 +139,7 @@ export function evaluateStretchPose(
     }
 
     case 'stretch_triceps_overhead': {
+      jointName = 'ศอก';
       // Overhead triceps stretch: active elbow above shoulder and bent
       const activeElbow = activeSide === 'left' ? le : re;
       const activeShoulder = activeSide === 'left' ? ls : rs;
@@ -142,6 +155,7 @@ export function evaluateStretchPose(
     }
 
     case 'stretch_chest_open': {
+      jointName = 'อก/ไหล่';
       // Chest opener: arms retracted backward
       if (ls && rs && lw && rw) {
         const leftArmAngle = calculate2DAngle(rs, ls, lw, ar);
@@ -154,6 +168,7 @@ export function evaluateStretchPose(
     }
 
     case 'stretch_side_bend': {
+      jointName = 'ลำตัว';
       // Standing side bend: trunk lateral tilt
       if (midShoulder && midHip) {
         const dx = Math.abs((midShoulder.x - midHip.x) * ar);
@@ -166,6 +181,7 @@ export function evaluateStretchPose(
     }
 
     case 'stretch_torso_twist': {
+      jointName = 'ลำตัว';
       // Standing torso twist: shoulder horizontal tilt relative to hips
       if (ls && rs && lh && rh) {
         const shoulderTilt = (Math.atan2(rs.y - ls.y, (rs.x - ls.x) * ar) * 180) / Math.PI;
@@ -178,6 +194,7 @@ export function evaluateStretchPose(
     }
 
     case 'stretch_quadriceps': {
+      jointName = 'เข่า';
       // Quadriceps stretch: knee flexion of bent leg
       const activeHip = activeSide === 'left' ? lh : rh;
       const activeKnee = activeSide === 'left' ? lk : rk;
@@ -195,6 +212,7 @@ export function evaluateStretchPose(
 
     case 'stretch_hamstrings':
     case 'stretch_piriformis_seated': {
+      jointName = 'สะโพก/หลัง';
       // Forward trunk tilt relative to vertical
       if (midShoulder && midHip) {
         const dx = Math.abs((midShoulder.x - midHip.x) * ar);
@@ -207,6 +225,7 @@ export function evaluateStretchPose(
     }
 
     case 'stretch_calf': {
+      jointName = 'เข่า/ขา';
       // Calf stretch: rear leg knee angle
       const backKnee = activeSide === 'left' ? lk : rk;
       const backHip = activeSide === 'left' ? lh : rh;
@@ -223,6 +242,7 @@ export function evaluateStretchPose(
     }
 
     default: {
+      jointName = 'ข้อต่อ';
       isHolding = Boolean(ls && rs);
       measuredAngle = targetAngle;
       feedback = 'ยืดค้างไว้ในท่าทางที่สบาย';
@@ -232,6 +252,7 @@ export function evaluateStretchPose(
 
   // Dynamic clinical score: drops proportionally when exceeding tolerance
   const diff = Math.abs(measuredAngle - targetAngle);
+  const isWithinTargetBand = diff <= tolerance;
   let score = 100;
   if (diff <= tolerance) {
     score = Math.round(100 - (diff / Math.max(1, tolerance)) * 10);
@@ -244,6 +265,10 @@ export function evaluateStretchPose(
     isHoldingPose: isHolding,
     score,
     currentAngle: measuredAngle,
+    targetAngle,
+    tolerance,
+    jointName,
+    isWithinTargetBand,
     feedback,
   };
 }

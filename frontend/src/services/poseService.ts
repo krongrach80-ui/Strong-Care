@@ -109,16 +109,16 @@ export class PoseService {
           this.landmarker = await this.initModel(
             vision,
             (v, opts) => PoseLandmarker.createFromOptions(v, opts),
-            'models/pose/pose_landmarker_lite.task',
-            'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+            'models/pose/pose_landmarker_full.task',
+            'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
             {
               numPoses: 1,
-              minPoseDetectionConfidence: 0.5,
-              minPosePresenceConfidence: 0.5,
-              minTrackingConfidence: 0.5,
+              minPoseDetectionConfidence: 0.6,
+              minPosePresenceConfidence: 0.6,
+              minTrackingConfidence: 0.6,
             }
           );
-          console.log('✅ MediaPipe PoseLandmarker initialized successfully');
+          console.log('✅ MediaPipe PoseLandmarker (Full Model) initialized successfully');
         } catch (err) {
           console.warn('⚠️ PoseLandmarker initialization failed:', err);
         }

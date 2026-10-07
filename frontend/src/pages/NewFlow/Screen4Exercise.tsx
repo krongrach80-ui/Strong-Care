@@ -266,6 +266,27 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     }
   }, [landmarks, biomechanics, exercisePhase, selectedExercise, currentExerciseConfig, clearCountdownTimers]);
 
+  // Compute overall visibility & confidence across key body landmarks
+  const visibilityStats = useMemo(() => {
+    if (!landmarks || landmarks.length === 0) {
+      return { avgVisibility: 0, isGoodVisibility: false };
+    }
+    const keyIndices = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26];
+    let totalVis = 0;
+    let count = 0;
+    for (const idx of keyIndices) {
+      if (landmarks[idx]) {
+        totalVis += (landmarks[idx].visibility ?? 1);
+        count++;
+      }
+    }
+    const avg = count > 0 ? totalVis / count : 0;
+    return {
+      avgVisibility: Math.round(avg * 100),
+      isGoodVisibility: avg >= 0.6,
+    };
+  }, [landmarks]);
+
   // Evaluate stretch posture adherence in real-time
   const stretchEval = useMemo(() => {
     if (!isStretchMode || !currentStretch) return null;
@@ -273,6 +294,100 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     const ar = (video && video.videoHeight > 0) ? (video.videoWidth / video.videoHeight) : 1.0;
     return evaluateStretchPose(landmarks, currentStretch, currentSide, ar);
   }, [isStretchMode, landmarks, currentStretch, currentSide, videoRef]);
+
+  // Target Joint Name and Target Angle Resolution
+  const activeJointInfo = useMemo(() => {
+    let name = 'ข้อต่อ';
+    let target = 90;
+
+    if (isStretchMode && stretchEval) {
+      name = stretchEval.jointName || 'ข้อต่อ';
+      target = stretchEval.targetAngle || 90;
+    } else if (currentExerciseConfig) {
+      target = currentExerciseConfig.targetAngle ?? (selectedExercise?.target_angle ?? 90);
+      const poseKey = (currentExerciseConfig.targetPose || selectedExercise?.target_joint || '').toLowerCase();
+      if (poseKey.includes('shoulder')) name = 'ไหล่';
+      else if (poseKey.includes('elbow') || poseKey.includes('curl') || poseKey.includes('extension')) name = 'ศอก';
+      else if (poseKey.includes('knee') || poseKey.includes('squat')) name = 'เข่า';
+      else if (poseKey.includes('neck')) name = 'คอ';
+      else if (poseKey.includes('hip')) name = 'สะโพก';
+      else if (poseKey.includes('torso') || poseKey.includes('trunk') || poseKey.includes('twist') || poseKey.includes('bend')) name = 'ลำตัว';
+    }
+
+    return { name, target };
+  }, [isStretchMode, stretchEval, currentExerciseConfig, selectedExercise]);
+
+  // 8-frame EMA smoothing on active joint angle (alpha = 2 / (8 + 1) = 2/9)
+  const smoothedAngleRef = useRef<number | null>(null);
+  const [liveAngle, setLiveAngle] = useState<number>(0);
+
+  useEffect(() => {
+    if (!isCameraReady || !landmarks || landmarks.length === 0) {
+      smoothedAngleRef.current = null;
+      setLiveAngle(0);
+      return;
+    }
+
+    const raw = isStretchMode
+      ? (stretchEval?.currentAngle ?? activeJointInfo.target)
+      : (analysis?.currentAngle ?? activeJointInfo.target);
+
+    const alpha = 2 / 9; // 8-frame EMA smoothing factor
+    const smoothed = smoothedAngleRef.current === null
+      ? raw
+      : Math.round(alpha * raw + (1 - alpha) * smoothedAngleRef.current);
+
+    smoothedAngleRef.current = smoothed;
+    setLiveAngle(smoothed);
+  }, [landmarks, isCameraReady, isStretchMode, stretchEval, analysis, activeJointInfo.target]);
+
+  // Continuous hold tracking: must stay within target band ±10° for >= 0.5s (500ms)
+  const inBandSinceRef = useRef<number | null>(null);
+  const [isHoldQualified, setIsHoldQualified] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (exercisePhase !== 'ACTIVE' || !isCameraReady || !landmarks || landmarks.length === 0 || !visibilityStats.isGoodVisibility) {
+      inBandSinceRef.current = null;
+      setIsHoldQualified(false);
+      return;
+    }
+
+    const diff = Math.abs(liveAngle - activeJointInfo.target);
+    const now = performance.now();
+
+    if (diff <= 10) {
+      if (inBandSinceRef.current === null) {
+        inBandSinceRef.current = now;
+      } else if (now - inBandSinceRef.current >= 500) {
+        setIsHoldQualified(true);
+      }
+    } else {
+      inBandSinceRef.current = null;
+      setIsHoldQualified(false);
+    }
+  }, [liveAngle, activeJointInfo.target, exercisePhase, isCameraReady, landmarks, visibilityStats.isGoodVisibility]);
+
+  // 3-Tier Adherence State:
+  // 'green'  = ท่าถูกต้อง กำลังนับเวลา (within ±10° for >= 0.5s)
+  // 'yellow' = ใกล้แล้ว (approaching within 25° or inside ±10° but holding < 0.5s)
+  // 'red'    = ยังไม่เข้าท่า (off-target or not in frame)
+  const adherenceTier: 'green' | 'yellow' | 'red' = useMemo(() => {
+    if (exercisePhase !== 'ACTIVE' || !isCameraReady) {
+      return 'yellow';
+    }
+    if (!landmarks || landmarks.length === 0 || !visibilityStats.isGoodVisibility) {
+      return 'red';
+    }
+
+    const diff = Math.abs(liveAngle - activeJointInfo.target);
+    if (diff <= 10) {
+      return isHoldQualified ? 'green' : 'yellow';
+    } else if (diff <= 25) {
+      return 'yellow';
+    } else {
+      return 'red';
+    }
+  }, [exercisePhase, isCameraReady, landmarks, visibilityStats.isGoodVisibility, liveAngle, activeJointInfo.target, isHoldQualified]);
 
   // Real-time posture status computation
   const realtimeStatus: 'ready' | 'adjust' | 'stop' | 'preparing' = useMemo(() => {
@@ -285,20 +400,14 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     if (!isCameraReady) {
       return 'ready';
     }
-    if (isStretchMode && landmarks && landmarks.length > 0) {
-      if (stretchEval && !stretchEval.isHoldingPose) {
-        return 'adjust';
-      }
+    if (!landmarks || landmarks.length === 0 || !visibilityStats.isGoodVisibility) {
+      return 'adjust';
+    }
+    if (adherenceTier === 'green') {
       return 'ready';
     }
-    if (analysis) {
-      if (!analysis.isCorrect || (safetyTelemetry && safetyTelemetry.state === 'WARNING')) {
-        return 'adjust';
-      }
-      return 'ready';
-    }
-    return 'ready';
-  }, [exercisePhase, safetyTelemetry, isCameraReady, isStretchMode, landmarks, stretchEval, analysis]);
+    return 'adjust';
+  }, [exercisePhase, safetyTelemetry, isCameraReady, landmarks, visibilityStats.isGoodVisibility, adherenceTier]);
 
   const statusMessage = useMemo(() => {
     if (exercisePhase === 'SAFETY_STOP' || safetyTelemetry?.state === 'STOP') {
@@ -309,13 +418,17 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
       return 'จัดตำแหน่งร่างกายให้ตรงหน้ากล้อง';
     }
     if (exercisePhase === 'READY') return 'เริ่มได้เลย!';
-    if (isCameraReady && (!landmarks || landmarks.length === 0) && exercisePhase === 'ACTIVE') {
-      return 'กรุณาเข้ามายืนในกรอบกล้องเพื่อเริ่มจับเวลา';
+    if (isCameraReady && (!landmarks || landmarks.length === 0 || !visibilityStats.isGoodVisibility) && exercisePhase === 'ACTIVE') {
+      return 'จัดตัวให้อยู่ในเฟรม / เข้าใกล้กล้อง';
     }
     if (isStretchMode && isCameraReady && landmarks && landmarks.length > 0 && exercisePhase === 'ACTIVE') {
-      if (stretchEval) {
-        return stretchEval.feedback;
+      if (adherenceTier === 'green') {
+        return stretchEval?.feedback || 'ทำท่าได้ถูกต้อง รักษาระดับไว้';
       }
+      if (adherenceTier === 'yellow') {
+        return isHoldQualified ? 'รักษาระดับไว้' : 'ใกล้เป้าหมายแล้ว ค้างนิ่งไว้อีกนิด...';
+      }
+      return stretchEval?.feedback || 'จัดท่าทางให้เข้าใกล้เป้าหมาย';
     }
     if (realtimeStatus === 'adjust') {
       if (analysis && analysis.feedback && analysis.feedback.length > 0) {
@@ -324,7 +437,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
       return 'กรุณาปรับท่าทางให้ตรงตามคำแนะนำ';
     }
     return 'ทำท่าได้ถูกต้อง รักษาระดับไว้';
-  }, [exercisePhase, safetyTelemetry, realtimeStatus, analysis, isCameraReady, landmarks, isStretchMode, stretchEval]);
+  }, [exercisePhase, safetyTelemetry, realtimeStatus, analysis, isCameraReady, landmarks, visibilityStats.isGoodVisibility, isStretchMode, stretchEval, adherenceTier, isHoldQualified]);
 
   // Total elapsed workout timer
   useEffect(() => {
@@ -531,13 +644,13 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
   useEffect(() => {
     if (!isStretchMode || isPaused || isCompletedAll || isSwitchingSide || exercisePhase !== 'ACTIVE' || isSafetyHalted) return;
 
-    // ถ้าเปิดกล้องอยู่ ให้เริ่มนับเวลาค้างเมื่อทำท่าทางถูกต้องเท่านั้น (stretchEval.isHoldingPose)
+    // ถ้าเปิดกล้องอยู่ ให้เริ่มนับเวลาค้างเมื่อทำท่าทางถูกต้องเท่านั้น (adherenceTier === 'green')
     if (isCameraReady) {
-      if (!landmarks || landmarks.length === 0) {
+      if (!landmarks || landmarks.length === 0 || !visibilityStats.isGoodVisibility) {
         return;
       }
-      if (stretchEval && !stretchEval.isHoldingPose) {
-        return; // Pauses countdown until stretch posture is adopted!
+      if (adherenceTier !== 'green') {
+        return; // Pauses countdown until angle is within ±10° for >= 0.5s!
       }
     }
 
@@ -561,7 +674,8 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     isSafetyHalted,
     isCameraReady,
     landmarks,
-    stretchEval,
+    visibilityStats.isGoodVisibility,
+    adherenceTier,
     handlePhaseFinish,
   ]);
 
@@ -569,11 +683,11 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
   useEffect(() => {
     if (isCameraReady && landmarks && landmarks.length > 0) {
       if (isStretchMode && stretchEval) {
-        setLiveScore(stretchEval.isHoldingPose ? stretchEval.score : Math.max(30, stretchEval.score - 20));
+        setLiveScore(adherenceTier === 'green' ? stretchEval.score : Math.max(30, stretchEval.score - 20));
       } else if (currentExerciseConfig && analysis) {
-        const target = currentExerciseConfig.targetAngle || 90;
-        const tol = (currentExerciseConfig as any).toleranceDeg ?? (currentExerciseConfig as any).tolerance_angle ?? 15;
-        const measuredAngle = analysis?.currentAngle ?? target;
+        const target = activeJointInfo.target;
+        const tol = (currentExerciseConfig as any).toleranceDeg ?? (currentExerciseConfig as any).tolerance_angle ?? 10;
+        const measuredAngle = liveAngle || target;
         const diff = Math.abs(measuredAngle - target);
 
         let calculatedScore = 100;
@@ -594,9 +708,9 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     } else {
       setLiveScore(null);
     }
-  }, [landmarks, isCameraReady, isStretchMode, stretchEval, currentExerciseConfig, analysis]);
+  }, [landmarks, isCameraReady, isStretchMode, stretchEval, adherenceTier, currentExerciseConfig, analysis, activeJointInfo.target, liveAngle]);
 
-  // Canvas skeletal rendering
+  // Canvas skeletal rendering (Filtered to visibility >= 0.6)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !isCameraReady) return;
@@ -612,14 +726,14 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
 
     if (landmarks && landmarks.length > 0) {
       ctx.lineWidth = 4;
-      ctx.strokeStyle = '#4AE387'; // Mint green glow
-      ctx.shadowColor = '#10B981';
+      ctx.strokeStyle = adherenceTier === 'green' ? '#4AE387' : adherenceTier === 'yellow' ? '#FCD34D' : '#F87171';
+      ctx.shadowColor = adherenceTier === 'green' ? '#10B981' : adherenceTier === 'yellow' ? '#F59E0B' : '#EF4444';
       ctx.shadowBlur = 8;
 
       const drawBone = (idx1: number, idx2: number) => {
         const p1 = landmarks[idx1];
         const p2 = landmarks[idx2];
-        if (p1 && p2 && (p1.visibility ?? 1) > 0.3 && (p2.visibility ?? 1) > 0.3) {
+        if (p1 && p2 && (p1.visibility ?? 1) >= 0.6 && (p2.visibility ?? 1) >= 0.6) {
           ctx.beginPath();
           ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height);
           ctx.lineTo(p2.x * canvas.width, p2.y * canvas.height);
@@ -642,18 +756,18 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
 
       [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28].forEach((idx) => {
         const lm = landmarks[idx];
-        if (lm && (lm.visibility ?? 1) > 0.3) {
+        if (lm && (lm.visibility ?? 1) >= 0.6) {
           ctx.fillStyle = '#FFFFFF';
           ctx.beginPath();
           ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 5.5, 0, Math.PI * 2);
           ctx.fill();
           ctx.lineWidth = 2.5;
-          ctx.strokeStyle = '#1E8A4C';
+          ctx.strokeStyle = adherenceTier === 'green' ? '#10B981' : adherenceTier === 'yellow' ? '#F59E0B' : '#EF4444';
           ctx.stroke();
         }
       });
     }
-  }, [landmarks, isCameraReady]);
+  }, [landmarks, isCameraReady, adherenceTier]);
 
   // Clean up camera on unmount
   useEffect(() => {
@@ -725,6 +839,19 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     setIsSafetyHalted(false);
     startExercisePreparation(currentExerciseConfig);
   };
+
+  // Restart current pose: reset timer, hold counting, smoothing, and status
+  const handleRestartPose = useCallback(() => {
+    setIsSafetyHalted(false);
+    smoothedAngleRef.current = null;
+    inBandSinceRef.current = null;
+    setIsHoldQualified(false);
+    setLiveAngle(0);
+    setLiveScore(null);
+    setTimeLeft(currentStretch ? getPoseHoldSeconds(currentStretch) : 20);
+    voiceAssistant.speakInstruction('เริ่มนับท่านี้ใหม่ครับ', { force: true });
+    startExercisePreparation(currentExerciseConfig);
+  }, [currentStretch, currentExerciseConfig, getPoseHoldSeconds, startExercisePreparation]);
 
   // --------------------------------------------------------------------------
   // Summary View when all exercises are complete
@@ -1041,6 +1168,14 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
           </button>
         )}
 
+        {/* Missing Person / Low Visibility Alert Banner inside Camera */}
+        {isCameraReady && exercisePhase === 'ACTIVE' && (!landmarks || landmarks.length === 0 || !visibilityStats.isGoodVisibility) && (
+          <div className="absolute top-14 left-1/2 -translate-x-1/2 z-25 bg-amber-500/95 text-stone-950 border-2 border-amber-300 px-4 py-2 rounded-2xl flex items-center gap-2 shadow-2xl animate-bounce text-xs sm:text-sm font-extrabold pointer-events-none">
+            <AlertTriangle className="w-4 h-4 text-stone-950 flex-shrink-0" />
+            <span>จัดตัวให้อยู่ในเฟรม / เข้าใกล้กล้อง</span>
+          </div>
+        )}
+
         {/* B. Floating Telemetry HUD (Placed in opposite corner from PiP video) */}
         <div
           className={`absolute top-2.5 sm:top-3.5 ${
@@ -1060,15 +1195,58 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
             </div>
           )}
 
-          {/* AI Accuracy & FPS Pill */}
-          {isCameraReady && (
-            <div className="bg-black/80 backdrop-blur-md border border-emerald-400/50 text-white px-3 py-1 rounded-full flex items-center gap-2 text-xs font-bold shadow-md">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-emerald-300 font-mono">
-                {liveScore !== null ? `ความถูกต้อง: ${liveScore}%` : 'ไม่มีคะแนน (โหมดจับเวลา)'}
+          {/* Real-Time Joint Angle Display ("มุมไหล่: 72° / เป้าหมาย 90°") */}
+          {isCameraReady && landmarks && landmarks.length > 0 && (
+            <div className="bg-black/85 backdrop-blur-md border border-emerald-400/60 text-white px-3.5 py-1.5 rounded-full flex items-center gap-2 text-xs sm:text-sm font-extrabold shadow-lg">
+              <span className="text-emerald-400 font-mono">
+                มุม{activeJointInfo.name}: {Math.round(liveAngle)}°
               </span>
-              <span className="text-stone-400 font-normal">|</span>
-              <span className="text-stone-300">{fps || 30} FPS</span>
+              <span className="text-stone-400 font-normal">/</span>
+              <span className="text-stone-300">
+                เป้าหมาย {activeJointInfo.target}°
+              </span>
+            </div>
+          )}
+
+          {/* 3-Tier Status Indicator Pill & Visibility Rating */}
+          {isCameraReady && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {/* 3-Tier Status: 🔴 แดง / 🟡 เหลือง / 🟢 เขียว */}
+              <div
+                className={`px-3 py-1 rounded-full text-xs font-black shadow-md border flex items-center gap-1.5 transition-colors duration-200 ${
+                  adherenceTier === 'green'
+                    ? 'bg-emerald-600/90 text-white border-emerald-400'
+                    : adherenceTier === 'yellow'
+                    ? 'bg-amber-500/90 text-stone-950 border-amber-300'
+                    : 'bg-rose-600/90 text-white border-rose-400'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    adherenceTier === 'green'
+                      ? 'bg-white animate-pulse'
+                      : adherenceTier === 'yellow'
+                      ? 'bg-stone-900'
+                      : 'bg-white'
+                  }`}
+                />
+                <span>
+                  {adherenceTier === 'green'
+                    ? '🟢 ถูกต้อง กำลังนับเวลา'
+                    : adherenceTier === 'yellow'
+                    ? '🟡 ใกล้แล้ว'
+                    : '🔴 ยังไม่เข้าท่า'}
+                </span>
+              </div>
+
+              {/* Confidence / Visibility Pill */}
+              <div className="bg-black/80 backdrop-blur-md border border-emerald-400/40 text-stone-200 px-2.5 py-1 rounded-full text-xs font-semibold shadow-md flex items-center gap-1.5">
+                <span className="text-emerald-300 font-mono">
+                  ความชัดเจน: {visibilityStats.avgVisibility}%
+                </span>
+                <span className="text-stone-500 font-normal">|</span>
+                <span className="text-stone-400">{fps || 30} FPS</span>
+              </div>
             </div>
           )}
         </div>
@@ -1236,70 +1414,83 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
 
       </div>
 
-      {/* 3. PINNED BOTTOM ACTION CONTROLS BAR (Single Row, Never Scrolls Out!) */}
-      <div className="w-full flex-shrink-0 grid grid-cols-4 gap-1.5 sm:gap-3 py-1 border-t border-emerald-100/60 mt-0.5 h-11 sm:h-12">
+      {/* 3. PINNED BOTTOM ACTION CONTROLS BAR (Single Row: 5 Buttons with 'เริ่มใหม่') */}
+      <div className="w-full flex-shrink-0 grid grid-cols-5 gap-1 sm:gap-2 py-1 border-t border-emerald-100/60 mt-0.5 h-11 sm:h-12">
         {/* 1) Previous Button */}
         <button
           onClick={handlePrevious}
           disabled={currentIndex === 0}
-          className={`h-full rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition active:scale-95 border ${
+          className={`h-full rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 transition active:scale-95 border ${
             currentIndex > 0
               ? 'bg-white border-emerald-300 text-[#0B2B2B] hover:bg-emerald-50 shadow-2xs cursor-pointer'
               : 'bg-stone-100 border-stone-200 text-stone-400 cursor-not-allowed'
           }`}
           aria-label="ย้อนกลับไปท่าก่อนหน้า"
+          title="ท่าก่อนหน้า"
         >
-          <SkipBack className="w-4 h-4 flex-shrink-0" />
-          <span className="text-[11px] sm:text-xs font-bold">ท่าก่อนหน้า</span>
+          <SkipBack className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="text-[11px] sm:text-xs font-bold">ก่อนหน้า</span>
         </button>
 
-        {/* 2) Pause / Resume Button */}
+        {/* 2) Restart Pose Button ("เริ่มใหม่" - Reset count, hold timer, and smoothing) */}
+        <button
+          onClick={handleRestartPose}
+          className="h-full rounded-2xl bg-white border border-emerald-300 text-[#0B2B2B] font-bold text-xs sm:text-sm hover:bg-emerald-50 transition active:scale-95 shadow-2xs flex items-center justify-center gap-1 cursor-pointer"
+          aria-label="เริ่มนับท่านี้ใหม่"
+          title="เริ่มนับท่านี้ใหม่และรีเซ็ตมุม"
+        >
+          <RotateCcw className="w-3.5 h-3.5 flex-shrink-0 text-emerald-700" />
+          <span className="text-[11px] sm:text-xs font-bold">เริ่มใหม่</span>
+        </button>
+
+        {/* 3) Pause / Resume Button */}
         <button
           onClick={() => setIsPaused(!isPaused)}
-          className={`h-full rounded-2xl font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition active:scale-95 shadow-md ${
+          className={`h-full rounded-2xl font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1 transition active:scale-95 shadow-md ${
             isPaused
               ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-600/30'
               : 'bg-[#1E8A4C] hover:bg-[#187540] text-white shadow-emerald-700/25'
           }`}
           aria-label={isPaused ? 'ทำต่อ' : 'พักชั่วคราว'}
+          title={isPaused ? 'ทำต่อ' : 'พักชั่วคราว'}
         >
           {isPaused ? (
             <>
-              <Play className="w-4 h-4 fill-white flex-shrink-0" />
-              <span>ทำต่อ</span>
+              <Play className="w-3.5 h-3.5 fill-white flex-shrink-0" />
+              <span className="text-[11px] sm:text-xs">ทำต่อ</span>
             </>
           ) : (
             <>
-              <Pause className="w-4 h-4 fill-white flex-shrink-0" />
-              <span>พักชั่วคราว</span>
+              <Pause className="w-3.5 h-3.5 fill-white flex-shrink-0" />
+              <span className="text-[11px] sm:text-xs">พัก</span>
             </>
           )}
         </button>
 
-        {/* 3) Skip Next Button */}
+        {/* 4) Skip Next Button */}
         <button
           onClick={handleSkipNext}
-          className="h-full rounded-2xl bg-white border border-emerald-300 text-[#0B2B2B] font-bold text-xs sm:text-sm hover:bg-emerald-50 transition active:scale-95 shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer"
+          className="h-full rounded-2xl bg-white border border-emerald-300 text-[#0B2B2B] font-bold text-xs sm:text-sm hover:bg-emerald-50 transition active:scale-95 shadow-2xs flex items-center justify-center gap-1 cursor-pointer"
           aria-label="ข้ามไปท่าถัดไป"
+          title="ข้ามไปท่าถัดไป"
         >
-          <span className="text-[11px] sm:text-xs font-bold">ข้ามท่า</span>
-          <SkipForward className="w-4 h-4 flex-shrink-0" />
+          <span className="text-[11px] sm:text-xs font-bold">ข้าม</span>
+          <SkipForward className="w-3.5 h-3.5 flex-shrink-0" />
         </button>
 
-        {/* 4) Tell Therapist Action Button */}
+        {/* 5) Tell Therapist Action Button */}
         <button
           onClick={() => {
-            const rom = (analysis && typeof analysis.currentAngle === 'number' && !isNaN(analysis.currentAngle))
-              ? Math.round(analysis.currentAngle)
-              : null;
+            const rom = Math.round(liveAngle) || null;
             const poseName = `ท่าที่ ${currentIndex + 1}: ${currentExerciseConfig.name}`;
             onOpenTherapistModal(liveScore, poseName, rom);
           }}
-          className="h-full rounded-2xl bg-gradient-to-r from-[#6FD67F] to-[#1E8A4C] hover:brightness-105 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition cursor-pointer"
+          className="h-full rounded-2xl bg-gradient-to-r from-[#6FD67F] to-[#1E8A4C] hover:brightness-105 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1 shadow-md active:scale-95 transition cursor-pointer"
           id="btnNotifyTherapist"
+          title="ส่งผลให้นักกายภาพ"
         >
-          <Send className="w-4 h-4 flex-shrink-0" />
-          <span className="truncate">ส่งผลให้นักกายภาพ</span>
+          <Send className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="text-[11px] sm:text-xs truncate">ส่งผล</span>
         </button>
       </div>
 
