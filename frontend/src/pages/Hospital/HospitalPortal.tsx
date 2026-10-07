@@ -49,6 +49,8 @@ import { EditExerciseModal } from '../../components/Hospital/EditExerciseModal';
 import { DeleteExerciseModal } from '../../components/Hospital/DeleteExerciseModal';
 import { EditPatientModal } from '../../components/Hospital/EditPatientModal';
 import { EditTherapistModal } from '../../components/Hospital/EditTherapistModal';
+import { ConfirmActionModal } from '../../components/Hospital/ConfirmActionModal';
+import { BannedManagementModal } from '../../components/Hospital/BannedManagementModal';
 
 interface HospitalPortalProps {
   onClose: () => void;
@@ -395,8 +397,10 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
   const [logSearch, setLogSearch] = useState<string>('');
   const [logCategoryFilter, setLogCategoryFilter] = useState<string>('all');
   const [isBannedManagementOpen, setIsBannedManagementOpen] = useState<boolean>(false);
-  const [manualBanIpInput, setManualBanIpInput] = useState<string>('');
-  const [manualBanDeviceInput, setManualBanDeviceInput] = useState<string>('');
+  const [kickedLogIds, setKickedLogIds] = useState<number[]>([]);
+  const [confirmKickLog, setConfirmKickLog] = useState<ActivityLog | null>(null);
+  const [confirmBanDevice, setConfirmBanDevice] = useState<string | null>(null);
+  const [confirmBanIp, setConfirmBanIp] = useState<string | null>(null);
 
   const filteredLogs = useMemo(() => {
     return activityLogs.filter((log) => {
@@ -417,13 +421,19 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
   // 6. STATE FOR SYSTEM SETTINGS (Tab 6: settings - Admin only)
   // =========================================================================
   const [localAiSettings, setLocalAiSettings] = useState(aiSettings);
+  const [isSavingSettings, setIsSavingSettings] = useState<boolean>(false);
+  const [isResetSettingsOpen, setIsResetSettingsOpen] = useState<boolean>(false);
 
   const handleSaveSettings = () => {
-    updateAiSettings(localAiSettings);
-    showToast('บันทึกการตั้งค่าระบบและ AI ชีวมิติสำเร็จ');
+    setIsSavingSettings(true);
+    setTimeout(() => {
+      updateAiSettings(localAiSettings);
+      setIsSavingSettings(false);
+      showToast('บันทึกการตั้งค่าเรียบร้อยแล้ว');
+    }, 450);
   };
 
-  const handleResetSettings = () => {
+  const handleResetSettingsConfirm = () => {
     const defaults = {
       similarityThreshold: 0.82,
       marginThreshold: 0.08,
@@ -437,7 +447,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
     };
     setLocalAiSettings(defaults);
     updateAiSettings(defaults);
-    showToast('รีเซ็ตการตั้งค่าระบบเป็นค่าเริ่มต้นทางการแพทย์แล้ว');
+    showToast('รีเซ็ตเรียบร้อยแล้ว');
   };
 
   // Staff Login Submission
@@ -1615,142 +1625,14 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
 
                 <div className="flex items-center gap-2.5">
                   <button
-                    onClick={() => setIsBannedManagementOpen(!isBannedManagementOpen)}
-                    className="px-4 py-2 rounded-full border border-rose-300 bg-rose-50 text-rose-700 text-xs font-bold hover:bg-rose-100 transition flex items-center gap-1.5 cursor-pointer"
+                    onClick={() => setIsBannedManagementOpen(true)}
+                    className="px-4 py-2 rounded-full border border-rose-300 bg-rose-50 text-rose-700 text-xs font-bold hover:bg-rose-100 transition flex items-center gap-1.5 cursor-pointer shadow-xs"
                   >
                     <Ban className="w-3.5 h-3.5" />
                     <span>จัดการรายการแบน ({bannedDevices.length + bannedIps.length})</span>
                   </button>
                 </div>
               </div>
-
-              {/* Banned Devices & IP Panel (Collapsible/Drawer) */}
-              {isBannedManagementOpen && (
-                <div className="bg-white rounded-3xl p-6 border-2 border-rose-200 shadow-md space-y-4 animate-fadeIn">
-                  <div className="flex items-center justify-between border-b border-rose-100 pb-2">
-                    <h4 className="font-bold text-sm text-rose-900 flex items-center gap-2">
-                      <Shield className="w-4 h-4 text-rose-600" />
-                      <span>ศูนย์ควบคุมความปลอดภัย & บัญชีดำ (Ban Firewall)</span>
-                    </h4>
-                    <button
-                      onClick={() => setIsBannedManagementOpen(false)}
-                      className="p-1 rounded-full text-slate-400 hover:bg-slate-100 cursor-pointer"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs">
-                    {/* Banned Devices */}
-                    <div className="p-4 rounded-2xl bg-rose-50/50 border border-rose-200 space-y-2">
-                      <div className="font-bold text-rose-900 flex items-center justify-between">
-                        <span>อุปกรณ์ที่ถูกแบน (Banned Devices):</span>
-                        <span className="font-mono">{bannedDevices.length} รายการ</span>
-                      </div>
-                      <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                        {bannedDevices.length === 0 ? (
-                          <div className="text-slate-400 py-2">ไม่มีอุปกรณ์ที่ถูกแบน</div>
-                        ) : (
-                          bannedDevices.map((d, idx) => (
-                            <div
-                              key={idx}
-                              className="flex items-center justify-between p-2 rounded-xl bg-white border border-rose-100"
-                            >
-                              <span className="font-semibold text-slate-700 truncate">{d}</span>
-                              <button
-                                onClick={() => {
-                                  unbanDevice(d);
-                                  showToast(`ปลดแบนอุปกรณ์: ${d}`);
-                                }}
-                                className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px] hover:bg-emerald-200 transition cursor-pointer"
-                              >
-                                ปลดแบน
-                              </button>
-                            </div>
-                          ))
-                        )}
-                      </div>
-
-                      {/* Manual Device Ban Input */}
-                      <div className="pt-2 flex gap-1.5">
-                        <input
-                          type="text"
-                          value={manualBanDeviceInput}
-                          onChange={(e) => setManualBanDeviceInput(e.target.value)}
-                          placeholder="ชื่ออุปกรณ์ / Fingerprint"
-                          className="flex-1 px-3 py-1.5 rounded-xl border border-rose-200 bg-white text-xs outline-none"
-                        />
-                        <button
-                          onClick={() => {
-                            if (manualBanDeviceInput.trim()) {
-                              banDevice(manualBanDeviceInput.trim());
-                              setManualBanDeviceInput('');
-                              showToast('แบนอุปกรณ์เรียบร้อยแล้ว');
-                            }
-                          }}
-                          className="px-3 py-1.5 rounded-xl bg-rose-600 text-white font-bold text-xs hover:bg-rose-700 transition cursor-pointer"
-                        >
-                          + แบนเครื่อง
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Banned IPs */}
-                    <div className="p-4 rounded-2xl bg-rose-50/50 border border-rose-200 space-y-2">
-                      <div className="font-bold text-rose-900 flex items-center justify-between">
-                        <span>ที่อยู่ IP ที่ถูกแบน (Banned IP Addresses):</span>
-                        <span className="font-mono">{bannedIps.length} รายการ</span>
-                      </div>
-                      <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                        {bannedIps.length === 0 ? (
-                          <div className="text-slate-400 py-2">ไม่มี IP ที่ถูกแบน</div>
-                        ) : (
-                          bannedIps.map((ip, idx) => (
-                            <div
-                              key={idx}
-                              className="flex items-center justify-between p-2 rounded-xl bg-white border border-rose-100"
-                            >
-                              <span className="font-mono font-bold text-slate-700">{ip}</span>
-                              <button
-                                onClick={() => {
-                                  unbanIp(ip);
-                                  showToast(`ปลดแบน IP: ${ip}`);
-                                }}
-                                className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px] hover:bg-emerald-200 transition cursor-pointer"
-                              >
-                                ปลดแบน
-                              </button>
-                            </div>
-                          ))
-                        )}
-                      </div>
-
-                      {/* Manual IP Ban Input */}
-                      <div className="pt-2 flex gap-1.5">
-                        <input
-                          type="text"
-                          value={manualBanIpInput}
-                          onChange={(e) => setManualBanIpInput(e.target.value)}
-                          placeholder="หมายเลข IP (เช่น 192.168.1.99)"
-                          className="flex-1 px-3 py-1.5 rounded-xl border border-rose-200 bg-white text-xs outline-none"
-                        />
-                        <button
-                          onClick={() => {
-                            if (manualBanIpInput.trim()) {
-                              banIp(manualBanIpInput.trim());
-                              setManualBanIpInput('');
-                              showToast('แบน IP เรียบร้อยแล้ว');
-                            }
-                          }}
-                          className="px-3 py-1.5 rounded-xl bg-rose-600 text-white font-bold text-xs hover:bg-rose-700 transition cursor-pointer"
-                        >
-                          + แบน IP
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* Filters for Activity Log */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -1797,8 +1679,9 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                     </thead>
                     <tbody className="divide-y divide-emerald-50">
                       {filteredLogs.map((log) => {
-                        const isDeviceBanned = log.device && bannedDevices.includes(log.device);
-                        const isIpBanned = log.ipAddress && bannedIps.includes(log.ipAddress);
+                        const isKicked = kickedLogIds.includes(log.id);
+                        const isDeviceBanned = Boolean(log.device && bannedDevices.includes(log.device));
+                        const isIpBanned = Boolean(log.ipAddress && bannedIps.includes(log.ipAddress));
 
                         return (
                           <tr key={log.id} className="hover:bg-emerald-50/30 transition">
@@ -1806,7 +1689,14 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                               {log.timestamp}
                             </td>
                             <td className="py-3 px-5 whitespace-nowrap">
-                              <div className="font-bold text-[#0F2F2B]">{log.userName}</div>
+                              <div className="font-bold text-[#0F2F2B] flex items-center gap-2">
+                                <span>{log.userName}</span>
+                                {isKicked && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold border border-amber-300">
+                                    ถูกเตะออก
+                                  </span>
+                                )}
+                              </div>
                               <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
                                 {log.role}
                               </span>
@@ -1824,58 +1714,89 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                               <div className="flex items-center gap-1.5 text-slate-700">
                                 <Laptop className="w-3.5 h-3.5 text-slate-400" />
                                 <span className="font-medium text-[11px]">{log.device || 'Windows 11 / Chrome'}</span>
+                                {isDeviceBanned && (
+                                  <span className="text-rose-600 font-bold bg-rose-50 px-1.5 py-0.5 rounded text-[9px] border border-rose-200">
+                                    [แบนเครื่อง]
+                                  </span>
+                                )}
                               </div>
                               <div className="flex items-center gap-1.5 text-slate-500 font-mono text-[10px] mt-0.5">
                                 <Globe className="w-3.5 h-3.5 text-slate-400" />
                                 <span>{log.ipAddress || '192.168.1.100'}</span>
-                                {(isDeviceBanned || isIpBanned) && (
-                                  <span className="text-rose-600 font-bold bg-rose-50 px-1 rounded">
-                                    [BANNED]
+                                {isIpBanned && (
+                                  <span className="text-rose-600 font-bold bg-rose-50 px-1.5 py-0.5 rounded text-[9px] border border-rose-200">
+                                    [แบน IP]
                                   </span>
                                 )}
                               </div>
                             </td>
                             <td className="py-3 px-5 text-right whitespace-nowrap">
-                              <div className="inline-flex items-center gap-1">
-                                {/* Kick Session */}
-                                <button
-                                  onClick={() => {
-                                    kickSession(log.id);
-                                    showToast(`เตะเซสชันของ ${log.userName} เรียบร้อยแล้ว`);
-                                  }}
-                                  title="เตะเซสชันออกจากการเชื่อมต่อ"
-                                  className="px-2 py-1 rounded-lg border border-amber-300 bg-amber-50 text-amber-800 font-bold text-[10px] hover:bg-amber-100 transition cursor-pointer"
-                                >
-                                  เตะออก
-                                </button>
+                              <div className="inline-flex items-center gap-1.5">
+                                {/* 1. Kick Session Button */}
+                                {isKicked ? (
+                                  <button
+                                    disabled
+                                    className="px-2.5 py-1 rounded-lg border border-slate-200 bg-slate-100 text-slate-400 font-bold text-[10px] cursor-not-allowed"
+                                  >
+                                    ถูกเตะออก
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => setConfirmKickLog(log)}
+                                    title="เตะผู้ใช้ออกจากระบบ"
+                                    className="px-2.5 py-1 rounded-lg border border-amber-300 bg-amber-50 text-amber-800 font-bold text-[10px] hover:bg-amber-100 transition cursor-pointer"
+                                  >
+                                    เตะออก
+                                  </button>
+                                )}
 
-                                {/* Ban Device */}
-                                <button
-                                  onClick={() => {
-                                    if (log.device) {
-                                      banDevice(log.device);
-                                      showToast(`แบนอุปกรณ์: ${log.device}`);
-                                    }
-                                  }}
-                                  title="แบนคอมพิวเตอร์ / เบราว์เซอร์เครื่องนี้"
-                                  className="px-2 py-1 rounded-lg border border-rose-300 bg-rose-50 text-rose-700 font-bold text-[10px] hover:bg-rose-100 transition cursor-pointer"
-                                >
-                                  แบนเครื่อง
-                                </button>
+                                {/* 2. Ban Device Button */}
+                                {isDeviceBanned ? (
+                                  <button
+                                    onClick={() => {
+                                      if (log.device) {
+                                        unbanDevice(log.device);
+                                        showToast('ยกเลิกแบนเครื่องเรียบร้อยแล้ว');
+                                      }
+                                    }}
+                                    title="ยกเลิกแบนคอมพิวเตอร์ / เบราว์เซอร์เครื่องนี้"
+                                    className="px-2.5 py-1 rounded-lg border border-slate-300 bg-slate-100 text-slate-600 font-bold text-[10px] hover:bg-slate-200 transition cursor-pointer"
+                                  >
+                                    ยกเลิกแบน
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => setConfirmBanDevice(log.device || 'Windows 11 / Chrome 124')}
+                                    title="แบนคอมพิวเตอร์ / เบราว์เซอร์เครื่องนี้"
+                                    className="px-2.5 py-1 rounded-lg border border-rose-300 bg-rose-50 text-rose-700 font-bold text-[10px] hover:bg-rose-100 transition cursor-pointer"
+                                  >
+                                    แบนเครื่อง
+                                  </button>
+                                )}
 
-                                {/* Ban IP */}
-                                <button
-                                  onClick={() => {
-                                    if (log.ipAddress) {
-                                      banIp(log.ipAddress);
-                                      showToast(`แบนที่อยู่ IP: ${log.ipAddress}`);
-                                    }
-                                  }}
-                                  title="แบน IP Address นี้"
-                                  className="px-2 py-1 rounded-lg border border-slate-300 bg-slate-50 text-slate-700 font-bold text-[10px] hover:bg-slate-200 transition cursor-pointer"
-                                >
-                                  แบน IP
-                                </button>
+                                {/* 3. Ban IP Button */}
+                                {isIpBanned ? (
+                                  <button
+                                    onClick={() => {
+                                      if (log.ipAddress) {
+                                        unbanIp(log.ipAddress);
+                                        showToast('ยกเลิกแบน IP เรียบร้อยแล้ว');
+                                      }
+                                    }}
+                                    title="ยกเลิกแบนที่อยู่ IP นี้"
+                                    className="px-2.5 py-1 rounded-lg border border-slate-300 bg-slate-100 text-slate-600 font-bold text-[10px] hover:bg-slate-200 transition cursor-pointer"
+                                  >
+                                    ยกเลิกแบน
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => setConfirmBanIp(log.ipAddress || '192.168.1.100')}
+                                    title="แบน IP Address นี้"
+                                    className="px-2.5 py-1 rounded-lg border border-slate-300 bg-slate-50 text-slate-700 font-bold text-[10px] hover:bg-slate-200 transition cursor-pointer"
+                                  >
+                                    แบน IP
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -1902,16 +1823,24 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={handleResetSettings}
+                    onClick={() => setIsResetSettingsOpen(true)}
                     className="px-4 py-2 rounded-full border border-slate-300 text-slate-600 text-xs font-bold hover:bg-slate-100 transition cursor-pointer"
                   >
                     รีเซ็ตเป็นค่าเริ่มต้น
                   </button>
                   <button
                     onClick={handleSaveSettings}
-                    className="px-5 py-2 rounded-full bg-[#10B981] text-white text-xs font-bold shadow-md hover:bg-emerald-600 transition cursor-pointer"
+                    disabled={isSavingSettings}
+                    className="px-5 py-2 rounded-full bg-[#10B981] text-white text-xs font-bold shadow-md hover:bg-emerald-600 transition cursor-pointer flex items-center gap-1.5 disabled:bg-emerald-300"
                   >
-                    บันทึกการตั้งค่า
+                    {isSavingSettings ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>กำลังบันทึก...</span>
+                      </>
+                    ) : (
+                      <span>บันทึกการตั้งค่า</span>
+                    )}
                   </button>
                 </div>
               </div>
@@ -2310,6 +2239,120 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
         exercise={deletingExercise}
         onConfirmDelete={deleteExercise}
         onSuccessToast={showToast}
+      />
+
+      {/* ==================================================================== */}
+      {/* 14. BANNED MANAGEMENT MODAL (Tab 5: logs)                            */}
+      {/* ==================================================================== */}
+      <BannedManagementModal
+        isOpen={isBannedManagementOpen}
+        onClose={() => setIsBannedManagementOpen(false)}
+        bannedDevices={bannedDevices}
+        bannedIps={bannedIps}
+        onUnbanDevice={unbanDevice}
+        onBanDevice={banDevice}
+        onUnbanIp={unbanIp}
+        onBanIp={banIp}
+        onSuccessToast={showToast}
+      />
+
+      {/* ==================================================================== */}
+      {/* 15. CONFIRM KICK SESSION MODAL (Tab 5: logs)                         */}
+      {/* ==================================================================== */}
+      <ConfirmActionModal
+        isOpen={Boolean(confirmKickLog)}
+        onClose={() => setConfirmKickLog(null)}
+        title="เตะผู้ใช้ออกจากระบบ"
+        message="ต้องการเตะผู้ใช้ออกจากระบบใช่หรือไม่?"
+        detail={
+          confirmKickLog ? (
+            <div className="space-y-1">
+              <div><strong className="text-slate-800">ผู้ใช้:</strong> {confirmKickLog.userName} ({confirmKickLog.role})</div>
+              <div><strong className="text-slate-800">การกระทำ:</strong> {confirmKickLog.action}</div>
+              <div><strong className="text-slate-800">อุปกรณ์/IP:</strong> {confirmKickLog.device || 'Windows 11'} ({confirmKickLog.ipAddress || '192.168.1.100'})</div>
+              <div><strong className="text-slate-800">เวลา:</strong> {confirmKickLog.timestamp}</div>
+            </div>
+          ) : undefined
+        }
+        confirmLabel="ยืนยันการเตะออก"
+        variant="warning"
+        iconType="kick"
+        onConfirm={() => {
+          if (confirmKickLog) {
+            kickSession(confirmKickLog.id);
+            setKickedLogIds((prev) => [...prev, confirmKickLog.id]);
+            showToast('เตะออกเรียบร้อยแล้ว');
+          }
+        }}
+      />
+
+      {/* ==================================================================== */}
+      {/* 16. CONFIRM BAN DEVICE MODAL (Tab 5: logs)                           */}
+      {/* ==================================================================== */}
+      <ConfirmActionModal
+        isOpen={Boolean(confirmBanDevice)}
+        onClose={() => setConfirmBanDevice(null)}
+        title="ยืนยันการแบนอุปกรณ์"
+        message="ต้องการแบนเครื่องอุปกรณ์นี้ใช่หรือไม่?"
+        detail={
+          confirmBanDevice ? (
+            <div>
+              <strong className="text-slate-800">ข้อมูลอุปกรณ์ที่จะแบน:</strong>
+              <div className="font-mono text-rose-700 font-bold mt-0.5">{confirmBanDevice}</div>
+            </div>
+          ) : undefined
+        }
+        confirmLabel="ยืนยันการแบนเครื่อง"
+        variant="danger"
+        iconType="ban"
+        onConfirm={() => {
+          if (confirmBanDevice) {
+            banDevice(confirmBanDevice);
+            showToast('แบนเครื่องเรียบร้อยแล้ว');
+          }
+        }}
+      />
+
+      {/* ==================================================================== */}
+      {/* 17. CONFIRM BAN IP MODAL (Tab 5: logs)                               */}
+      {/* ==================================================================== */}
+      <ConfirmActionModal
+        isOpen={Boolean(confirmBanIp)}
+        onClose={() => setConfirmBanIp(null)}
+        title="ยืนยันการแบน IP Address"
+        message="ต้องการแบนที่อยู่ IP นี้ใช่หรือไม่?"
+        detail={
+          confirmBanIp ? (
+            <div>
+              <strong className="text-slate-800">IP Address ที่จะแบน:</strong>
+              <div className="font-mono text-rose-700 font-bold mt-0.5">{confirmBanIp}</div>
+            </div>
+          ) : undefined
+        }
+        confirmLabel="ยืนยันการแบน IP"
+        variant="danger"
+        iconType="ban"
+        onConfirm={() => {
+          if (confirmBanIp) {
+            banIp(confirmBanIp);
+            showToast('แบน IP เรียบร้อยแล้ว');
+          }
+        }}
+      />
+
+      {/* ==================================================================== */}
+      {/* 18. CONFIRM RESET SETTINGS MODAL (Tab 6: settings)                   */}
+      {/* ==================================================================== */}
+      <ConfirmActionModal
+        isOpen={isResetSettingsOpen}
+        onClose={() => setIsResetSettingsOpen(false)}
+        title="รีเซ็ตการตั้งค่าระบบ"
+        message="ต้องการรีเซ็ตการตั้งค่าทั้งหมดกลับเป็นค่าเริ่มต้นใช่หรือไม่?"
+        detail="การตั้งค่าระบบ AI ชีวมิติ ค่าเกณฑ์ความปลอดภัยของท่าทาง และเสียงแนะนำทั้งหมดจะถูกปรับกลับเป็นมาตรฐานเริ่มต้นทางการแพทย์"
+        confirmLabel="ยืนยันการรีเซ็ต"
+        variant="warning"
+        iconType="reset"
+        onConfirm={handleResetSettingsConfirm}
       />
     </div>
   );
