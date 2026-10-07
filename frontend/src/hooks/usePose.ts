@@ -4,6 +4,7 @@ import { PoseLandmarks } from '../types/pose';
 
 export function usePose(videoRef: React.RefObject<HTMLVideoElement>, isCameraActive: boolean, exerciseSlug?: string) {
   const [landmarks, setLandmarks] = useState<PoseLandmarks | null>(null);
+  const [worldLandmarks, setWorldLandmarks] = useState<PoseLandmarks | null>(null);
   const [handLandmarks, setHandLandmarks] = useState<PoseLandmarks[] | null>(null);
   const [faceLandmarks, setFaceLandmarks] = useState<PoseLandmarks | null>(null);
 
@@ -108,6 +109,7 @@ export function usePose(videoRef: React.RefObject<HTMLVideoElement>, isCameraAct
           // Throttle React state updates to ~22 fps to avoid heavy React re-renders
           if (now - lastUiUpdateRef.current >= 45) {
             setLandmarks(results.poseLandmarks);
+            setWorldLandmarks(results.worldLandmarks || null);
             setHandLandmarks(results.handLandmarks || null);
             setFaceLandmarks(results.faceLandmarks || null);
             lastUiUpdateRef.current = now;
@@ -118,6 +120,7 @@ export function usePose(videoRef: React.RefObject<HTMLVideoElement>, isCameraAct
             landmarksRef.current = null;
             if (now - lastUiUpdateRef.current >= 45) {
               setLandmarks(null);
+              setWorldLandmarks(null);
               setHandLandmarks(null);
               setFaceLandmarks(null);
               lastUiUpdateRef.current = now;
@@ -136,6 +139,7 @@ export function usePose(videoRef: React.RefObject<HTMLVideoElement>, isCameraAct
     } else {
       landmarksRef.current = null;
       setLandmarks(null);
+      setWorldLandmarks(null);
       setHandLandmarks(null);
       setFaceLandmarks(null);
     }
@@ -149,6 +153,7 @@ export function usePose(videoRef: React.RefObject<HTMLVideoElement>, isCameraAct
 
   return {
     landmarks,
+    worldLandmarks,
     landmarksRef,
     handLandmarks,
     faceLandmarks,

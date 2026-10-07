@@ -173,42 +173,66 @@
   - 🔴 **สีแดง**: ยังไม่เข้าท่า (อยู่นอกเป้าหมาย $> 25^\circ$ หรืออยู่นอกเฟรม)
   - 🟡 **สีเหลือง**: ใกล้แล้ว (อยู่ในช่วง $\pm 25^\circ$ หรืออยู่ในช่วง $\pm 10^\circ$ กำลังค้างให้ครบ 0.5 วิ)
   - 🟢 **สีเขียว**: ถูกต้อง กำลังนับเวลา (อยู่ในช่วง $\pm 10^\circ$ ต่อเนื่อง $\ge 0.5$ วิ)
-- **แสดงคะแนนความชัดเจนรวม (Visibility Rating)** เช่น `"ความชัดเจน: 92%"`
-- **ปุ่ม "เริ่มใหม่" (Restart Pose)**: รีเซ็ตเวลาค้าง ท่าที่กำลังฝึก ตัวกรอง EMA และตัวนับ ให้เริ่มใหม่ได้ทันที
-- ควบคุมด้วยสมการตรีโกณมิติ **Aspect-Ratio Invariant** (รองรับจอแนวนอน 16:9, จอมาตรฐาน 4:3, และจอมือถือ/ตู้แนวตั้ง 9:16)
+- **แสดงคะแนนความชัดเจนรวม (Visibility Rating)**: ป้ายสถานะ 3 ระดับ (ดี / พอใช้ / ไม่ชัด) พร้อมเปอร์เซ็นต์ เช่น `"การมองเห็น: ดี (94%)"`
+- **ระบบจัดเฟรมและระยะห่าง (Framing & Distance Watchdog)**: ตรวจสอบตำแหน่งศีรษะ, สัดส่วนช่วงไหล่ (ระยะ 1.5–2.5 ม.), และข้อเท้า พร้อมคำแนะนำ `"แนะนำระยะ 1.5–2.5 เมตร ตัวเต็มเฟรม แสงด้านหน้า"`
+- **ปุ่ม "เริ่มใหม่" (Restart Pose)**: รีเซ็ตเวลาค้าง, ท่าที่กำลังฝึก, ตัวกรอง 8-frame EMA, สถานะสี, และตัวอย่างมุมสะสม ให้เริ่มใหม่ได้ทันที
+- **สรุปผลการฝึกที่ครอบคลุม (Comprehensive Session Summary)**: แสดงผลการฝึก, เวลารวม, คะแนนความแม่นยำเฉลี่ย, เวลาที่อยู่ในท่าถูกต้อง (วินาที), และมุมเฉลี่ย (องศา)
+- **สวิตช์สลับคลิปหมอสาธิตและแอนิเมชัน (Doctor Video & Stick Figure Mode)**: สลับระหว่างคลิป YouTube และ Stick Figure ได้ทันที พร้อมระบบตรวจจับข้อผิดพลาดไม่ให้ขึ้นหน้าจอสีแดงของ YouTube
+- ควบคุมด้วยสมการตรีโกณมิติ **Aspect-Ratio Invariant** และ **3D Euclidean Metric Vector** จาก `worldLandmarks`
 - ระบบนับรอบอัตโนมัติ **5-State Repetition Automaton (READY ➔ UP ➔ HOLD ➔ DOWN ➔ COMPLETE)**
 
 #### 6. 🔐 ระบบยืนยันตัวตนชีวมิติอัจฉริยะ (Smart Biometric Authentication & Liveness Detection)
 - **สแกนใบหน้าอัจฉริยะ (Face Login & Enrollment)**:
   - ขับเคลื่อนด้วย **ResNet-34 Deep Feature Embeddings (128 มิติ)** + **MediaPipe FaceLandmarker (478 Canonical Facial Mesh Landmarks)**
   - **การตรวจเช็คคุณภาพเฟรมก่อนสแกน (Pre-Capture Quality Gate)**:
-    - ใบหน้าต้องอยู่กึ่งกลางกรอบวงรี
+    - ใบหน้าต้องอยู่กึ่งกลางกรอบวงรี (ไม่หลุดขอบ)
     - ขนาดใบหน้าพอเหมาะ (20% – 68% ของความกว้างภาพ)
     - แสงสว่างเพียงพอ (ไม่มืดเกินไป $< 45$ และไม่จ้าเกินไป $> 220$)
     - ความคมชัดผ่านเกณฑ์ Laplacian Variance ป้องกันภาพเบลอ
-    - ศีรษะตรง ไม่เอียงเกินพิกัด ($|Yaw| \le 12^\circ, |Pitch| \le 14^\circ, |Roll| \le 12^\circ$)
-  - **การแจ้งเตือนชัดเจน ไม่ Match มั่ว**: หากแสงไม่พอ แจ้ง `"แสงสว่างน้อยเกินไป กรุณาเพิ่มแสง"` หรือหากหน้าเอียง แจ้ง `"ใบหน้าเอียงเกินไป กรุณามองตรงมาที่กล้อง"` และบล็อกการส่ง Verify จนกว่าจะผ่านเกณฑ์
-  - **Interactive Liveness Challenge**: ต้องผ่านการตรวจความมีชีวิตจริงเบื้องต้น (กระพริบตา หรือหันซ้าย/ขวา) ก่อนยืนยันตัวตน
-  - **Cosine Similarity Verification**: เกณฑ์ความคล้ายคลึงเริ่มต้น $0.75 - 0.82$ (ค่าเริ่มต้น $0.82$) รัดกุม ป้องกันการสับสนระหว่างบุคคล
-  - ทำงานแบบ Local Embedding ไม่ส่งภาพถ่ายจริงขึ้นเซิร์ฟเวอร์ เป็นไปตามมาตรฐาน PDPA / HIPAA
+    - ศีรษะตรง ไม่เอียงเกิน 20–22 องศา ($|Yaw| \le 22^\circ, |Pitch| \le 22^\circ, |Roll| \le 20^\circ$)
+  - **การแจ้งเตือนสั้นกระชับเข้าใจง่าย**: เช่น `"เข้าใกล้ขึ้น"`, `"หันหน้าตรง"`, `"เพิ่มแสง"`, `"ลดแสงจ้า"`
+  - **การตรวจความมีชีวิตจริง 4 รูปแบบ (Basic Liveness Detection)**:
+    - กระพริบตา (Blink Detection EAR & Blendshapes)
+    - หันศีรษะไปทางซ้ายเล็กน้อย
+    - หันศีรษะไปทางขวาเล็กน้อย
+    - อ้าปากสั้นๆ (Mouth Opening Detection)
+  - **ขั้นตอน UX Face Login 5 ลำดับชัดเจน**:
+    1. กำลังตรวจจับใบหน้า
+    2. ตรวจความมีชีวิต
+    3. กำลังยืนยันตัวตน
+    4. สำเร็จ
+    5. ไม่สำเร็จ (แสดงเหตุผลชัดเจน พร้อมปุ่มลัด `[เข้าสู่ระบบด้วยรหัส PIN สำรอง]`)
+  - **Cosine Similarity Verification**: เกณฑ์ความคล้ายคลึงมาตรฐาน $0.78 - 0.85$ (ค่าเริ่มต้น $0.80$) รัดกุม ป้องกันการสับสนระหว่างบุคคล
+  - **ความปลอดภัยและความเป็นส่วนตัว (PDPA / HIPAA Compliant)**: จัดเก็บเฉพาะ 128-D embedding vector ไม่เก็บภาพถ่ายดิบลง `localStorage` รองรับการลบชีวมิติทันทีเมื่อร้องขอ
 - **รหัส PIN ตัวเลข (Senior PIN Mode)**: ใช้งานง่าย สำหรับผู้สูงอายุโดยเฉพาะ
 - **รหัสผ่านปกติ (Password)** สำหรับบุคลากรทางการแพทย์
 
-#### 7. 🛡️ Clinical Safety Watchdog (ระบบความปลอดภัยชีวกลศาสตร์เรียลไทม์)
+#### 7. ⚙️ หน้าตั้งค่าระบบส่วนกลาง (Admin System Settings & Live Parameter Control)
+- **ปรับเปลี่ยนพารามิเตอร์แล้วมีผลทันที (Live Sync)**:
+  - เกณฑ์ความคล้ายคลึงใบหน้า (Cosine Similarity): ปรับได้ 0.70 – 0.95 (แนะนำ 0.80)
+  - โหมดตรวจจับการมีชีวิต (Liveness Verification Toggle)
+  - เกณฑ์ความเชื่อมั่นโมเดลท่าทาง (Pose Confidence): แนะนำ 0.65
+  - เกณฑ์ความชัดเจนของข้อต่อ (Landmark Visibility): แนะนำ 0.55
+  - ความคลาดเคลื่อนมุมเป้าหมาย (ROM Tolerance): แนะนำ 8–10°
+  - มุมเอียงชดเชยลำตัวสูงสุด (Max Trunk Lean Angle): 22°
+  - ความเร็วการเคลื่อนไหวสูงสุด (Max Velocity): 220°/วินาที
+- **ปุ่มรีเซ็ตเป็นค่ามาตรฐานที่แนะนำ (Reset to Recommended Defaults)**: คืนค่าเป็น Pose confidence 0.65, Visibility 0.55, Tolerance 10°, Face similarity 0.80
+
+#### 8. 🛡️ Clinical Safety Watchdog (ระบบความปลอดภัยชีวกลศาสตร์เรียลไทม์)
 - ตรวจจับภาวะอันตรายระหว่างการฝึก:
   - มุมข้อต่อเกินช่วงปลอดภัย (Over-ROM)
   - ลำตัวเอียงชดเชยรุนแรง (Spine Lean $> 22^\circ$)
   - การยกบ่าเกร็งกล้ามเนื้อ (Shoulder Hike $> 18^\circ$)
   - การเคลื่อนไหวกระตุกเร็วผิดปกติ (Erratic Velocity $> 220^\circ$/s)
-- **Smart Pause & Auto-Resume**: หากผู้ป่วยหลุดจากกรอบกล้อง (`OUT_OF_FRAME`) ระบบจะหยุดนับรอบชั่วคราว และกลับมานับต่อทันทีเมื่อก้าวกลับเข้าสู่เฟรม
+- **Smart Pause & Auto-Resume**: หากผู้ป่วยหลุดจากกรอบกล้อง (`OUT_OF_FRAME`) หรือข้อต่อสำคัญไม่ชัดเจน ระบบจะหยุดนับรอบชั่วคราว และกลับมานับต่อทันทีเมื่อจัดตำแหน่งถูกต้อง
 
-#### 8. 💾 Resilient Offline-First & Privacy Architecture
+#### 9. 💾 Resilient Offline-First & Privacy Architecture
 - ทำงานได้ทั้งแบบมีเซิร์ฟเวอร์ และแบบ Static บน GitHub Pages ผ่านระบบ Fallback อัตโนมัติ
 - จัดเก็บข้อมูลลง IndexedDB (`StrongCareDB`) อย่างละเอียดครบทุกรอบ และแคชสรุปย่อใน `localStorage`
 - คิวซิงก์เดี่ยวอัตโนมัติ (Single Sync Queue) เมื่อเซิร์ฟเวอร์กลับมาออนไลน์
 - รองรับสิทธิการลืมข้อมูล (**Right to be Forgotten**): ฟังก์ชัน Purge Patient Data ลบทั้งเวกเตอร์ใบหน้า ผลรายรอบ และประวัติทั้งหมดอย่างปลอดภัย
 
-#### 9. ⏱️ ระบบตั้งเวลาและเลือกท่ากายภาพแบบป็อปอัพ (Interactive Exercise Selection Modal Flow)
+#### 10. ⏱️ ระบบตั้งเวลาและเลือกท่ากายภาพแบบป็อปอัพ (Interactive Exercise Selection Modal Flow)
 - **หน้าจอตั้งเวลาและหมวดหมู่การฝึก (Screen 3 Schedule Config)**:
   - ดีไซน์สะอาดตา (Clean UI) ปราศจากการเลื่อนจอซ้ำซ้อน คงเฉพาะองค์ประกอบหลักที่จำเป็น:
     - **เริ่มฝึกเมื่อไร?**: ตัวเลือก "เริ่มตอนนี้" (พร้อมเริ่มทันที) หรือ "ตั้งเวลา" (กำหนดวัน-เวลาในอนาคต พร้อมระบบตรวจสอบห้ามเลือกเวลาในอดีต)
@@ -227,7 +251,7 @@
 
 ### 🛠️ เทคโนโลยีที่ใช้ (Tech Stack)
 - **Frontend**: React 18, TypeScript 5, Vite 5, Tailwind CSS, Lucide Icons, Canvas-Confetti, Zustand, Recharts
-- **Computer Vision & AI**: Google MediaPipe Pose Landmarker (WASM 0.10.35), MediaPipe FaceLandmarker (478 Dense Landmarks), ResNet-34 128-D Feature Embeddings
+- **Computer Vision & AI**: Google MediaPipe Pose Landmarker Full (WASM 0.10.35), MediaPipe FaceLandmarker (478 Dense Landmarks), ResNet-34 128-D Feature Embeddings
 - **Design System**: Strong Care Mint Aesthetic (#1E8A4C, #6FD67F, #E9FCEB), Hospital Dark Slate (#0F2F2B), WCAG AAA High Contrast
 - **Backend API**: PHP 8.2 REST API, PDO, MVC Architecture
 - **Database**: SQLite 3 / MySQL พร้อม IndexedDB Offline-First Fallback

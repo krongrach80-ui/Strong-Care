@@ -10,6 +10,7 @@ import {
   PatientSymptomReport,
   AiSystemSettings,
 } from '../types/hospital';
+import { faceService } from '../services/faceService';
 
 const INITIAL_THERAPISTS: PhysicalTherapist[] = [
   {
@@ -643,9 +644,11 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
   bannedIps: ['198.51.100.44', '203.0.113.19'],
   symptomReports: INITIAL_SYMPTOM_REPORTS,
   aiSettings: {
-    similarityThreshold: 0.82,
+    similarityThreshold: 0.80,
     marginThreshold: 0.08,
-    minVisibilityThreshold: 0.35,
+    minVisibilityThreshold: 0.55,
+    poseConfidenceThreshold: 0.65,
+    toleranceDeg: 10,
     maxTrunkLeanDeg: 22,
     maxVelocityDegPerSec: 220,
     modelVersion: 'face-resnet34-v2',
@@ -902,9 +905,11 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
   },
 
   updateAiSettings: (newSettings) => {
-    set((state) => ({
-      aiSettings: { ...state.aiSettings, ...newSettings },
-    }));
+    const updated = { ...get().aiSettings, ...newSettings };
+    set({ aiSettings: updated });
+    if (updated.similarityThreshold) {
+      faceService.setSimilarityThreshold(updated.similarityThreshold);
+    }
     get().addActivityLog('ตั้งค่าระบบและการทำงานของ AI', 'AI', 'ปรับเปลี่ยนพารามิเตอร์ระบบ AI ชีวกลศาสตร์');
   },
 }));

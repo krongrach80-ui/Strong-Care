@@ -37,6 +37,56 @@ function calculate2DAngle(
 }
 
 /**
+ * 3D angle in metric meters (from worldLandmarks)
+ */
+function calculate3DAngle(
+  a: { x: number; y: number; z?: number },
+  b: { x: number; y: number; z?: number },
+  c: { x: number; y: number; z?: number }
+): number {
+  const baX = a.x - b.x;
+  const baY = a.y - b.y;
+  const baZ = (a.z ?? 0) - (b.z ?? 0);
+
+  const bcX = c.x - b.x;
+  const bcY = c.y - b.y;
+  const bcZ = (c.z ?? 0) - (b.z ?? 0);
+
+  const dot = baX * bcX + baY * bcY + baZ * bcZ;
+  const magBA = Math.hypot(baX, baY, baZ);
+  const magBC = Math.hypot(bcX, bcY, bcZ);
+
+  if (magBA === 0 || magBC === 0) return 0;
+  const cos = Math.max(-1, Math.min(1, dot / (magBA * magBC)));
+  return Math.round((Math.acos(cos) * 180) / Math.PI);
+}
+
+function getKeyLandmarksForExercise(id: string): number[] {
+  switch (id) {
+    case 'stretch_neck_lateral':
+      return [POSE_LANDMARKS.NOSE, POSE_LANDMARKS.LEFT_EAR, POSE_LANDMARKS.RIGHT_EAR, POSE_LANDMARKS.LEFT_SHOULDER, POSE_LANDMARKS.RIGHT_SHOULDER];
+    case 'stretch_neck_flexion':
+      return [POSE_LANDMARKS.NOSE, POSE_LANDMARKS.LEFT_SHOULDER, POSE_LANDMARKS.RIGHT_SHOULDER];
+    case 'stretch_shoulder_cross':
+    case 'stretch_triceps_overhead':
+      return [POSE_LANDMARKS.LEFT_SHOULDER, POSE_LANDMARKS.RIGHT_SHOULDER, POSE_LANDMARKS.LEFT_ELBOW, POSE_LANDMARKS.RIGHT_ELBOW, POSE_LANDMARKS.LEFT_WRIST, POSE_LANDMARKS.RIGHT_WRIST];
+    case 'stretch_chest_open':
+      return [POSE_LANDMARKS.LEFT_SHOULDER, POSE_LANDMARKS.RIGHT_SHOULDER, POSE_LANDMARKS.LEFT_WRIST, POSE_LANDMARKS.RIGHT_WRIST];
+    case 'stretch_side_bend':
+    case 'stretch_torso_twist':
+      return [POSE_LANDMARKS.LEFT_SHOULDER, POSE_LANDMARKS.RIGHT_SHOULDER, POSE_LANDMARKS.LEFT_HIP, POSE_LANDMARKS.RIGHT_HIP];
+    case 'stretch_quadriceps':
+    case 'stretch_calf':
+      return [POSE_LANDMARKS.LEFT_HIP, POSE_LANDMARKS.RIGHT_HIP, POSE_LANDMARKS.LEFT_KNEE, POSE_LANDMARKS.RIGHT_KNEE, POSE_LANDMARKS.LEFT_ANKLE, POSE_LANDMARKS.RIGHT_ANKLE];
+    case 'stretch_hamstrings':
+    case 'stretch_piriformis_seated':
+      return [POSE_LANDMARKS.LEFT_SHOULDER, POSE_LANDMARKS.RIGHT_SHOULDER, POSE_LANDMARKS.LEFT_HIP, POSE_LANDMARKS.RIGHT_HIP];
+    default:
+      return [POSE_LANDMARKS.LEFT_SHOULDER, POSE_LANDMARKS.RIGHT_SHOULDER];
+  }
+}
+
+/**
  * Evaluate whether the user is actively adopting the required posture for a stretch exercise.
  * Evaluates real kinematic angles, applies aspect-ratio scaling, and calculates score
  * proportionally to deviations beyond toleranceDeg.
@@ -45,7 +95,8 @@ export function evaluateStretchPose(
   landmarks: PoseLandmarks | null,
   stretch: StretchExerciseItem | null,
   activeSide: 'left' | 'right' | 'both' = 'left',
-  aspectRatio: number = 1.0
+  aspectRatio: number = 1.0,
+  worldLandmarks?: PoseLandmarks | null
 ): StretchEvaluationResult {
   if (!landmarks || landmarks.length === 0 || !stretch) {
     return {
@@ -63,7 +114,30 @@ export function evaluateStretchPose(
   const ar = aspectRatio > 0 ? aspectRatio : 1.0;
   const spec = getPoseSpec(stretch.id);
   const targetAngle = stretch.scoring?.targetAngleDeg ?? spec.targetAngleDeg;
-  const tolerance = 10; // Standard target band ±10°
+  const tolerance = Math.min(10, stretch.scoring?.toleranceDeg ?? spec.toleranceDeg ?? 10);
+
+  // Key landmark visibility check: If > 2 key landmarks have visibility < 0.55, reject calculation
+  const keyIndices = getKeyLandmarksForExercise(stretch.id);
+  let lowVisibilityCount = 0;
+  for (const idx of keyIndices) {
+    const pt = landmarks[idx];
+    if (!pt || (pt.visibility ?? 1) < 0.55) {
+      lowVisibilityCount++;
+    }
+  }
+
+  if (lowVisibilityCount > 2) {
+    return {
+      isHoldingPose: false,
+      score: 0,
+      currentAngle: 0,
+      targetAngle,
+      tolerance,
+      jointName: stretch.scoring?.primaryJoint || 'ข้อต่อ',
+      isWithinTargetBand: false,
+      feedback: 'มองไม่เห็นร่างกายชัดเจน กรุณาจัดตัวให้อยู่ในเฟรม',
+    };
+  }
 
   const nose = landmarks[POSE_LANDMARKS.NOSE];
   const lEar = landmarks[POSE_LANDMARKS.LEFT_EAR];
@@ -89,6 +163,19 @@ export function evaluateStretchPose(
   let measuredAngle = 0;
   let jointName = 'ข้อต่อ';
   let feedback = 'ทำท่าทางตามภาพตัวอย่าง';
+
+  const wls = worldLandmarks ? worldLandmarks[POSE_LANDMARKS.LEFT_SHOULDER] : null;
+  const wrs = worldLandmarks ? worldLandmarks[POSE_LANDMARKS.RIGHT_SHOULDER] : null;
+  const wle = worldLandmarks ? worldLandmarks[POSE_LANDMARKS.LEFT_ELBOW] : null;
+  const wre = worldLandmarks ? worldLandmarks[POSE_LANDMARKS.RIGHT_ELBOW] : null;
+  const wlw = worldLandmarks ? worldLandmarks[POSE_LANDMARKS.LEFT_WRIST] : null;
+  const wrw = worldLandmarks ? worldLandmarks[POSE_LANDMARKS.RIGHT_WRIST] : null;
+  const wlh = worldLandmarks ? worldLandmarks[POSE_LANDMARKS.LEFT_HIP] : null;
+  const wrh = worldLandmarks ? worldLandmarks[POSE_LANDMARKS.RIGHT_HIP] : null;
+  const wlk = worldLandmarks ? worldLandmarks[POSE_LANDMARKS.LEFT_KNEE] : null;
+  const wrk = worldLandmarks ? worldLandmarks[POSE_LANDMARKS.RIGHT_KNEE] : null;
+  const wla = worldLandmarks ? worldLandmarks[POSE_LANDMARKS.LEFT_ANKLE] : null;
+  const wra = worldLandmarks ? worldLandmarks[POSE_LANDMARKS.RIGHT_ANKLE] : null;
 
   switch (id) {
     case 'stretch_neck_lateral': {
@@ -129,7 +216,16 @@ export function evaluateStretchPose(
       const activeShoulder = activeSide === 'left' ? ls : rs;
       const oppShoulder = activeSide === 'left' ? rs : ls;
 
-      if (activeWrist && activeShoulder && oppShoulder) {
+      const wActiveWrist = activeSide === 'left' ? wlw : wrw;
+      const wActiveShoulder = activeSide === 'left' ? wls : wrs;
+      const wOppShoulder = activeSide === 'left' ? wrs : wls;
+
+      if (wActiveWrist && wActiveShoulder && wOppShoulder) {
+        const armAngle = calculate3DAngle(wOppShoulder, wActiveShoulder, wActiveWrist);
+        measuredAngle = Math.max(0, 180 - armAngle);
+        isHolding = measuredAngle >= (targetAngle - tolerance);
+        feedback = isHolding ? 'โอบแขนข้ามอกได้ดี ค้างไว้' : 'ยกแขนพาดข้ามหน้าอกและใช้มือประคอง';
+      } else if (activeWrist && activeShoulder && oppShoulder) {
         const armAngle = calculate2DAngle(oppShoulder, activeShoulder, activeWrist, ar);
         measuredAngle = Math.max(0, 180 - armAngle);
         isHolding = measuredAngle >= (targetAngle - tolerance);
@@ -145,7 +241,16 @@ export function evaluateStretchPose(
       const activeShoulder = activeSide === 'left' ? ls : rs;
       const activeWrist = activeSide === 'left' ? lw : rw;
 
-      if (activeElbow && activeShoulder && activeWrist) {
+      const wActiveElbow = activeSide === 'left' ? wle : wre;
+      const wActiveShoulder = activeSide === 'left' ? wls : wrs;
+      const wActiveWrist = activeSide === 'left' ? wlw : wrw;
+
+      if (wActiveElbow && wActiveShoulder && wActiveWrist) {
+        measuredAngle = calculate3DAngle(wActiveShoulder, wActiveElbow, wActiveWrist);
+        const isElbowRaised = activeElbow ? activeElbow.y < (activeShoulder?.y ?? 0) + 0.05 : true;
+        isHolding = isElbowRaised && measuredAngle <= (targetAngle + tolerance);
+        feedback = isHolding ? 'ยกศอกขึ้นเหนือศีรษะได้ดี ยืดค้างไว้' : 'ยกข้อศอกขึ้นเหนือศีรษะแล้วงอศอกไปด้านหลัง';
+      } else if (activeElbow && activeShoulder && activeWrist) {
         measuredAngle = calculate2DAngle(activeShoulder, activeElbow, activeWrist, ar);
         const isElbowRaised = activeElbow.y < activeShoulder.y + 0.05;
         isHolding = isElbowRaised && measuredAngle <= (targetAngle + tolerance);
@@ -157,7 +262,13 @@ export function evaluateStretchPose(
     case 'stretch_chest_open': {
       jointName = 'อก/ไหล่';
       // Chest opener: arms retracted backward
-      if (ls && rs && lw && rw) {
+      if (wls && wrs && wlw && wrw) {
+        const leftArmAngle = calculate3DAngle(wrs, wls, wlw);
+        const rightArmAngle = calculate3DAngle(wls, wrs, wrw);
+        measuredAngle = Math.round((leftArmAngle + rightArmAngle) / 2);
+        isHolding = measuredAngle >= (targetAngle - tolerance);
+        feedback = isHolding ? 'เปิดอกและดึงสะบักไปด้านหลังได้ดี ค้างไว้' : 'ประสานมือด้านหลัง ยืดอกเปิดไหล่';
+      } else if (ls && rs && lw && rw) {
         const leftArmAngle = calculate2DAngle(rs, ls, lw, ar);
         const rightArmAngle = calculate2DAngle(ls, rs, rw, ar);
         measuredAngle = Math.round((leftArmAngle + rightArmAngle) / 2);
@@ -200,7 +311,15 @@ export function evaluateStretchPose(
       const activeKnee = activeSide === 'left' ? lk : rk;
       const activeAnkle = activeSide === 'left' ? la : ra;
 
-      if (activeHip && activeKnee && activeAnkle) {
+      const wActiveHip = activeSide === 'left' ? wlh : wrh;
+      const wActiveKnee = activeSide === 'left' ? wlk : wrk;
+      const wActiveAnkle = activeSide === 'left' ? wla : wra;
+
+      if (wActiveHip && wActiveKnee && wActiveAnkle) {
+        measuredAngle = calculate3DAngle(wActiveHip, wActiveKnee, wActiveAnkle);
+        isHolding = measuredAngle <= (targetAngle + tolerance);
+        feedback = isHolding ? 'พับเข่าดึงส้นเท้าได้ดี ยืดค้างไว้' : 'งอเข่าพับส้นเท้าเข้าหาก้น ใช้มือจับข้อเท้า';
+      } else if (activeHip && activeKnee && activeAnkle) {
         measuredAngle = calculate2DAngle(activeHip, activeKnee, activeAnkle, ar);
         isHolding = measuredAngle <= (targetAngle + tolerance);
         feedback = isHolding ? 'พับเข่าดึงส้นเท้าได้ดี ยืดค้างไว้' : 'งอเข่าพับส้นเท้าเข้าหาก้น ใช้มือจับข้อเท้า';
@@ -231,7 +350,15 @@ export function evaluateStretchPose(
       const backHip = activeSide === 'left' ? lh : rh;
       const backAnkle = activeSide === 'left' ? la : ra;
 
-      if (backHip && backKnee && backAnkle) {
+      const wBackKnee = activeSide === 'left' ? wlk : wrk;
+      const wBackHip = activeSide === 'left' ? wlh : wrh;
+      const wBackAnkle = activeSide === 'left' ? wla : wra;
+
+      if (wBackHip && wBackKnee && wBackAnkle) {
+        measuredAngle = calculate3DAngle(wBackHip, wBackKnee, wBackAnkle);
+        isHolding = measuredAngle >= (targetAngle - tolerance);
+        feedback = isHolding ? 'เหยียดขาหลังตรงได้ดี ยืดค้างไว้' : 'ก้าวขาไปด้านหลัง เหยียดขาตรง ส้นเท้าแนบพื้น';
+      } else if (backHip && backKnee && backAnkle) {
         measuredAngle = calculate2DAngle(backHip, backKnee, backAnkle, ar);
         isHolding = measuredAngle >= (targetAngle - tolerance);
         feedback = isHolding ? 'เหยียดขาหลังตรงได้ดี ยืดค้างไว้' : 'ก้าวขาไปด้านหลัง เหยียดขาตรง ส้นเท้าแนบพื้น';

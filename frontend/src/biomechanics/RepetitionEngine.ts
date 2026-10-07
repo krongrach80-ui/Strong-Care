@@ -91,7 +91,7 @@ export class RepetitionEngine {
     feedback: string;
   } {
     const targetAngle = this.spec.targetAngleDeg || this.exercise.target_angle;
-    const tolerance = this.spec.toleranceDeg || 15;
+    const tolerance = Math.min(10, this.spec.toleranceDeg || 10);
     let isRepJustCompleted = false;
     let feedback = '';
     let holdProgressPercent = 0;

@@ -121,6 +121,8 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
   const [skippedPoseIds, setSkippedPoseIds] = useState<string[]>([]);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
+  const [correctPostureTimeSec, setCorrectPostureTimeSec] = useState<number>(0);
+  const angleSamplesRef = useRef<number[]>([]);
   const hasSavedSessionRef = useRef<boolean>(false);
 
   // Preparation & Countdown State Machine
@@ -149,7 +151,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
   }, [startCamera]);
 
   // Pose Detection Hook
-  const { landmarks, fps, modelError, isMockMode } = usePose(videoRef, isCameraReady, currentExerciseConfig?.targetPose || 'shoulder_raise');
+  const { landmarks, worldLandmarks, fps, modelError, isMockMode } = usePose(videoRef, isCameraReady, currentExerciseConfig?.targetPose || 'shoulder_raise');
 
   const videoDimensions = useMemo(() => {
     const video = videoRef.current;
@@ -269,7 +271,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
   // Compute overall visibility & confidence across key body landmarks
   const visibilityStats = useMemo(() => {
     if (!landmarks || landmarks.length === 0) {
-      return { avgVisibility: 0, isGoodVisibility: false };
+      return { avgVisibility: 0, isGoodVisibility: false, isAcceptable: false, label: 'ไม่ชัด' };
     }
     const keyIndices = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26];
     let totalVis = 0;
@@ -281,9 +283,12 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
       }
     }
     const avg = count > 0 ? totalVis / count : 0;
+    const avgPct = Math.round(avg * 100);
     return {
-      avgVisibility: Math.round(avg * 100),
-      isGoodVisibility: avg >= 0.6,
+      avgVisibility: avgPct,
+      isGoodVisibility: avg >= 0.65,
+      isAcceptable: avg >= 0.55,
+      label: avg >= 0.70 ? 'ดี' : avg >= 0.55 ? 'พอใช้' : 'ไม่ชัด',
     };
   }, [landmarks]);
 
@@ -292,8 +297,8 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     if (!isStretchMode || !currentStretch) return null;
     const video = videoRef.current;
     const ar = (video && video.videoHeight > 0) ? (video.videoWidth / video.videoHeight) : 1.0;
-    return evaluateStretchPose(landmarks, currentStretch, currentSide, ar);
-  }, [isStretchMode, landmarks, currentStretch, currentSide, videoRef]);
+    return evaluateStretchPose(landmarks, currentStretch, currentSide, ar, worldLandmarks);
+  }, [isStretchMode, landmarks, currentStretch, currentSide, videoRef, worldLandmarks]);
 
   // Target Joint Name and Target Angle Resolution
   const activeJointInfo = useMemo(() => {
@@ -342,12 +347,15 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
   }, [landmarks, isCameraReady, isStretchMode, stretchEval, analysis, activeJointInfo.target]);
 
   // Continuous hold tracking: must stay within target band ±10° for >= 0.5s (500ms)
+  // Dropout grace period: If dropping out for > 0.3s (300ms) -> pause countdown!
   const inBandSinceRef = useRef<number | null>(null);
+  const outOfBandSinceRef = useRef<number | null>(null);
   const [isHoldQualified, setIsHoldQualified] = useState<boolean>(false);
 
   useEffect(() => {
-    if (exercisePhase !== 'ACTIVE' || !isCameraReady || !landmarks || landmarks.length === 0 || !visibilityStats.isGoodVisibility) {
+    if (exercisePhase !== 'ACTIVE' || !isCameraReady || !landmarks || landmarks.length === 0 || !visibilityStats.isAcceptable) {
       inBandSinceRef.current = null;
+      outOfBandSinceRef.current = null;
       setIsHoldQualified(false);
       return;
     }
@@ -356,6 +364,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     const now = performance.now();
 
     if (diff <= 10) {
+      outOfBandSinceRef.current = null;
       if (inBandSinceRef.current === null) {
         inBandSinceRef.current = now;
       } else if (now - inBandSinceRef.current >= 500) {
@@ -363,31 +372,93 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
       }
     } else {
       inBandSinceRef.current = null;
-      setIsHoldQualified(false);
+      if (isHoldQualified) {
+        if (outOfBandSinceRef.current === null) {
+          outOfBandSinceRef.current = now;
+        } else if (now - outOfBandSinceRef.current >= 300) {
+          setIsHoldQualified(false);
+          outOfBandSinceRef.current = null;
+        }
+      } else {
+        setIsHoldQualified(false);
+      }
     }
-  }, [liveAngle, activeJointInfo.target, exercisePhase, isCameraReady, landmarks, visibilityStats.isGoodVisibility]);
+  }, [liveAngle, activeJointInfo.target, exercisePhase, isCameraReady, landmarks, visibilityStats.isAcceptable, isHoldQualified]);
 
   // 3-Tier Adherence State:
   // 'green'  = ท่าถูกต้อง กำลังนับเวลา (within ±10° for >= 0.5s)
-  // 'yellow' = ใกล้แล้ว (approaching within 25° or inside ±10° but holding < 0.5s)
-  // 'red'    = ยังไม่เข้าท่า (off-target or not in frame)
+  // 'yellow' = ใกล้แล้ว (ห่างเป้าหมายไม่เกิน 15°)
+  // 'red'    = ยังไม่เข้าท่า (off-target > 15° or not in frame)
   const adherenceTier: 'green' | 'yellow' | 'red' = useMemo(() => {
     if (exercisePhase !== 'ACTIVE' || !isCameraReady) {
       return 'yellow';
     }
-    if (!landmarks || landmarks.length === 0 || !visibilityStats.isGoodVisibility) {
+    if (!landmarks || landmarks.length === 0 || !visibilityStats.isAcceptable) {
       return 'red';
     }
 
     const diff = Math.abs(liveAngle - activeJointInfo.target);
     if (diff <= 10) {
       return isHoldQualified ? 'green' : 'yellow';
-    } else if (diff <= 25) {
+    } else if (diff <= 15) {
       return 'yellow';
     } else {
       return 'red';
     }
-  }, [exercisePhase, isCameraReady, landmarks, visibilityStats.isGoodVisibility, liveAngle, activeJointInfo.target, isHoldQualified]);
+  }, [exercisePhase, isCameraReady, landmarks, visibilityStats.isAcceptable, liveAngle, activeJointInfo.target, isHoldQualified]);
+
+  // Framing & Distance Watchdog: Checks too close, too far, head/feet cut off
+  const framingStatus = useMemo(() => {
+    if (!landmarks || landmarks.length === 0 || !isCameraReady) {
+      return { isFramingGood: true, message: null };
+    }
+
+    const nose = landmarks[0];
+    const ls = landmarks[11];
+    const rs = landmarks[12];
+    const la = landmarks[27];
+    const ra = landmarks[28];
+
+    // Head cropped check (nose too close to top edge)
+    if (nose && nose.y < 0.05 && (nose.visibility ?? 1) >= 0.5) {
+      return {
+        isFramingGood: false,
+        message: 'ศีรษะอยู่ชิดขอบบนเกินไป กรุณาถอยห่างหรือปรับมุมกล้อง',
+      };
+    }
+
+    // Shoulder span check (distance)
+    if (ls && rs && (ls.visibility ?? 1) >= 0.55 && (rs.visibility ?? 1) >= 0.55) {
+      const shoulderSpan = Math.hypot(ls.x - rs.x, ls.y - rs.y);
+      if (shoulderSpan > 0.46) {
+        return {
+          isFramingGood: false,
+          message: 'อยู่ใกล้กล้องเกินไป แนะนำระยะ 1.5–2.5 เมตร',
+        };
+      }
+      if (shoulderSpan < 0.11) {
+        return {
+          isFramingGood: false,
+          message: 'อยู่ไกลจากกล้องเกินไป แนะนำระยะ 1.5–2.5 เมตร',
+        };
+      }
+    }
+
+    // Lower body poses (squat, quad, calf, knee raise) checking ankles
+    const poseKey = (currentExerciseConfig.targetPose || '').toLowerCase();
+    const isLowerBody = poseKey.includes('squat') || poseKey.includes('knee') || poseKey.includes('calf') || poseKey.includes('quad');
+    if (isLowerBody && la && ra) {
+      const anklesCut = (la.y > 0.96 && (la.visibility ?? 1) < 0.5) || (ra.y > 0.96 && (ra.visibility ?? 1) < 0.5);
+      if (anklesCut) {
+        return {
+          isFramingGood: false,
+          message: 'มองไม่เห็นเท้าหรือข้อเท้า กรุณาถอยให้เห็นทั้งตัว 1.5–2.5 เมตร',
+        };
+      }
+    }
+
+    return { isFramingGood: true, message: null };
+  }, [landmarks, isCameraReady, currentExerciseConfig]);
 
   // Real-time posture status computation
   const realtimeStatus: 'ready' | 'adjust' | 'stop' | 'preparing' = useMemo(() => {
@@ -400,14 +471,14 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     if (!isCameraReady) {
       return 'ready';
     }
-    if (!landmarks || landmarks.length === 0 || !visibilityStats.isGoodVisibility) {
+    if (!landmarks || landmarks.length === 0 || !visibilityStats.isAcceptable) {
       return 'adjust';
     }
     if (adherenceTier === 'green') {
       return 'ready';
     }
     return 'adjust';
-  }, [exercisePhase, safetyTelemetry, isCameraReady, landmarks, visibilityStats.isGoodVisibility, adherenceTier]);
+  }, [exercisePhase, safetyTelemetry, isCameraReady, landmarks, visibilityStats.isAcceptable, adherenceTier]);
 
   const statusMessage = useMemo(() => {
     if (exercisePhase === 'SAFETY_STOP' || safetyTelemetry?.state === 'STOP') {
@@ -640,18 +711,22 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     handleAutoSaveSummary,
   ]);
 
-  // Main countdown timer for hold phase (strictly paused during preparation / countdown or when posture is off!)
+  // Main countdown timer for hold phase (strictly paused during preparation, or when posture is off, or without camera!)
   useEffect(() => {
     if (!isStretchMode || isPaused || isCompletedAll || isSwitchingSide || exercisePhase !== 'ACTIVE' || isSafetyHalted) return;
 
-    // ถ้าเปิดกล้องอยู่ ให้เริ่มนับเวลาค้างเมื่อทำท่าทางถูกต้องเท่านั้น (adherenceTier === 'green')
-    if (isCameraReady) {
-      if (!landmarks || landmarks.length === 0 || !visibilityStats.isGoodVisibility) {
-        return;
-      }
-      if (adherenceTier !== 'green') {
-        return; // Pauses countdown until angle is within ±10° for >= 0.5s!
-      }
+    // ปิดการนับท่าอัตโนมัติเมื่อไม่มีกล้อง หรือตรวจไม่เจอคน (ห้ามเดินเวลาค้างท่าแบบปลอม)
+    if (!isCameraReady || cameraError) {
+      return;
+    }
+
+    if (!landmarks || landmarks.length === 0 || !visibilityStats.isAcceptable) {
+      return;
+    }
+
+    // ต้องอยู่ในสถานะเขียว (ทำท่าถูกต้องครบเวลาเกณฑ์) เท่านั้นจึงเริ่มนับเวลาค้างท่า
+    if (adherenceTier !== 'green') {
+      return;
     }
 
     if (timeLeft <= 0) {
@@ -661,6 +736,10 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
 
     const timer = setInterval(() => {
       setTimeLeft((prev) => Math.max(0, prev - 1));
+      setCorrectPostureTimeSec((prev) => prev + 1);
+      if (liveAngle > 0) {
+        angleSamplesRef.current.push(liveAngle);
+      }
     }, 1000);
 
     return () => clearInterval(timer);
@@ -673,9 +752,11 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     exercisePhase,
     isSafetyHalted,
     isCameraReady,
+    cameraError,
     landmarks,
-    visibilityStats.isGoodVisibility,
+    visibilityStats.isAcceptable,
     adherenceTier,
+    liveAngle,
     handlePhaseFinish,
   ]);
 
@@ -733,7 +814,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
       const drawBone = (idx1: number, idx2: number) => {
         const p1 = landmarks[idx1];
         const p2 = landmarks[idx2];
-        if (p1 && p2 && (p1.visibility ?? 1) >= 0.6 && (p2.visibility ?? 1) >= 0.6) {
+        if (p1 && p2 && (p1.visibility ?? 1) >= 0.55 && (p2.visibility ?? 1) >= 0.55) {
           ctx.beginPath();
           ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height);
           ctx.lineTo(p2.x * canvas.width, p2.y * canvas.height);
@@ -756,7 +837,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
 
       [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28].forEach((idx) => {
         const lm = landmarks[idx];
-        if (lm && (lm.visibility ?? 1) >= 0.6) {
+        if (lm && (lm.visibility ?? 1) >= 0.55) {
           ctx.fillStyle = '#FFFFFF';
           ctx.beginPath();
           ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 5.5, 0, Math.PI * 2);
@@ -845,6 +926,8 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     setIsSafetyHalted(false);
     smoothedAngleRef.current = null;
     inBandSinceRef.current = null;
+    outOfBandSinceRef.current = null;
+    angleSamplesRef.current = [];
     setIsHoldQualified(false);
     setLiveAngle(0);
     setLiveScore(null);
@@ -900,8 +983,8 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
           )}
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
-            <div className="bg-[#E9FCEB] border border-emerald-200 rounded-2xl p-3 flex flex-col items-center">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
+            <div className="bg-[#E9FCEB] border border-emerald-200 rounded-2xl p-2.5 sm:p-3 flex flex-col items-center">
               <span className="text-xs font-bold text-emerald-800">ผลการฝึก</span>
               <span className="text-xl sm:text-2xl font-extrabold text-[#0B2B2B] mt-0.5">
                 {completedCount}/{totalCount}
@@ -911,7 +994,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
               </span>
             </div>
 
-            <div className="bg-[#E9FCEB] border border-emerald-200 rounded-2xl p-3 flex flex-col items-center">
+            <div className="bg-[#E9FCEB] border border-emerald-200 rounded-2xl p-2.5 sm:p-3 flex flex-col items-center">
               <span className="text-xs font-bold text-emerald-800">เวลารวม</span>
               <span className="text-xl sm:text-2xl font-extrabold text-[#0B2B2B] mt-0.5">
                 {totalMinutes}:{totalSeconds.toString().padStart(2, '0')}
@@ -919,7 +1002,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
               <span className="text-[11px] font-medium text-emerald-700">นาที</span>
             </div>
 
-            <div className="bg-[#E9FCEB] border border-emerald-200 rounded-2xl p-3 flex flex-col items-center">
+            <div className="bg-[#E9FCEB] border border-emerald-200 rounded-2xl p-2.5 sm:p-3 flex flex-col items-center">
               <span className="text-xs font-bold text-emerald-800">คะแนนเฉลี่ย</span>
               <span className="text-xl sm:text-2xl font-extrabold text-[#1E8A4C] mt-0.5">
                 {averageScore !== null ? `${averageScore}%` : 'ไม่มีคะแนน'}
@@ -927,6 +1010,24 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
               <span className="text-[11px] font-medium text-emerald-700">
                 {averageScore !== null ? 'ความแม่นยำ' : 'โหมดจับเวลา'}
               </span>
+            </div>
+
+            <div className="bg-[#E9FCEB] border border-emerald-200 rounded-2xl p-2.5 sm:p-3 flex flex-col items-center">
+              <span className="text-xs font-bold text-emerald-800">เวลาในท่าถูกต้อง</span>
+              <span className="text-xl sm:text-2xl font-extrabold text-[#1E8A4C] mt-0.5">
+                {correctPostureTimeSec}
+              </span>
+              <span className="text-[11px] font-medium text-emerald-700">วินาที</span>
+            </div>
+
+            <div className="bg-[#E9FCEB] border border-emerald-200 rounded-2xl p-2.5 sm:p-3 flex flex-col items-center col-span-2 sm:col-span-1">
+              <span className="text-xs font-bold text-emerald-800">มุมเฉลี่ย</span>
+              <span className="text-xl sm:text-2xl font-extrabold text-[#0B2B2B] mt-0.5">
+                {angleSamplesRef.current.length > 0
+                  ? `${Math.round(angleSamplesRef.current.reduce((a, b) => a + b, 0) / angleSamplesRef.current.length)}°`
+                  : '-'}
+              </span>
+              <span className="text-[11px] font-medium text-emerald-700">องศาข้อต่อ</span>
             </div>
           </div>
 
@@ -1169,10 +1270,21 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
         )}
 
         {/* Missing Person / Low Visibility Alert Banner inside Camera */}
-        {isCameraReady && exercisePhase === 'ACTIVE' && (!landmarks || landmarks.length === 0 || !visibilityStats.isGoodVisibility) && (
+        {isCameraReady && exercisePhase === 'ACTIVE' && (!landmarks || landmarks.length === 0 || !visibilityStats.isAcceptable) && (
           <div className="absolute top-14 left-1/2 -translate-x-1/2 z-25 bg-amber-500/95 text-stone-950 border-2 border-amber-300 px-4 py-2 rounded-2xl flex items-center gap-2 shadow-2xl animate-bounce text-xs sm:text-sm font-extrabold pointer-events-none">
             <AlertTriangle className="w-4 h-4 text-stone-950 flex-shrink-0" />
-            <span>จัดตัวให้อยู่ในเฟรม / เข้าใกล้กล้อง</span>
+            <span>มองไม่เห็นร่างกายชัดเจน กรุณาจัดตัวให้อยู่ในเฟรม</span>
+          </div>
+        )}
+
+        {/* Framing and Distance Watchdog Banner */}
+        {isCameraReady && exercisePhase === 'ACTIVE' && visibilityStats.isAcceptable && !framingStatus.isFramingGood && (
+          <div className="absolute top-14 left-1/2 -translate-x-1/2 z-25 bg-amber-600/95 text-white border-2 border-amber-300 px-4 py-2 rounded-2xl flex flex-col items-center gap-0.5 shadow-2xl animate-pulse text-xs sm:text-sm font-extrabold pointer-events-none text-center">
+            <div className="flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 text-amber-200 flex-shrink-0" />
+              <span>{framingStatus.message}</span>
+            </div>
+            <span className="text-[11px] text-amber-100 font-medium">แนะนำระยะ 1.5–2.5 เมตร ตัวเต็มเฟรม แสงด้านหน้า</span>
           </div>
         )}
 
@@ -1241,8 +1353,17 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
 
               {/* Confidence / Visibility Pill */}
               <div className="bg-black/80 backdrop-blur-md border border-emerald-400/40 text-stone-200 px-2.5 py-1 rounded-full text-xs font-semibold shadow-md flex items-center gap-1.5">
-                <span className="text-emerald-300 font-mono">
-                  ความชัดเจน: {visibilityStats.avgVisibility}%
+                <span className="text-stone-300">การมองเห็น:</span>
+                <span
+                  className={`font-bold ${
+                    visibilityStats.label === 'ดี'
+                      ? 'text-emerald-400'
+                      : visibilityStats.label === 'พอใช้'
+                      ? 'text-amber-300'
+                      : 'text-rose-400'
+                  }`}
+                >
+                  {visibilityStats.label} ({visibilityStats.avgVisibility}%)
                 </span>
                 <span className="text-stone-500 font-normal">|</span>
                 <span className="text-stone-400">{fps || 30} FPS</span>

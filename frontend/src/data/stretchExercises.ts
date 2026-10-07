@@ -109,7 +109,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     scoring: {
       primaryJoint: 'neck',
       targetAngleDeg: 28,
-      toleranceDeg: 12,
+      toleranceDeg: 8,
       landmarksUsed: [0, 11, 12],
       description: 'ตรวจจับมุมเอียงของศีรษะเทียบกับระนาบหัวไหล่',
     },
@@ -149,7 +149,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     scoring: {
       primaryJoint: 'neck',
       targetAngleDeg: 35,
-      toleranceDeg: 15,
+      toleranceDeg: 8,
       landmarksUsed: [0, 11, 12],
       description: 'ตรวจจับระยะการลดระดับคางลงสู่เส้นระดับไหล่',
     },
@@ -189,7 +189,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     scoring: {
       primaryJoint: 'shoulder',
       targetAngleDeg: 40,
-      toleranceDeg: 15,
+      toleranceDeg: 10,
       landmarksUsed: [11, 12, 13, 14, 15, 16],
       description: 'ตรวจจับข้อมือและข้อศอกที่ข้ามผ่านแนวกึ่งกลางอก',
     },
@@ -229,7 +229,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     scoring: {
       primaryJoint: 'elbow',
       targetAngleDeg: 55,
-      toleranceDeg: 20,
+      toleranceDeg: 10,
       landmarksUsed: [11, 12, 13, 14],
       description: 'ตรวจจับข้อศอกยกสูงกว่าระดับหูและงอข้อศอก',
     },
@@ -269,7 +269,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     scoring: {
       primaryJoint: 'shoulder',
       targetAngleDeg: 30,
-      toleranceDeg: 15,
+      toleranceDeg: 8,
       landmarksUsed: [11, 12, 15, 16, 23, 24],
       description: 'ตรวจจับสะบักหนีบเข้าหากันและข้อมืออยู่ด้านหลังสะโพก',
     },
@@ -309,7 +309,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     scoring: {
       primaryJoint: 'spine',
       targetAngleDeg: 25,
-      toleranceDeg: 10,
+      toleranceDeg: 8,
       landmarksUsed: [11, 12, 23, 24],
       description: 'ตรวจจับมุมเอียงของแกนกระดูกสันหลังด้านข้าง',
     },
@@ -349,7 +349,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     scoring: {
       primaryJoint: 'spine',
       targetAngleDeg: 30,
-      toleranceDeg: 12,
+      toleranceDeg: 8,
       landmarksUsed: [11, 12, 23, 24],
       description: 'ตรวจจับความต่างของระนาบไหล่เทียบกับระนาบสะโพก',
     },
@@ -389,7 +389,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     scoring: {
       primaryJoint: 'knee',
       targetAngleDeg: 50,
-      toleranceDeg: 25,
+      toleranceDeg: 10,
       landmarksUsed: [23, 24, 25, 26, 27, 28],
       description: 'ตรวจจับมุมงอเข่าพับส้นเท้าเข้าหาสะโพก',
     },
@@ -429,7 +429,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     scoring: {
       primaryJoint: 'hip',
       targetAngleDeg: 65,
-      toleranceDeg: 20,
+      toleranceDeg: 10,
       landmarksUsed: [11, 12, 23, 24, 25, 26],
       description: 'ตรวจจับการโน้มสะโพกไปข้างหน้าโดยแนวหลังยังเหยียดตรง',
     },
@@ -469,7 +469,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     scoring: {
       primaryJoint: 'ankle',
       targetAngleDeg: 75,
-      toleranceDeg: 15,
+      toleranceDeg: 10,
       landmarksUsed: [23, 24, 25, 26, 27, 28],
       description: 'ตรวจจับขาหลังเหยียดตรงและทำมุมลาดชันกับพื้น',
     },
@@ -509,7 +509,7 @@ export const STRETCH_EXERCISES: StretchExerciseItem[] = [
     scoring: {
       primaryJoint: 'hip',
       targetAngleDeg: 60,
-      toleranceDeg: 18,
+      toleranceDeg: 10,
       landmarksUsed: [11, 12, 23, 24, 25, 26],
       description: 'ตรวจจับลำตัวโน้มพับไปข้างหน้าขณะอยู่ในท่านั่ง',
     },
@@ -550,7 +550,7 @@ export const PHYSIO_EXERCISES_CONFIG: Record<string, PhysioExerciseConfig> = {
     name: 'ท่ายกเข่าสลับ',
     englishName: 'Alternating Knee Raise',
     description: 'ยืนตัวตรง ยกเข่าขึ้นสลับซ้าย-ขวา เสริมกำลังกล้ามเนื้อสะโพกและหน้าท้อง',
-    demoVideoUrl: 'https://www.youtube.com/embed/1vR_n96sV-k',
+    demoVideoUrl: 'https://www.youtube.com/embed/3vOTTj_X3kQ?start=15',
     thumbnailUrl: asset('images/poses/alternating_knee_raise.png'),
     targetPose: 'alternating_knee_raise',
     targetAngle: 90,
@@ -656,7 +656,7 @@ export function getExerciseUnifiedConfig(item: any): PhysioExerciseConfig {
     name: item.name ?? 'ท่ายกเข่าสลับ',
     englishName: item.englishName ?? (item.slug ? item.slug.replace(/_/g, ' ') : 'Exercise'),
     description: item.description ?? '',
-    demoVideoUrl: item.demoVideoUrl ?? 'https://www.youtube.com/embed/1vR_n96sV-k',
+    demoVideoUrl: item.demoVideoUrl ?? 'https://www.youtube.com/embed/3vOTTj_X3kQ',
     thumbnailUrl: item.thumbnailUrl,
     targetPose: item.targetPose ?? item.slug ?? 'exercise',
     targetAngle: item.target_angle ?? 90,

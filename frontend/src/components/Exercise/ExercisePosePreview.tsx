@@ -77,6 +77,7 @@ export const ExercisePosePreview: React.FC<ExercisePosePreviewProps> = ({
 }) => {
   const [isMuted, setIsMuted] = useState<boolean>(true); // ปลอดภัย: ไม่ autoplay พร้อมเสียง
   const [hasVideoError, setHasVideoError] = useState<boolean>(false);
+  const [displayMode, setDisplayMode] = useState<'video' | 'stick'>('video');
   const [isIframeLoading, setIsIframeLoading] = useState<boolean>(true);
   const [replayKey, setReplayKey] = useState<number>(0);
 
@@ -96,7 +97,7 @@ export const ExercisePosePreview: React.FC<ExercisePosePreviewProps> = ({
   return (
     <div className={`w-full flex flex-col items-center justify-center relative ${className || ''}`}>
       {/* Priority: Video > Animation > Skeleton fallback */}
-      {showVideoPlayer && demoVideoUrl && !hasVideoError ? (
+      {showVideoPlayer && demoVideoUrl && !hasVideoError && displayMode === 'video' ? (
         <div className="w-full bg-black rounded-2xl overflow-hidden shadow-md border-2 border-emerald-400/80 relative aspect-video flex flex-col items-center justify-center group animate-fadeIn">
           {/* YouTube Video Embed Player */}
           <iframe
@@ -110,6 +111,7 @@ export const ExercisePosePreview: React.FC<ExercisePosePreviewProps> = ({
             onError={() => {
               setIsIframeLoading(false);
               setHasVideoError(true);
+              setDisplayMode('stick');
             }}
           />
 
@@ -120,6 +122,18 @@ export const ExercisePosePreview: React.FC<ExercisePosePreviewProps> = ({
               <span>กำลังเตรียมคลิปสาธิต...</span>
             </div>
           )}
+
+          {/* Left Mode Switcher Badge */}
+          <div className="absolute top-2 left-2 flex items-center gap-1 z-10">
+            <button
+              type="button"
+              onClick={() => setDisplayMode('stick')}
+              className="bg-black/80 hover:bg-black backdrop-blur-md text-emerald-300 px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 shadow-sm transition cursor-pointer border border-emerald-400/50"
+              title="สลับไปดูแอนิเมชันท่าฝึก"
+            >
+              <span>🏃 แอนิเมชัน</span>
+            </button>
+          </div>
 
           {/* Quick Overlay Control Badge */}
           <div className="absolute top-2 right-2 flex items-center gap-1.5 z-10">
@@ -142,41 +156,42 @@ export const ExercisePosePreview: React.FC<ExercisePosePreviewProps> = ({
             </button>
           </div>
         </div>
-      ) : hasVideoError ? (
-        /* Video Failed Fallback (Graceful Fallback - never crash) */
-        <div className="w-full max-w-[420px] bg-amber-50/90 border border-amber-200 rounded-2xl p-3 flex flex-col items-center justify-center text-center space-y-2 animate-fadeIn">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800">
-            <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-            <span>ไม่สามารถโหลดวิดีโอตัวอย่างได้ (กำลังแสดงท่าจำลองแทน)</span>
-          </div>
-          <div className="p-2 bg-white rounded-xl shadow-xs">
-            <StretchStickFigure
-              type={svgType}
-              className="w-16 h-22 sm:w-20 sm:h-26 animate-pulse"
-              activeSide={activeSide}
-              isHighlighted={isHighlighted}
-            />
-          </div>
-        </div>
       ) : (
-        /* Dynamic Pose Animation / Skeleton View */
-        <div className="flex flex-col items-center justify-center relative py-2">
-          <div className="relative flex items-center justify-center">
-            <div className="absolute inset-0 rounded-full bg-emerald-100/60 scale-125 blur-sm animate-pulse" />
+        /* Dynamic Animated Stick Figure Mode (Zero failure rate, clear demonstration) */
+        <div className="w-full bg-[#0B2B2B] border-2 border-emerald-400/80 rounded-2xl p-3 flex flex-col items-center justify-center text-center space-y-2 aspect-video relative animate-fadeIn shadow-md">
+          {/* Top Switcher Button to switch back to video */}
+          {demoVideoUrl && !hasVideoError && (
+            <div className="absolute top-2 left-2 z-10">
+              <button
+                type="button"
+                onClick={() => setDisplayMode('video')}
+                className="bg-black/80 hover:bg-black backdrop-blur-md text-emerald-300 px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 shadow-sm transition cursor-pointer border border-emerald-400/50"
+                title="สลับไปดูคลิปหมอสาธิต"
+              >
+                <span>🎬 คลิปหมอ</span>
+              </button>
+            </div>
+          )}
+
+          {hasVideoError && (
+            <div className="flex items-center gap-1 text-[11px] font-bold text-amber-300">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+              <span>แสดงภาพแอนิเมชันท่าทางจำลอง</span>
+            </div>
+          )}
+
+          <div className="p-2 bg-black/40 rounded-2xl flex items-center justify-center">
             <StretchStickFigure
               type={svgType}
-              className="w-16 h-22 sm:w-20 sm:h-28 relative z-10 transition-transform duration-300 hover:scale-105"
+              className="w-16 h-20 sm:w-20 sm:h-24 animate-pulse"
               activeSide={activeSide}
               isHighlighted={isHighlighted}
             />
           </div>
 
-          {activeSide !== 'both' && (
-            <div className="mt-1.5 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#E9FCEB] text-[#1E8A4C] border border-emerald-200">
-              <Sparkles className="w-3 h-3" />
-              <span>กำลังทำ: {activeSide === 'left' ? 'ข้างซ้าย' : 'ข้างขวา'}</span>
-            </div>
-          )}
+          <div className="text-[11px] font-bold text-emerald-300 truncate max-w-xs">
+            {name} ({englishName})
+          </div>
         </div>
       )}
     </div>

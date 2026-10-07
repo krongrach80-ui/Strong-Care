@@ -9,6 +9,7 @@ export type PoseLandmarks = Landmark[];
 
 export interface HolisticDetectionResult {
   poseLandmarks: PoseLandmarks | null;
+  worldLandmarks?: PoseLandmarks | null;
   handLandmarks?: PoseLandmarks[] | null;
   faceLandmarks?: PoseLandmarks | null;
 }

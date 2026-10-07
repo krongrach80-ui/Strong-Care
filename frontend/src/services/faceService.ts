@@ -99,12 +99,13 @@ export interface FaceDetectionResult {
   qualityScore: number;
 }
 
-export type LivenessChallengeType = 'blink' | 'turn_left' | 'turn_right';
+export type LivenessChallengeType = 'blink' | 'turn_left' | 'turn_right' | 'mouth_open';
 
 export interface LivenessState {
   blinkDetected: boolean;
   turnLeftDetected: boolean;
   turnRightDetected: boolean;
+  mouthOpenDetected: boolean;
   isRealHuman: boolean;
   currentPrompt: string;
   activeChallenge: LivenessChallengeType;
@@ -128,6 +129,10 @@ export class FaceService {
   private blinkCompleted: boolean = false;
   private leftTurnCompleted: boolean = false;
   private rightTurnCompleted: boolean = false;
+  private mouthOpenCompleted: boolean = false;
+
+  // Configurable Cosine Similarity Threshold (Admin-synced)
+  private similarityThreshold: number = 0.80;
 
   // Randomized Challenge Flow
   private challenges: LivenessChallengeType[] = ['blink', 'turn_left', 'turn_right'];
@@ -149,6 +154,14 @@ export class FaceService {
     return FaceService.instance;
   }
 
+  public getSimilarityThreshold(): number {
+    return this.similarityThreshold;
+  }
+
+  public setSimilarityThreshold(val: number): void {
+    this.similarityThreshold = Math.max(0.70, Math.min(0.95, val));
+  }
+
   /**
    * Randomize challenge sequence for true interactive liveness
    */
@@ -165,6 +178,7 @@ export class FaceService {
     this.blinkCompleted = false;
     this.leftTurnCompleted = false;
     this.rightTurnCompleted = false;
+    this.mouthOpenCompleted = false;
     this.wasEyeClosed = false;
   }
 
@@ -368,10 +382,11 @@ export class FaceService {
     const normPitch = Math.max(-1, Math.min(1, pitchDeg / 35));
     const normRoll = Math.max(-1, Math.min(1, rollDeg / 30));
 
-    // 4. True Eye Aspect Ratio (EAR) & Blendshapes
+    // 4. True Eye Aspect Ratio (EAR), Blendshapes & Mouth Open
     const blendshapes = res.faceBlendshapes?.[0]?.categories || [];
     const blinkLeftScore = blendshapes.find((c) => c.categoryName === 'eyeBlinkLeft')?.score ?? 0;
     const blinkRightScore = blendshapes.find((c) => c.categoryName === 'eyeBlinkRight')?.score ?? 0;
+    const jawOpenScore = blendshapes.find((c) => c.categoryName === 'jawOpen')?.score ?? 0;
 
     const leftEarGeo =
       Math.hypot(leftEyeTop.x - leftEyeBottom.x, leftEyeTop.y - leftEyeBottom.y) /
@@ -381,11 +396,14 @@ export class FaceService {
       Math.max(0.01, 2 * Math.hypot(rightEyeOuter.x - rightEyeInner.x, rightEyeOuter.y - rightEyeInner.y));
     const ear = (leftEarGeo + rightEarGeo) / 2;
 
+    const lipDist = (lm[13] && lm[14]) ? Math.hypot(lm[13].x - lm[14].x, lm[13].y - lm[14].y) : 0;
+    const isMouthOpen = jawOpenScore > 0.35 || lipDist > 0.045;
+
     // 5. Image Sharpness & Lighting Quality Evaluation
     const qualityEval = this.evaluateImageQuality(video, normBox, ear, blinkLeftScore, blinkRightScore, yawDeg, pitchDeg, rollDeg);
 
     // 6. Update Liveness Verification
-    this.updateLivenessState(ear, blinkLeftScore, blinkRightScore, normYaw);
+    this.updateLivenessState(ear, blinkLeftScore, blinkRightScore, normYaw, isMouthOpen);
 
     const mappedLandmarks = {
       leftEye: leftEyeCenter,
@@ -439,17 +457,17 @@ export class FaceService {
     // 1. Centering Check
     const centerX = box.x + box.width / 2;
     const centerY = box.y + box.height / 2;
-    const faceCentered = centerX >= 0.30 && centerX <= 0.70 && centerY >= 0.22 && centerY <= 0.78;
-    if (!faceCentered) failures.push('จัดใบหน้าให้อยู่กึ่งกลางกรอบวงรี');
+    const faceCentered = centerX >= 0.28 && centerX <= 0.72 && centerY >= 0.20 && centerY <= 0.80;
+    if (!faceCentered) failures.push('จัดใบหน้าให้อยู่ในกรอบ');
 
-    // 2. Size Ratio Check (22% to 68% of frame)
+    // 2. Size Ratio Check (20% to 68% of frame)
     const sizeRatioValid = box.width >= 0.20 && box.width <= 0.68;
-    if (box.width < 0.20) failures.push('ขยับเข้าใกล้กล้องอีกเล็กน้อย');
+    if (box.width < 0.20) failures.push('เข้าใกล้ขึ้น');
     else if (box.width > 0.68) failures.push('ถอยห่างจากกล้องอีกเล็กน้อย');
 
-    // 3. Head Pose Alignment Check (For Center)
-    const isAngleValid = Math.abs(yawDeg) <= 12 && Math.abs(pitchDeg) <= 14 && Math.abs(rollDeg) <= 12;
-    if (!isAngleValid) failures.push('มองตรงมาที่กล้อง ไม่เอียงศีรษะ');
+    // 3. Head Pose Alignment Check (ไม่เอียงเกิน 20–25 องศา)
+    const isAngleValid = Math.abs(yawDeg) <= 22 && Math.abs(pitchDeg) <= 22 && Math.abs(rollDeg) <= 20;
+    if (!isAngleValid) failures.push('หันหน้าตรง');
 
     // 4. Eyes Open Check
     const isEyesOpen = ear >= 0.20 && blinkL <= 0.38 && blinkR <= 0.38;
@@ -510,11 +528,11 @@ export class FaceService {
     }
 
     const isWellLit = meanLuminance >= 45 && meanLuminance <= 220;
-    if (meanLuminance < 45) failures.push('แสงสว่างน้อยเกินไป กรุณาเพิ่มแสง');
-    else if (meanLuminance > 220) failures.push('แสงจ้าเกินไป กรุณาปรับแสง');
+    if (meanLuminance < 45) failures.push('เพิ่มแสง');
+    else if (meanLuminance > 220) failures.push('ลดแสงจ้า');
 
     const isSharp = laplacianVar >= 16;
-    if (!isSharp) failures.push('ภาพเบลอหรือไม่ชัด กรุณาถืออุปกรณ์นิ่งๆ');
+    if (!isSharp) failures.push('ถืออุปกรณ์นิ่งๆ');
 
     // Calculate Real Continuous Quality Score (0 to 100)
     const distCenter = Math.hypot(centerX - 0.5, centerY - 0.5);
@@ -556,7 +574,7 @@ export class FaceService {
   /**
    * Update dynamic liveness and advance randomized challenge steps
    */
-  private updateLivenessState(ear: number, blinkL: number, blinkR: number, normYaw: number): void {
+  private updateLivenessState(ear: number, blinkL: number, blinkR: number, normYaw: number, mouthOpen: boolean = false): void {
     const now = Date.now();
 
     // 1. Dynamic Eye Blink Detection (Closed 100–850ms, then reopened)
@@ -585,6 +603,12 @@ export class FaceService {
       this.challengeCompletedAt['turn_right'] = now;
     }
 
+    // 3. Short Mouth Open Detection
+    if (mouthOpen) {
+      this.mouthOpenCompleted = true;
+      this.challengeCompletedAt['mouth_open'] = now;
+    }
+
     // Advance active challenge
     const currentGoal = this.challenges[this.currentChallengeIndex];
     if (currentGoal && this.challengeCompletedAt[currentGoal]) {
@@ -597,6 +621,7 @@ export class FaceService {
   public getLivenessState(): LivenessState {
     const currentGoal = this.challenges[this.currentChallengeIndex] || 'blink';
     const allPassed = this.challenges.every((c) => Boolean(this.challengeCompletedAt[c]));
+    const isAnyLivenessPassed = this.blinkCompleted || this.leftTurnCompleted || this.rightTurnCompleted || this.mouthOpenCompleted;
 
     let prompt = 'กรุณามองตรงมาที่กล้อง';
     if (!allPassed) {
@@ -606,6 +631,8 @@ export class FaceService {
         prompt = 'กรุณาหันหน้าไปทางซ้ายเล็กน้อย';
       } else if (currentGoal === 'turn_right') {
         prompt = 'กรุณาหันหน้าไปทางขวาเล็กน้อย';
+      } else if (currentGoal === 'mouth_open') {
+        prompt = 'กรุณาอ้าปากหรือยิ้มสั้นๆ เพื่อยืนยันบุคคลจริง';
       }
     } else {
       prompt = 'ยืนยันบุคคลจริงเรียบร้อยแล้ว';
@@ -615,7 +642,8 @@ export class FaceService {
       blinkDetected: this.blinkCompleted,
       turnLeftDetected: this.leftTurnCompleted,
       turnRightDetected: this.rightTurnCompleted,
-      isRealHuman: allPassed || this.blinkCompleted,
+      mouthOpenDetected: this.mouthOpenCompleted,
+      isRealHuman: allPassed || isAnyLivenessPassed,
       currentPrompt: prompt,
       activeChallenge: currentGoal,
       currentChallengeIndex: this.currentChallengeIndex,

@@ -278,6 +278,22 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
     )
   );
 
+  // 5 UX Stages for Face Login Mode
+  const loginStage: 'detecting' | 'liveness' | 'verifying' | 'success' | 'failed' = React.useMemo(() => {
+    if (verifySuccess) return 'success';
+    if (isVerifying) return 'verifying';
+    if (verifyMessage && !verifySuccess && (verifyMessage.includes('ไม่พบ') || verifyMessage.includes('ผิดพลาด') || verifyMessage.includes('ไม่สำเร็จ'))) {
+      return 'failed';
+    }
+    if (!detection || !detection.detected || !detection.qualityGate.passed) {
+      return 'detecting';
+    }
+    if (!livenessState.isRealHuman && !livenessState.allChallengesPassed) {
+      return 'liveness';
+    }
+    return 'liveness';
+  }, [verifySuccess, isVerifying, verifyMessage, detection, livenessState]);
+
   // One-Click / Auto Face Login using Multi-frame Averaged Deep Embedding
   const handleFaceLogin = async () => {
     const curDetection = detectionRef.current || detection;
@@ -712,17 +728,81 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
             )}
           </div>
 
+          {/* 5 UX Stages for Face Login */}
+          {mode === 'login' && (
+            <div className="grid grid-cols-5 gap-1 text-center text-[10px] sm:text-xs font-bold py-1">
+              <div
+                className={`py-1.5 px-1 rounded-xl border transition ${
+                  loginStage === 'detecting'
+                    ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-2xs font-extrabold'
+                    : 'bg-stone-50 text-stone-400 border-stone-200'
+                }`}
+              >
+                1. ตรวจจับใบหน้า
+              </div>
+              <div
+                className={`py-1.5 px-1 rounded-xl border transition ${
+                  loginStage === 'liveness'
+                    ? 'bg-teal-100 text-teal-900 border-teal-300 shadow-2xs font-extrabold'
+                    : 'bg-stone-50 text-stone-400 border-stone-200'
+                }`}
+              >
+                2. ตรวจความมีชีวิต
+              </div>
+              <div
+                className={`py-1.5 px-1 rounded-xl border transition ${
+                  loginStage === 'verifying'
+                    ? 'bg-indigo-100 text-indigo-900 border-indigo-300 shadow-2xs font-extrabold'
+                    : 'bg-stone-50 text-stone-400 border-stone-200'
+                }`}
+              >
+                3. ยืนยันตัวตน
+              </div>
+              <div
+                className={`py-1.5 px-1 rounded-xl border transition ${
+                  loginStage === 'success'
+                    ? 'bg-emerald-100 text-emerald-900 border-emerald-300 shadow-2xs font-extrabold'
+                    : 'bg-stone-50 text-stone-400 border-stone-200'
+                }`}
+              >
+                4. สำเร็จ
+              </div>
+              <div
+                className={`py-1.5 px-1 rounded-xl border transition ${
+                  loginStage === 'failed'
+                    ? 'bg-rose-100 text-rose-900 border-rose-300 shadow-2xs font-extrabold'
+                    : 'bg-stone-50 text-stone-400 border-stone-200'
+                }`}
+              >
+                5. ไม่สำเร็จ
+              </div>
+            </div>
+          )}
+
           {/* Feedback Message Bar */}
           {verifyMessage && !verifySuccess && (
             <div
-              className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 border transition ${
+              className={`p-3 rounded-2xl text-xs font-semibold flex items-center justify-between gap-2 border transition ${
                 verifyMessage.includes('สำเร็จ')
                   ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : loginStage === 'failed'
+                  ? 'bg-rose-50 border-rose-300 text-rose-900'
                   : 'bg-amber-50 border-amber-200 text-amber-900'
               }`}
             >
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>{verifyMessage}</span>
+              <div className="flex items-center gap-2">
+                <AlertCircle className={`w-4 h-4 flex-shrink-0 ${loginStage === 'failed' ? 'text-rose-600' : 'text-amber-600'}`} />
+                <span>{verifyMessage}</span>
+              </div>
+              {loginStage === 'failed' && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-3 py-1 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition flex-shrink-0 cursor-pointer shadow-2xs"
+                >
+                  ใช้ PIN สำรอง
+                </button>
+              )}
             </div>
           )}
 
@@ -773,16 +853,23 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
                 )}
               </button>
 
-              <div className="text-center pt-2">
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 pt-2 text-xs font-semibold">
                 <button
                   onClick={() => {
                     setMode('enroll');
                     setEnrollStep(1);
                     setVerifyMessage('');
                   }}
-                  className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 underline underline-offset-4"
+                  className="text-emerald-700 hover:text-emerald-800 underline underline-offset-4 cursor-pointer"
                 >
-                  ยังไม่มีข้อมูลใบหน้าในระบบ? สมัครสมาชิกด้วยใบหน้าใหม่
+                  ยังไม่มีข้อมูลใบหน้าในระบบ? สมัครสมาชิกใหม่
+                </button>
+                <span className="hidden sm:inline text-slate-300">|</span>
+                <button
+                  onClick={onClose}
+                  className="text-slate-600 hover:text-slate-900 font-bold underline underline-offset-4 cursor-pointer"
+                >
+                  เข้าสู่ระบบด้วยรหัส PIN สำรอง
                 </button>
               </div>
             </div>

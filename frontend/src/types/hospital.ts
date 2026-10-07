@@ -114,9 +114,11 @@ export interface PatientSymptomReport {
 }
 
 export interface AiSystemSettings {
-  similarityThreshold: number; // default 0.82
+  similarityThreshold: number; // default 0.80
   marginThreshold: number;     // default 0.08
-  minVisibilityThreshold: number; // default 0.35
+  minVisibilityThreshold: number; // default 0.55
+  poseConfidenceThreshold: number; // default 0.65
+  toleranceDeg: number;        // default 10
   maxTrunkLeanDeg: number;     // default 22
   maxVelocityDegPerSec: number; // default 220
   modelVersion: string;

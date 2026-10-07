@@ -113,12 +113,12 @@ export class PoseService {
             'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
             {
               numPoses: 1,
-              minPoseDetectionConfidence: 0.6,
-              minPosePresenceConfidence: 0.6,
-              minTrackingConfidence: 0.6,
+              minPoseDetectionConfidence: 0.65,
+              minPosePresenceConfidence: 0.65,
+              minTrackingConfidence: 0.65,
             }
           );
-          console.log('✅ MediaPipe PoseLandmarker (Full Model) initialized successfully');
+          console.log('✅ MediaPipe PoseLandmarker (Full Model - 0.65 Confidence) initialized successfully');
         } catch (err) {
           console.warn('⚠️ PoseLandmarker initialization failed:', err);
         }
@@ -278,6 +278,7 @@ export class PoseService {
 
     // 1. Pose detection (Runs every frame for real-time exercise state machine & repetition tracking)
     let poseLandmarks: PoseLandmarks | null = null;
+    let worldLandmarks: PoseLandmarks | null = null;
     try {
       let poseTime = timestamp;
       if (poseTime <= this.lastPoseTimestamp) {
@@ -289,6 +290,9 @@ export class PoseService {
       if (result && result.landmarks && result.landmarks.length > 0) {
         const rawLandmarks = result.landmarks[0] as PoseLandmarks;
         poseLandmarks = this.smoother.smooth(rawLandmarks, poseTime);
+        if (result.worldLandmarks && result.worldLandmarks.length > 0) {
+          worldLandmarks = result.worldLandmarks[0] as PoseLandmarks;
+        }
       } else {
         this.smoother.reset();
       }
@@ -350,6 +354,7 @@ export class PoseService {
 
     return {
       poseLandmarks,
+      worldLandmarks,
       handLandmarks,
       faceLandmarks,
     };

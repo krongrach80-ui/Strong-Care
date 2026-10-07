@@ -435,9 +435,11 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
 
   const handleResetSettingsConfirm = () => {
     const defaults = {
-      similarityThreshold: 0.82,
+      similarityThreshold: 0.80,
       marginThreshold: 0.08,
-      minVisibilityThreshold: 0.35,
+      minVisibilityThreshold: 0.55,
+      poseConfidenceThreshold: 0.65,
+      toleranceDeg: 10,
       maxTrunkLeanDeg: 22,
       maxVelocityDegPerSec: 220,
       modelVersion: 'face-resnet34-v2',
@@ -447,7 +449,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
     };
     setLocalAiSettings(defaults);
     updateAiSettings(defaults);
-    showToast('รีเซ็ตเรียบร้อยแล้ว');
+    showToast('รีเซ็ตเป็นค่ามาตรฐานที่แนะนำเรียบร้อยแล้ว');
   };
 
   // Staff Login Submission
@@ -1871,7 +1873,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                         }
                         className="w-full accent-[#10B981]"
                       />
-                      <span className="text-[11px] text-slate-400">ค่ามาตรฐานทางการแพทย์: 0.82 (ป้องกันการระบุตัวตนผิดพลาด)</span>
+                      <span className="text-[11px] text-slate-400">เกณฑ์แนะนำ: 0.80 (ช่วงปลอดภัย 0.78–0.85 ป้องกันคนหน้าคล้าย)</span>
                     </div>
 
                     <div>
@@ -1896,8 +1898,8 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
 
                   <div className="pt-2 flex items-center justify-between text-xs">
                     <div>
-                      <div className="font-bold text-slate-800">โหมดตรวจจับการมีชีวิตแบบเข้มงวด (Strict Liveness Challenge)</div>
-                      <div className="text-slate-500 text-[11px]">บังคับกระพริบตาและหันศีรษะป้องกันการใช้รูปถ่ายปลอม</div>
+                      <div className="font-bold text-slate-800">โหมดตรวจจับการมีชีวิต (Liveness Verification)</div>
+                      <div className="text-slate-500 text-[11px]">บังคับตรวจจับการมีชีวิต (กระพริบตา, หันศีรษะ, หรืออ้าปาก) ป้องกันรูปถ่าย</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1918,6 +1920,63 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs font-semibold">
+                    <div>
+                      <div className="flex justify-between text-slate-700 mb-1">
+                        <span>เกณฑ์ความเชื่อมั่นโมเดลท่าทาง (Pose Confidence):</span>
+                        <span className="text-emerald-700 font-bold">{localAiSettings.poseConfidenceThreshold ?? 0.65}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0.50}
+                        max={0.90}
+                        step={0.05}
+                        value={localAiSettings.poseConfidenceThreshold ?? 0.65}
+                        onChange={(e) =>
+                          setLocalAiSettings({ ...localAiSettings, poseConfidenceThreshold: parseFloat(e.target.value) })
+                        }
+                        className="w-full accent-[#10B981]"
+                      />
+                      <span className="text-[11px] text-slate-400">เกณฑ์มาตรฐานที่แนะนำ: 0.65 (pose_landmarker_full)</span>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-slate-700 mb-1">
+                        <span>เกณฑ์ความชัดเจนข้อต่อ (Landmark Visibility):</span>
+                        <span className="text-emerald-700 font-bold">{localAiSettings.minVisibilityThreshold ?? 0.55}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0.35}
+                        max={0.80}
+                        step={0.05}
+                        value={localAiSettings.minVisibilityThreshold ?? 0.55}
+                        onChange={(e) =>
+                          setLocalAiSettings({ ...localAiSettings, minVisibilityThreshold: parseFloat(e.target.value) })
+                        }
+                        className="w-full accent-[#10B981]"
+                      />
+                      <span className="text-[11px] text-slate-400">เกณฑ์มาตรฐานที่แนะนำ: 0.55 (ไม่นับมุมถ้ามองไม่เห็นชัดเจน)</span>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-slate-700 mb-1">
+                        <span>ความคลาดเคลื่อนมุมเป้าหมาย (ROM Tolerance):</span>
+                        <span className="text-emerald-700 font-bold">{localAiSettings.toleranceDeg ?? 10}°</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={5}
+                        max={15}
+                        step={1}
+                        value={localAiSettings.toleranceDeg ?? 10}
+                        onChange={(e) =>
+                          setLocalAiSettings({ ...localAiSettings, toleranceDeg: parseInt(e.target.value) })
+                        }
+                        className="w-full accent-[#10B981]"
+                      />
+                      <span className="text-[11px] text-slate-400">เกณฑ์มาตรฐานที่แนะนำ: 8–10° เพื่อความแม่นยำทางกายภาพ</span>
+                    </div>
+
                     <div>
                       <div className="flex justify-between text-slate-700 mb-1">
                         <span>มุมเอียงชดเชยลำตัวสูงสุด (Max Trunk Lean Angle):</span>
