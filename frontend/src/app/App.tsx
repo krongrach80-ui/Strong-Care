@@ -5,6 +5,7 @@ import { Screen2Login } from '../pages/NewFlow/Screen2Login';
 import { Screen3Menu } from '../pages/NewFlow/Screen3Menu';
 import { Screen3ScheduleConfig } from '../pages/NewFlow/Screen3ScheduleConfig';
 import { Screen4Exercise } from '../pages/NewFlow/Screen4Exercise';
+import { Screen5MiniGame } from '../pages/NewFlow/Screen5MiniGame';
 import {
   checkDueReminder,
   getSavedTherapyConfig,
@@ -287,6 +288,7 @@ export const App: React.FC = () => {
             { num: 2, label: '2: เข้าสู่ระบบ' },
             { num: 3, label: '3: เมนูผู้ใช้' },
             { num: 4, label: '4: กายภาพ' },
+            { num: 5, label: '5: มินิเกม' },
           ].map((tab) => (
             <button
               key={tab.num}
@@ -401,15 +403,10 @@ export const App: React.FC = () => {
               }}
               onOpenTherapySettings={() => handleOpenScheduleConfig('physio')}
               onStartMiniGame={() => {
-                setIsGameModeActive(true);
-                // Active 2 poses for quick fun gamified physical exercise
-                const gameQueue = STRETCH_EXERCISES.slice(0, 2);
-                setActiveStretchQueue(gameQueue);
-                setActiveCustomHoldTimes({});
-                showToast('🎮 เปิดโหมดมินิเกม: ตะลุยด่านสะสมแต้มสุขภาพ!');
-                handleNavigate(4);
+                showToast('🎮 เข้าสู่มินิเกมกายภาพ: ยกมือตอบคำถาม!');
+                handleNavigate(5);
               }}
-              onOpenMiniGameSettings={() => handleOpenScheduleConfig('minigame')}
+              onOpenMiniGameSettings={() => setIsMiniGameSettingsOpen(true)}
               onOpenUserInfo={() => setIsProfileModalOpen(true)}
             />
           )
@@ -428,6 +425,19 @@ export const App: React.FC = () => {
             customHoldTimes={activeCustomHoldTimes}
             patientId={selectedPatient?.id || 1}
             isGameMode={isGameModeActive}
+          />
+        )}
+
+        {/* หน้า 5: กายภาพแบบมินิเกม (ตอบคำถาม ใช่/ไม่ ด้วยการยกมือ) */}
+        {currentScreen === 5 && (
+          <Screen5MiniGame
+            patient={selectedPatient}
+            onBack={() => handleNavigate(3)}
+            onOpenTherapistModal={(score, poseName, romAngle) => {
+              setTherapistReportData({ score, poseName, romAngle });
+              setIsTherapistReportOpen(true);
+            }}
+            onOpenSettings={() => setIsMiniGameSettingsOpen(true)}
           />
         )}
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Shield,
@@ -253,10 +253,46 @@ interface MiniGameSettingsModalProps {
 }
 
 export const MiniGameSettingsModal: React.FC<MiniGameSettingsModalProps> = ({ isOpen, onClose }) => {
-  const [speed, setSpeed] = useState<'normal' | 'fast'>('normal');
-  const [sound, setSound] = useState(true);
+  const [questionCount, setQuestionCount] = useState<5 | 10 | 15>(10);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [inputMode, setInputMode] = useState<'camera' | 'touch'>('camera');
+  const [holdDurationSec, setHoldDurationSec] = useState<number>(0.7);
+
+  // Load saved settings when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      try {
+        const raw = localStorage.getItem('strongcare_minigame_settings');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if ([5, 10, 15].includes(parsed.questionCount)) setQuestionCount(parsed.questionCount);
+          if (typeof parsed.soundEnabled === 'boolean') setSoundEnabled(parsed.soundEnabled);
+          if (parsed.inputMode === 'touch' || parsed.inputMode === 'camera') setInputMode(parsed.inputMode);
+          if (typeof parsed.holdDurationSec === 'number') setHoldDurationSec(parsed.holdDurationSec);
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const handleSave = () => {
+    try {
+      const payload = {
+        questionCount,
+        soundEnabled,
+        inputMode,
+        holdDurationSec,
+      };
+      localStorage.setItem('strongcare_minigame_settings', JSON.stringify(payload));
+      window.dispatchEvent(new CustomEvent('minigame:settings_updated', { detail: payload }));
+    } catch {
+      // ignore
+    }
+    onClose();
+  };
 
   return (
     <div
@@ -285,49 +321,114 @@ export const MiniGameSettingsModal: React.FC<MiniGameSettingsModalProps> = ({ is
         </div>
 
         <div className="space-y-4">
+          {/* 1. จำนวนข้อต่อรอบ */}
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-              ระดับความเร็วของเป้าหมาย
+              จำนวนคำถามต่อหนึ่งรอบ
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {([5, 10, 15] as const).map((cnt) => (
+                <button
+                  key={cnt}
+                  type="button"
+                  onClick={() => setQuestionCount(cnt)}
+                  className={`py-2.5 rounded-2xl border text-sm font-bold transition flex flex-col items-center gap-0.5 ${
+                    questionCount === cnt
+                      ? 'bg-emerald-500 border-emerald-600 text-white shadow-md'
+                      : 'bg-emerald-50/50 border-emerald-200 text-emerald-900 hover:bg-emerald-100/60'
+                  }`}
+                >
+                  <span className="text-base">{cnt}</span>
+                  <span className="text-[10px] font-medium opacity-90">ข้อ</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 2. วิธีการตอบคำถาม */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+              รูปแบบการควบคุม / รับคำตอบ
             </label>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => setSpeed('normal')}
-                className={`py-2.5 rounded-xl border text-xs font-bold transition ${
-                  speed === 'normal'
-                    ? 'bg-emerald-100 border-emerald-500 text-emerald-800'
-                    : 'bg-white border-slate-200 text-slate-600'
+                onClick={() => setInputMode('camera')}
+                className={`py-3 px-3 rounded-2xl border text-xs font-bold transition flex flex-col items-center gap-1 text-center ${
+                  inputMode === 'camera'
+                    ? 'bg-emerald-500 border-emerald-600 text-white shadow-md'
+                    : 'bg-emerald-50/50 border-emerald-200 text-emerald-900 hover:bg-emerald-100/60'
                 }`}
               >
-                ปกติ (สำหรับผู้สูงอายุ)
+                <span className="text-sm">📷 กล้อง AI ตรวจจับมือ</span>
+                <span className="text-[10px] font-normal opacity-90">
+                  ยกมือซ้าย (ใช่) / ขวา (ไม่)
+                </span>
               </button>
+
               <button
                 type="button"
-                onClick={() => setSpeed('fast')}
-                className={`py-2.5 rounded-xl border text-xs font-bold transition ${
-                  speed === 'fast'
-                    ? 'bg-emerald-100 border-emerald-500 text-emerald-800'
-                    : 'bg-white border-slate-200 text-slate-600'
+                onClick={() => setInputMode('touch')}
+                className={`py-3 px-3 rounded-2xl border text-xs font-bold transition flex flex-col items-center gap-1 text-center ${
+                  inputMode === 'touch'
+                    ? 'bg-emerald-500 border-emerald-600 text-white shadow-md'
+                    : 'bg-emerald-50/50 border-emerald-200 text-emerald-900 hover:bg-emerald-100/60'
                 }`}
               >
-                ท้าทาย (ฟื้นฟูขั้นสูง)
+                <span className="text-sm">👆 โหมดปุ่มสัมผัส</span>
+                <span className="text-[10px] font-normal opacity-90">
+                  แตะปุ่มบนหน้าจอโดยตรง
+                </span>
               </button>
             </div>
           </div>
 
-          <label className="flex items-center justify-between text-sm font-semibold text-slate-800 cursor-pointer pt-2 border-t border-slate-100">
-            <span>เสียงเพลงประกอบและเอฟเฟกต์</span>
+          {/* 3. เวลาค้างท่ายืนยัน (เมื่อใช้กล้อง) */}
+          {inputMode === 'camera' && (
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                เวลาค้างท่ายกมือเพื่อยืนยันคำตอบ
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { sec: 0.6, label: 'เร็ว (0.6 วิ)' },
+                  { sec: 0.7, label: 'ปกติ (0.7 วิ)' },
+                  { sec: 1.0, label: 'มั่นคง (1.0 วิ)' },
+                ].map((item) => (
+                  <button
+                    key={item.sec}
+                    type="button"
+                    onClick={() => setHoldDurationSec(item.sec)}
+                    className={`py-2 rounded-xl border text-xs font-bold transition ${
+                      holdDurationSec === item.sec
+                        ? 'bg-emerald-100 border-emerald-500 text-emerald-900 font-extrabold'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 4. สลับเปิด/ปิดเสียง */}
+          <label className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-200/80 cursor-pointer">
+            <div className="flex flex-col">
+              <span className="text-sm font-bold text-slate-800">เสียงประกอบและเสียงเฉลย</span>
+              <span className="text-xs text-slate-500">เปิดเสียงเอฟเฟกต์เมื่อตอบถูก/ผิดและจบเกม</span>
+            </div>
             <input
               type="checkbox"
-              checked={sound}
-              onChange={(e) => setSound(e.target.checked)}
-              className="w-5 h-5 accent-[#1E8A4C] rounded"
+              checked={soundEnabled}
+              onChange={(e) => setSoundEnabled(e.target.checked)}
+              className="w-5 h-5 accent-[#1E8A4C] rounded cursor-pointer"
             />
           </label>
         </div>
 
-        <button onClick={onClose} className="btn-primary-capsule !w-full mt-4">
-          <span>ตกลง</span>
+        <button onClick={handleSave} className="btn-primary-capsule !w-full mt-4">
+          <span>บันทึกการตั้งค่า</span>
         </button>
       </div>
     </div>
@@ -711,6 +812,16 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
               </div>
               <p className="text-slate-600 text-[11px] leading-relaxed">
                 ตรวจจับ Over-ROM, ลำตัวเอียง (Trunk Lean), ป้องกันข้อมูลคนไข้หน้าตู้ (เฉพาะ Face/PIN ไม่แสดงดรอปดาวน์สาธารณะ) พร้อมเสียง AI
+              </p>
+            </div>
+
+            <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 shadow-sm space-y-1 sm:col-span-2">
+              <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
+                <span>🎮</span>
+                <span>Mini-Game Cognitive & Physical Rehab</span>
+              </div>
+              <p className="text-slate-600 text-[11px] leading-relaxed">
+                มินิเกมตอบคำถาม ใช่ / ไม่ โดยใช้ท่าทางมือ (ยกมือซ้าย = ใช่, ยกมือขวา = ไม่) ตรวจจับด้วย MediaPipe AI เรียลไทม์ คลังคำถาม 99 ข้อ พร้อมส่งผลรายงานให้นักกายภาพ
               </p>
             </div>
 

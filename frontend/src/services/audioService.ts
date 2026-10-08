@@ -139,6 +139,54 @@ class AudioFeedbackService {
     osc.start();
     osc.stop(this.ctx.currentTime + 0.1);
   }
+
+  public playQuizCorrect() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    // Upward cheerful chime (587.33Hz D5 -> 880Hz A5)
+    const notes = [587.33, 880.0];
+    notes.forEach((freq, idx) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, this.ctx!.currentTime + idx * 0.1);
+
+      gain.gain.setValueAtTime(0.2, this.ctx!.currentTime + idx * 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx!.currentTime + idx * 0.1 + 0.35);
+
+      osc.connect(gain);
+      gain.connect(this.ctx!.destination);
+
+      osc.start(this.ctx!.currentTime + idx * 0.1);
+      osc.stop(this.ctx!.currentTime + idx * 0.1 + 0.35);
+    });
+  }
+
+  public playQuizIncorrect() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    // Gentle soft buzz (280Hz -> 200Hz)
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(280, this.ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(180, this.ctx.currentTime + 0.25);
+
+    gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.25);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.25);
+  }
 }
 
 export const audioFeedback = new AudioFeedbackService();
