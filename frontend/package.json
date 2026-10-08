@@ -7,8 +7,9 @@
     "dev": "vite --host",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "node ./scripts/runFailSafeSuite.js",
-    "test:failsafe": "node ./scripts/runFailSafeSuite.js"
+    "test": "node ./scripts/runFailSafeSuite.js && node ./scripts/testAuthRbac.js",
+    "test:failsafe": "node ./scripts/runFailSafeSuite.js",
+    "test:rbac": "node ./scripts/testAuthRbac.js"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.14",

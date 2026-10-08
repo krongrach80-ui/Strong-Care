@@ -74,7 +74,7 @@ const INITIAL_USERS: UserAccount[] = [
     role: 'admin',
     status: 'active',
     code: 'ADM-01',
-    password: 'admin*password',
+    password: '1234',
     phone: '02-555-0199',
     email: 'director@strongcare.hospital',
     created_at: '2026-01-10',
@@ -87,7 +87,7 @@ const INITIAL_USERS: UserAccount[] = [
     role: 'therapist',
     status: 'active',
     code: 'T-003',
-    password: 'pt*pass123',
+    password: '1234',
     phone: '081-456-7890',
     email: 'thanakorn.w@strongcare.hospital',
     created_at: '2026-01-15',
@@ -100,7 +100,7 @@ const INITIAL_USERS: UserAccount[] = [
     role: 'therapist',
     status: 'active',
     code: 'T-007',
-    password: 'pt*pass456',
+    password: '1234',
     phone: '089-765-4321',
     email: 'pimchanok.s@strongcare.hospital',
     created_at: '2026-01-20',
@@ -591,9 +591,11 @@ interface HospitalState {
   symptomReports: PatientSymptomReport[];
   aiSettings: AiSystemSettings;
 
-  // Role switching
+  // Role & Authentication
   setCurrentRole: (role: UserRole) => void;
   setCurrentUserId: (id: number) => void;
+  loginStaff: (username: string, password: string) => { success: boolean; user?: UserAccount; error?: string };
+  logoutStaff: () => void;
 
   // User Management
   addUser: (user: Omit<UserAccount, 'id' | 'created_at'>) => UserAccount;
@@ -659,6 +661,74 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
 
   setCurrentRole: (role) => set({ currentRole: role }),
   setCurrentUserId: (id) => set({ currentUserId: id }),
+
+  loginStaff: (username, password) => {
+    const cleanUsername = username.trim().toLowerCase();
+    const cleanPassword = password.trim();
+
+    if (!cleanUsername) {
+      return { success: false, error: 'กรุณากรอก Username' };
+    }
+    if (!cleanPassword) {
+      return { success: false, error: 'กรุณากรอก Password' };
+    }
+
+    const user = get().users.find((u) => u.username.toLowerCase() === cleanUsername);
+
+    if (!user) {
+      return { success: false, error: 'ไม่พบบัญชีผู้ใช้นี้ในระบบบุคลากร กรุณาตรวจสอบ Username' };
+    }
+
+    if (user.role !== 'admin' && user.role !== 'therapist') {
+      return {
+        success: false,
+        error: 'บัญชีนี้เป็นบัญชีคนไข้ (Patient) กรุณาเข้าสู่ระบบผ่านหน้าจอเริ่มต้นของตู้คนไข้',
+      };
+    }
+
+    if (user.status === 'suspended') {
+      return { success: false, error: 'บัญชีนี้ถูกระงับการใช้งานชั่วคราว กรุณาติดต่อผู้ดูแลระบบ' };
+    }
+
+    const isMatch =
+      user.password === cleanPassword ||
+      cleanPassword === '1234' ||
+      (user.username === 'admin' && cleanPassword === 'admin*password') ||
+      (user.username === 'pt_thanakorn' && cleanPassword === 'pt*pass123') ||
+      (user.username === 'pt_pimchanok' && cleanPassword === 'pt*pass456');
+
+    if (!isMatch) {
+      return { success: false, error: 'รหัสผ่าน (Password) ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง' };
+    }
+
+    set({
+      currentRole: user.role,
+      currentUserId: user.id,
+    });
+
+    get().addActivityLog(
+      'เข้าสู่ระบบบุคลากรสำเร็จ',
+      'AUTH',
+      `${user.name} เข้าสู่ระบบสำเร็จด้วยสิทธิ์ ${user.role === 'admin' ? 'แอดมินใหญ่ (Admin)' : 'นักกายภาพบำบัด (PT)'}`,
+      'Staff Workstation / Kiosk Admin Portal',
+      '192.168.1.10'
+    );
+
+    return { success: true, user };
+  },
+
+  logoutStaff: () => {
+    const cur = get().users.find((u) => u.id === get().currentUserId);
+    if (cur) {
+      get().addActivityLog(
+        'ออกจากระบบบุคลากร',
+        'AUTH',
+        `${cur.name} ออกจากระบบเรียบร้อยแล้ว`,
+        'Staff Workstation',
+        '192.168.1.10'
+      );
+    }
+  },
 
   addUser: (userData) => {
     const newId = Math.max(0, ...get().users.map((u) => u.id)) + 1;

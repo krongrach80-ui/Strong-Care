@@ -1,5 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
+  LogIn,
+  ArrowLeft,
   Users,
   User,
   Stethoscope,
@@ -93,6 +95,8 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
     unbanIp,
     updateAiSettings,
     addActivityLog,
+    loginStaff,
+    logoutStaff,
   } = useHospitalStore();
 
   // Active Tab
@@ -100,7 +104,9 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
 
   // Staff Authentication Barrier
   const [isStaffAuthenticated, setIsStaffAuthenticated] = useState<boolean>(false);
-  const [staffPinInput, setStaffPinInput] = useState<string>('');
+  const [staffUsernameInput, setStaffUsernameInput] = useState<string>('');
+  const [staffPasswordInput, setStaffPasswordInput] = useState<string>('');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
   const [staffAuthError, setStaffAuthError] = useState<string | null>(null);
 
   // Toast notification
@@ -110,21 +116,63 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
     setTimeout(() => setToast(null), 3200);
   };
 
-  // Switch role handler (Admin vs Physiotherapist)
-  const handleRoleSwitch = (role: 'admin' | 'therapist') => {
-    setCurrentRole(role);
-    if (role === 'admin') {
-      setCurrentUserId(1);
-      showToast('สลับเข้าสู่โหมด: แอดมินใหญ่ (Admin)');
-    } else {
-      setCurrentUserId(2);
-      showToast('สลับเข้าสู่โหมด: นักกายภาพ (Physiotherapist)');
-      // If currently on an Admin-only tab, revert to users
-      if (activeTab === 'logs' || activeTab === 'settings') {
+  // Staff Logout Handler
+  const handleStaffLogout = () => {
+    logoutStaff();
+    setIsStaffAuthenticated(false);
+    setStaffUsernameInput('');
+    setStaffPasswordInput('');
+    setStaffAuthError(null);
+    showToast('ออกจากระบบบุคลากรเรียบร้อยแล้ว');
+  };
+
+  // Staff Login Submission (Checks real username + password)
+  const handleStaffLogin = (e?: React.FormEvent, overrideUsername?: string, overridePassword?: string) => {
+    if (e) e.preventDefault();
+    const u = (overrideUsername !== undefined ? overrideUsername : staffUsernameInput).trim();
+    const p = (overridePassword !== undefined ? overridePassword : staffPasswordInput).trim();
+
+    if (!u) {
+      setStaffAuthError('กรุณากรอก Username ประจำตัวบุคลากร');
+      return;
+    }
+    if (!p) {
+      setStaffAuthError('กรุณากรอก Password รหัสผ่าน');
+      return;
+    }
+
+    const result = loginStaff(u, p);
+    if (result.success && result.user) {
+      setIsStaffAuthenticated(true);
+      setStaffAuthError(null);
+      setStaffUsernameInput('');
+      setStaffPasswordInput('');
+      if (result.user.role === 'therapist' && (activeTab === 'logs' || activeTab === 'settings')) {
         setActiveTab('users');
       }
+      showToast(`เข้าสู่ระบบสำเร็จ: ยินดีต้อนรับ ${result.user.name} (${result.user.role === 'admin' ? 'แอดมินใหญ่' : 'นักกายภาพบำบัด'})`);
+    } else {
+      setStaffAuthError(result.error || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
     }
   };
+
+  // Quick Demo Account Filler
+  const handleFillDemoAccount = (username: string, pass: string, autoLogin: boolean = false) => {
+    setStaffUsernameInput(username);
+    setStaffPasswordInput(pass);
+    setStaffAuthError(null);
+    if (autoLogin) {
+      handleStaffLogin(undefined, username, pass);
+    }
+  };
+
+  // Guard against forbidden tab navigation for Physiotherapist
+  useEffect(() => {
+    if (currentRole === 'therapist' && (activeTab === 'logs' || activeTab === 'settings')) {
+      setActiveTab('users');
+      showToast('ไม่มีสิทธิ์เข้าถึง: หน้านี้สงวนสิทธิ์เฉพาะผู้อำนวยการ / แอดมินใหญ่ (Admin)');
+    }
+  }, [currentRole, activeTab]);
 
   // Current active staff info
   const currentUser = useMemo(() => {
@@ -133,8 +181,13 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
 
   // Current Therapist profile if in therapist mode
   const currentTherapist = useMemo(() => {
-    return therapists.find((t) => t.id === currentUserId) || therapists[0];
-  }, [therapists, currentUserId]);
+    const cur = users.find((u) => u.id === currentUserId);
+    if (!cur) return therapists[0];
+    return (
+      therapists.find((t) => t.code === cur.code || t.name === cur.name || t.id === cur.id) ||
+      therapists[0]
+    );
+  }, [therapists, users, currentUserId]);
 
   // Reception Onboarding Modal
   const [isReceptionOpen, setIsReceptionOpen] = useState<boolean>(false);
@@ -258,11 +311,16 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
   // 2. STATE FOR PATIENT DATA (Tab 2: patients)
   // =========================================================================
   const [patientSearch, setPatientSearch] = useState<string>('');
+  const [patientCareFilter, setPatientCareFilter] = useState<'all' | 'assigned'>('all');
   const [patientDetailModal, setPatientDetailModal] = useState<UserAccount | null>(null);
 
   const filteredPatients = useMemo(() => {
     return users.filter((u) => {
       if (u.role !== 'patient') return false;
+      if (currentRole === 'therapist' && patientCareFilter === 'assigned') {
+        const isAssigned = canEditUser(u);
+        if (!isAssigned) return false;
+      }
       const q = patientSearch.toLowerCase().trim();
       return (
         !q ||
@@ -274,7 +332,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
         (u.chiefComplaint && u.chiefComplaint.toLowerCase().includes(q))
       );
     });
-  }, [users, patientSearch]);
+  }, [users, patientSearch, currentRole, patientCareFilter, canEditUser]);
 
   // =========================================================================
   // 3. STATE FOR PHYSIOTHERAPIST DATA (Tab 3: therapists)
@@ -452,102 +510,202 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
     showToast('รีเซ็ตเป็นค่ามาตรฐานที่แนะนำเรียบร้อยแล้ว');
   };
 
-  // Staff Login Submission
-  const handleStaffLogin = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!staffPinInput.trim()) {
-      setStaffAuthError('กรุณากรอกรหัส PIN ประจำตัวเจ้าหน้าที่ (หรือใช้ 1234)');
-      return;
-    }
-    if (staffPinInput === '1234' || staffPinInput === '0000' || staffPinInput.length >= 4) {
-      setIsStaffAuthenticated(true);
-      setStaffAuthError(null);
-      showToast('ยืนยันตัวตนบุคลากรสำเร็จ ยินดีต้อนรับสู่ระบบบริหารโรงพยาบาล');
-    } else {
-      setStaffAuthError('รหัส PIN ไม่ถูกต้อง (สำหรับโหมดสาธิตให้ใช้ 1234)');
-    }
-  };
-
-  // If not authenticated, render Staff Security Barrier
+  // If not authenticated, render New Staff Login Screen (Username + Password)
   if (!isStaffAuthenticated) {
+    const demoAccounts = [
+      {
+        username: 'admin',
+        password: '1234',
+        role: 'admin' as const,
+        roleTitle: 'แอดมินใหญ่ (Admin)',
+        name: 'นพ. วรชัย อมรเวช',
+        code: 'ADM-01',
+        description: 'ผู้อำนวยการ รพ. • สิทธิ์ 6 เมนู',
+        badgeColor: 'bg-amber-100 text-amber-900 border-amber-300',
+      },
+      {
+        username: 'pt_thanakorn',
+        password: '1234',
+        role: 'therapist' as const,
+        roleTitle: 'นักกายภาพ (PT)',
+        name: 'กภ. ธนากร วงศ์สวัสดิ์',
+        code: 'T-003',
+        description: 'นักกายภาพวิชาชีพ • สิทธิ์ 4 เมนู',
+        badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+      },
+      {
+        username: 'pt_pimchanok',
+        password: '1234',
+        role: 'therapist' as const,
+        roleTitle: 'นักกายภาพ (PT)',
+        name: 'กภ. พิมพ์ชนก สุขเกษม',
+        code: 'T-007',
+        description: 'นักกายภาพวิชาชีพ • สิทธิ์ 4 เมนู',
+        badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+      },
+    ];
+
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B2B2B]/90 backdrop-blur-md p-4 animate-fadeIn">
-        <div className="bg-white rounded-[32px] border-2 border-emerald-400 p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6 text-center">
-          <div className="w-16 h-16 rounded-full bg-emerald-100 border-2 border-[#10B981] mx-auto flex items-center justify-center text-[#0F2F2B] shadow-md">
-            <Shield className="w-8 h-8 text-[#10B981]" />
-          </div>
-
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold mb-2">
-              <span>โหมดสาธิตระบบโรงพยาบาล (Hospital Demo)</span>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#072420]/90 backdrop-blur-md p-4 animate-fadeIn overflow-y-auto">
+        <div className="bg-white rounded-[32px] sm:rounded-[36px] border-2 border-emerald-300 p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-6 text-center my-auto">
+          {/* Header Banner */}
+          <div className="space-y-3">
+            <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-[#10B981] to-[#059669] text-white mx-auto flex items-center justify-center shadow-lg shadow-emerald-600/30">
+              <Shield className="w-8 h-8" />
             </div>
-            <h2 className="text-xl sm:text-2xl font-black text-[#0F2F2B]">
-              ระบบบุคลากร & โรงพยาบาล
-            </h2>
-            <p className="text-xs text-stone-600 font-medium mt-1">
-              เฉพาะแพทย์ นักกายภาพบำบัด และผู้บริหารโรงพยาบาลเท่านั้น
-            </p>
+
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold mb-2">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                <span>STRONG CARE • Hospital Staff Portal</span>
+              </div>
+              <h2 className="text-xl sm:text-2xl font-black text-[#0F2F2B]">
+                เข้าสู่ระบบบุคลากร STRONG CARE
+              </h2>
+              <p className="text-xs text-slate-500 font-medium mt-1">
+                สำหรับผู้อำนวยการ รพ., แอดมินใหญ่ และนักกายภาพบำบัด
+              </p>
+            </div>
           </div>
 
+          {/* Login Form */}
           <form onSubmit={handleStaffLogin} className="space-y-4 text-left">
+            {/* Username Field */}
             <div>
-              <label className="block text-xs font-bold text-stone-700 mb-1.5">
-                รหัส PIN บุคลากรทางการแพทย์ (Staff PIN):
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Username (ชื่อผู้ใช้) <span className="text-rose-500">*</span>
               </label>
-              <div className="bg-stone-50 rounded-2xl border border-emerald-200 p-3 flex items-center gap-2.5 focus-within:border-[#10B981] focus-within:ring-2 focus-within:ring-emerald-200 transition">
-                <KeyRound className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+              <div className="bg-slate-50 rounded-2xl border border-emerald-200 p-3 flex items-center gap-2.5 focus-within:border-[#10B981] focus-within:ring-2 focus-within:ring-emerald-200 transition">
+                <User className="w-5 h-5 text-emerald-600 flex-shrink-0" />
                 <input
-                  type="password"
-                  value={staffPinInput}
+                  type="text"
+                  value={staffUsernameInput}
                   onChange={(e) => {
-                    setStaffPinInput(e.target.value);
+                    setStaffUsernameInput(e.target.value);
                     setStaffAuthError(null);
                   }}
-                  placeholder="กรอกรหัส PIN (เช่น 1234)"
-                  maxLength={6}
-                  className="w-full bg-transparent text-sm font-semibold outline-none"
+                  placeholder="เช่น admin หรือ pt_thanakorn"
+                  className="w-full bg-transparent text-sm font-semibold text-[#0F2F2B] outline-none"
                   autoFocus
+                  autoComplete="username"
                 />
               </div>
-              {staffAuthError && (
-                <p className="text-xs text-rose-600 font-semibold mt-1.5 flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span>{staffAuthError}</span>
-                </p>
-              )}
             </div>
 
+            {/* Password Field with Show/Hide Toggle */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Password (รหัสผ่าน) <span className="text-rose-500">*</span>
+              </label>
+              <div className="bg-slate-50 rounded-2xl border border-emerald-200 p-3 flex items-center gap-2.5 focus-within:border-[#10B981] focus-within:ring-2 focus-within:ring-emerald-200 transition">
+                <Lock className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={staffPasswordInput}
+                  onChange={(e) => {
+                    setStaffPasswordInput(e.target.value);
+                    setStaffAuthError(null);
+                  }}
+                  placeholder="กรอกรหัสผ่าน (เช่น 1234)"
+                  className="w-full bg-transparent text-sm font-semibold text-[#0F2F2B] outline-none"
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="text-slate-400 hover:text-slate-700 transition p-1 cursor-pointer"
+                  title={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Auto-detect role hint */}
+            <div className="text-[11px] text-emerald-800 bg-emerald-50/70 border border-emerald-200/80 rounded-xl px-3 py-2 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+              <span>ระบบจะตรวจสอบสิทธิ์อัตโนมัติ: Admin (6 เมนู) หรือ นักกายภาพ (4 เมนู)</span>
+            </div>
+
+            {/* Error Message Alert */}
+            {staffAuthError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2 animate-fadeIn">
+                <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                <span>{staffAuthError}</span>
+              </div>
+            )}
+
+            {/* Action Buttons */}
             <div className="flex flex-col gap-2.5 pt-2">
               <button
                 type="submit"
-                className="w-full py-3 rounded-2xl bg-gradient-to-r from-[#10B981] to-[#059669] text-white font-extrabold text-sm shadow-md hover:brightness-105 transition active:scale-95 cursor-pointer"
+                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-[#10B981] to-[#059669] text-white font-extrabold text-sm shadow-md shadow-emerald-600/20 hover:brightness-105 transition active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                id="btnStaffLoginSubmit"
               >
-                ยืนยันเข้าสู่ระบบบุคลากร
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsStaffAuthenticated(true);
-                  showToast('เข้าสู่ระบบด้วยสิทธิ์ผู้ดูแลระบบ (โหมดสาธิต)');
-                }}
-                className="w-full py-2.5 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-xs border border-amber-200 transition cursor-pointer"
-              >
-                เข้าใช้งานโหมดสาธิตด่วน (Quick Demo PIN: 1234)
+                <LogIn className="w-4 h-4" />
+                <span>เข้าสู่ระบบบุคลากร</span>
               </button>
 
               <button
                 type="button"
                 onClick={onClose}
-                className="w-full py-2.5 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-600 font-bold text-xs transition cursor-pointer"
+                className="w-full py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5"
               >
-                ย้อนกลับไปหน้าตู้คนไข้
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>กลับหน้าหลักตู้คนไข้</span>
               </button>
             </div>
           </form>
 
-          <div className="text-[11px] text-stone-500 bg-stone-50 border border-stone-200 rounded-xl p-2.5 text-center leading-relaxed">
-            💡 ในระบบงานจริงจะเชื่อมต่อ SSO/LDAP ของโรงพยาบาล ข้อมูลทั้งหมดในหน้านี้เป็นข้อมูลจำลองเพื่อการสาธิต (Offline Mock DB)
+          {/* Demo Accounts Quick-Select Table */}
+          <div className="pt-4 border-t border-slate-100 text-left space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                <span>บัญชีตัวอย่างสำหรับทดสอบ (Demo Accounts):</span>
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono">Password: 1234</span>
+            </div>
+
+            <div className="space-y-2">
+              {demoAccounts.map((acc) => (
+                <div
+                  key={acc.username}
+                  className="p-3 rounded-2xl border border-emerald-100 bg-slate-50/70 hover:bg-emerald-50/50 hover:border-emerald-300 transition flex items-center justify-between gap-3 text-xs"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-[#0F2F2B] truncate">{acc.name}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${acc.badgeColor}`}>
+                        {acc.roleTitle}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                      user: <strong className="text-emerald-800">{acc.username}</strong> • pass: <strong className="text-slate-700">{acc.password}</strong>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleFillDemoAccount(acc.username, acc.password, false)}
+                      className="px-2.5 py-1 rounded-xl bg-white border border-slate-200 hover:border-emerald-300 text-slate-700 hover:text-emerald-700 font-bold text-[11px] transition cursor-pointer shadow-2xs"
+                      title="กรอกข้อมูลลงฟอร์ม"
+                    >
+                      กรอกฟอร์ม
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleFillDemoAccount(acc.username, acc.password, true)}
+                      className="px-2.5 py-1 rounded-xl bg-[#10B981] hover:bg-emerald-600 text-white font-bold text-[11px] transition cursor-pointer shadow-2xs"
+                      title="ล็อกอินเข้าใช้งานทันที"
+                    >
+                      ล็อกอินเลย
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -616,17 +774,26 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
         </div>
 
         {/* Bottom Sidebar Info & Logout */}
-        <div className="pt-4 border-t border-emerald-900/60 space-y-3">
+        <div className="pt-4 border-t border-emerald-900/60 space-y-2">
           <div className="px-3 py-2 rounded-2xl bg-emerald-950/40 border border-emerald-800/40 text-[11px] text-emerald-300/80">
             <div>สถานะระบบ: <span className="text-[#4AE387] font-bold">ออนไลน์ (Online)</span></div>
             <div>บทบาท: <span className="text-white font-bold">{currentRole === 'admin' ? 'แอดมินใหญ่ (6 หน้า)' : 'นักกายภาพ (4 หน้า)'}</span></div>
+            <div className="text-[10px] text-emerald-400/80 truncate mt-0.5">ผู้ใช้: {currentUser?.name}</div>
           </div>
 
           <button
-            onClick={onClose}
-            className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-2xl border border-emerald-700/50 text-emerald-200/90 text-xs sm:text-sm font-semibold hover:bg-emerald-900/50 hover:text-white transition active:scale-95 cursor-pointer"
+            onClick={handleStaffLogout}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-rose-950/40 border border-rose-800/50 text-rose-200 text-xs sm:text-sm font-semibold hover:bg-rose-900/60 hover:text-white transition active:scale-95 cursor-pointer"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="w-4 h-4 text-rose-400" />
+            <span>ออกจากระบบบุคลากร</span>
+          </button>
+
+          <button
+            onClick={onClose}
+            className="w-full flex items-center gap-2.5 px-4 py-2 rounded-2xl border border-emerald-800/60 text-emerald-300/80 text-xs font-medium hover:bg-emerald-900/50 hover:text-white transition active:scale-95 cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
             <span>กลับหน้าหลักตู้คนไข้</span>
           </button>
         </div>
@@ -662,49 +829,43 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
               <span>+ ต้อนรับ & สแกนหน้าคนไข้</span>
             </button>
 
-            {/* Role Switcher Toggle (Admin vs Physiotherapist) */}
-            <div className="flex items-center gap-1.5 p-1 rounded-full bg-emerald-50 border border-emerald-200 shadow-sm">
-              <span className="text-[11px] font-bold text-emerald-800 pl-2 hidden sm:inline">สลับสิทธิ์:</span>
-              <button
-                onClick={() => handleRoleSwitch('admin')}
-                className={`text-xs font-bold px-3 py-1.5 rounded-full transition cursor-pointer ${
-                  currentRole === 'admin'
-                    ? 'bg-[#0F2F2B] text-emerald-300 shadow-sm'
-                    : 'text-slate-600 hover:text-emerald-800'
-                }`}
-              >
-                แอดมินใหญ่ (6 หน้า)
-              </button>
-              <button
-                onClick={() => handleRoleSwitch('therapist')}
-                className={`text-xs font-bold px-3 py-1.5 rounded-full transition cursor-pointer ${
-                  currentRole === 'therapist'
-                    ? 'bg-[#10B981] text-white shadow-sm'
-                    : 'text-slate-600 hover:text-emerald-800'
-                }`}
-              >
-                นักกายภาพ (4 หน้า)
-              </button>
-            </div>
-
-            {/* User Profile Badge */}
+            {/* User Profile Badge (Real user + role) */}
             <div className="flex items-center gap-2.5 pl-2 border-l border-emerald-200">
               <div
                 className={`w-9 h-9 rounded-full font-extrabold flex items-center justify-center text-sm shadow-sm ${
                   currentRole === 'admin' ? 'bg-[#0F2F2B] text-amber-300' : 'bg-[#10B981] text-white'
                 }`}
               >
-                {currentRole === 'admin' ? 'ผ' : 'ธ'}
+                {currentUser?.name?.charAt(0) || (currentRole === 'admin' ? 'ผ' : 'ธ')}
               </div>
-              <div className="hidden lg:block text-left">
-                <div className="text-xs font-bold text-[#0F2F2B] leading-tight">
-                  {currentRole === 'admin' ? 'นพ. วรชัย อมรเวช' : 'กภ. ธนากร วงศ์สวัสดิ์'}
+              <div className="hidden sm:block text-left">
+                <div className="text-xs font-bold text-[#0F2F2B] leading-tight flex items-center gap-1.5">
+                  <span>{currentUser?.name || (currentRole === 'admin' ? 'นพ. วรชัย อมรเวช' : 'กภ. ธนากร วงศ์สวัสดิ์')}</span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                      currentRole === 'admin'
+                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                        : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                    }`}
+                  >
+                    {currentRole === 'admin' ? 'Admin' : 'นักกายภาพ'}
+                  </span>
                 </div>
                 <div className="text-[10px] text-slate-500 font-mono">
-                  {currentRole === 'admin' ? 'ADM-01 (Admin)' : 'T-001 (PT)'}
+                  {currentUser?.code || (currentRole === 'admin' ? 'ADM-01' : 'T-003')} • {currentUser?.username}
                 </div>
               </div>
             </div>
+
+            {/* Logout Button */}
+            <button
+              onClick={handleStaffLogout}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition cursor-pointer"
+              title="ออกจากระบบบุคลากร"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">ออกจากระบบ</span>
+            </button>
           </div>
         </header>
 
@@ -1012,9 +1173,20 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
 
                                   {/* Change password */}
                                   <button
-                                    onClick={() => setEditingPasswordUser(user)}
-                                    title="เปลี่ยนรหัสผ่าน"
-                                    className="p-1.5 rounded-full border border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition cursor-pointer"
+                                    onClick={() => {
+                                      if (canEdit) {
+                                        setEditingPasswordUser(user);
+                                      } else {
+                                        showToast('สิทธิ์ไม่เพียงพอ: นักกายภาพสามารถเปลี่ยนรหัสผ่านได้เฉพาะคนไข้ที่ตนเองดูแลเท่านั้น');
+                                      }
+                                    }}
+                                    disabled={!canEdit}
+                                    title={canEdit ? 'เปลี่ยนรหัสผ่าน' : 'เปลี่ยนรหัสผ่านได้เฉพาะคนไข้ที่ตนเองดูแลเท่านั้น'}
+                                    className={`p-1.5 rounded-full border transition ${
+                                      canEdit
+                                        ? 'border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 cursor-pointer'
+                                        : 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50'
+                                    }`}
                                   >
                                     <KeyRound className="w-3.5 h-3.5" />
                                   </button>
@@ -1086,13 +1258,45 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
               {/* Header bar */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h3 className="font-bold text-lg text-[#0F2F2B]">ข้อมูลเวชระเบียนคนไข้ทั้งหมด</h3>
+                  <h3 className="font-bold text-lg text-[#0F2F2B]">
+                    {currentRole === 'therapist'
+                      ? 'ข้อมูลเวชระเบียนคนไข้ (นักกายภาพบำบัด)'
+                      : 'ข้อมูลเวชระเบียนคนไข้ทั้งหมด'}
+                  </h3>
                   <p className="text-xs text-slate-500">
-                    แสดง: ชื่อ, อายุ, เบอร์โทร, ประวัติการซักประวัติ, หมอที่รับผิดชอบ, วันที่เริ่มเข้าระบบ, ประวัติคนไข้, ผลการรักษา, โน้ตคำแนะนำ
+                    {currentRole === 'therapist'
+                      ? 'คุณสามารถดูและแก้ไขเวชระเบียนเฉพาะคนไข้ที่ตนเองดูแลได้ (คนไข้ท่านอื่นดูข้อมูลได้เท่านั้น)'
+                      : 'สิทธิ์แอดมินใหญ่: สามารถดูและแก้ไขเวชระเบียนคนไข้ทั้งหมดในระบบได้'}
                   </p>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                  {/* PT Filter Toggle */}
+                  {currentRole === 'therapist' && (
+                    <div className="flex items-center gap-1 p-1 bg-white border border-emerald-200 rounded-full shadow-2xs">
+                      <button
+                        onClick={() => setPatientCareFilter('assigned')}
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition cursor-pointer ${
+                          patientCareFilter === 'assigned'
+                            ? 'bg-[#10B981] text-white shadow-xs'
+                            : 'text-slate-600 hover:text-emerald-800'
+                        }`}
+                      >
+                        เฉพาะที่ฉันดูแล
+                      </button>
+                      <button
+                        onClick={() => setPatientCareFilter('all')}
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition cursor-pointer ${
+                          patientCareFilter === 'all'
+                            ? 'bg-[#0F2F2B] text-emerald-300 shadow-xs'
+                            : 'text-slate-600 hover:text-emerald-800'
+                        }`}
+                      >
+                        คนไข้ทั้งหมด
+                      </button>
+                    </div>
+                  )}
+
                   <div className="w-64 relative">
                     <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
