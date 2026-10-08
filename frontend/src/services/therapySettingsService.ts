@@ -137,9 +137,18 @@ export function getSavedTherapyConfig(mode: TherapyMode = 'physio', patientId?: 
     const raw = localStorage.getItem(key) || localStorage.getItem(legacyKey);
     if (!raw) return defaultConfig;
     const parsed: Partial<TherapyScheduleConfig> = JSON.parse(raw);
+    const sanitizedCategory: ExerciseCategoryType =
+      parsed.category === 'custom' ? 'custom' : 'stretch';
+    const sanitizedCategoryTitle =
+      sanitizedCategory === 'custom'
+        ? (parsed.categoryTitle || 'ส่วนอื่นๆ (ท่าที่เพิ่มเอง)')
+        : 'กายภาพยืดเส้น';
+
     return {
       ...defaultConfig,
       ...parsed,
+      category: sanitizedCategory,
+      categoryTitle: sanitizedCategoryTitle,
       mode, // preserve current mode
       patientId: pId,
       // If saved date is in the past, reset to today

@@ -9,9 +9,6 @@ import {
   Plus,
   Sparkles,
   AlertCircle,
-  Activity,
-  Heart,
-  Stethoscope,
 } from 'lucide-react';
 import {
   StretchExerciseItem,
@@ -56,10 +53,6 @@ export const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
 
   const getCategoryTitle = () => {
     switch (category) {
-      case 'recovery':
-        return 'กายภาพฟื้นฟู (ฟื้นฟูข้อต่อและข้อพับ)';
-      case 'therapy':
-        return 'กายภาพบำบัด (รักษาอาการปวดเฉพาะจุด)';
       case 'custom':
         return 'ส่วนอื่นๆ (ท่าที่เพิ่มเอง)';
       default:
@@ -84,13 +77,7 @@ export const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
         <div className="px-5 sm:px-7 py-4 border-b border-emerald-100 bg-gradient-to-r from-emerald-50/90 via-white to-emerald-50/50 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-[#1E8A4C] text-white flex items-center justify-center shadow-md shadow-emerald-700/20 flex-shrink-0">
-              {category === 'recovery' ? (
-                <Heart className="w-5 h-5" />
-              ) : category === 'therapy' ? (
-                <Activity className="w-5 h-5" />
-              ) : (
-                <Sparkles className="w-5 h-5" />
-              )}
+              <Sparkles className="w-5 h-5" />
             </div>
             <div>
               <h2 className="font-extrabold text-base sm:text-xl text-[#0B2B2B] flex items-center gap-2">

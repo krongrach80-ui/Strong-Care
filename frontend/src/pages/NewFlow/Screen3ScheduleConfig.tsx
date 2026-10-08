@@ -87,7 +87,7 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
     setTimeMode(saved.timeMode);
     setScheduledDate(saved.scheduledDate || defaultDateStr);
     setScheduledTime(saved.scheduledTime || getDefaultTimeString());
-    setCategory(saved.category || 'stretch');
+    setCategory(saved.category === 'custom' ? 'custom' : 'stretch');
     if (saved.customArea) {
       setCustomArea(saved.customArea);
     }
@@ -141,11 +141,8 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
     if (cat === 'custom') {
       setShowCustomPosesView(true);
       setCategoryNotice('หมวดหมู่ส่วนอื่นๆ (ท่าที่เพิ่มเอง) ยังไม่รองรับการเริ่มฝึกด้วย AI ในขณะนี้ กรุณาเลือก "กายภาพยืดเส้น" สำหรับการฝึก');
-    } else if (cat === 'stretch') {
-      setCategoryNotice(null);
-      setIsExerciseSelectionModalOpen(true);
     } else {
-      setCategoryNotice(`หมวดหมู่${cat === 'recovery' ? 'กายภาพฟื้นฟู' : 'กายภาพบำบัด'} อยู่ระหว่างจัดเตรียมชุดท่าทางเฉพาะบุคคล`);
+      setCategoryNotice(null);
       setIsExerciseSelectionModalOpen(true);
     }
   };
@@ -155,10 +152,6 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
     switch (category) {
       case 'stretch':
         return 'กายภาพยืดเส้น';
-      case 'recovery':
-        return 'กายภาพฟื้นฟู';
-      case 'therapy':
-        return 'กายภาพบำบัด';
       case 'custom':
         return customPosesCount > 0 ? `ส่วนอื่นๆ (${customPosesCount} ท่า)` : 'ส่วนอื่นๆ (ท่าที่เพิ่มเอง)';
       default:
@@ -540,124 +533,7 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
               </span>
             </div>
 
-            {/* 2. "กายภาพฟื้นฟู" (แก้คำสะกดผิดจาก กาพภาพฟื้นฟู) */}
-            <div
-              role="radio"
-              aria-checked={category === 'recovery'}
-              tabIndex={0}
-              onClick={() => handleSelectCategory('recovery')}
-              onKeyDown={(e) => {
-                if (e.key === ' ' || e.key === 'Enter') {
-                  e.preventDefault();
-                  handleSelectCategory('recovery');
-                }
-              }}
-              className={`relative rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 min-h-[110px] sm:min-h-[120px] select-none outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
-                category === 'recovery'
-                  ? 'border-[2.5px] border-[#1E8A4C] bg-[#E9FCEB] shadow-md shadow-emerald-500/10'
-                  : 'border border-emerald-200/90 bg-white/80 hover:bg-white hover:border-emerald-300'
-              }`}
-            >
-              {/* Top-Right Indicator */}
-              <div
-                className={`absolute top-2.5 right-2.5 w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center transition-all ${
-                  category === 'recovery'
-                    ? 'bg-[#1E8A4C] text-white shadow-sm'
-                    : 'border-2 border-emerald-300 bg-white'
-                }`}
-                aria-hidden="true"
-              >
-                {category === 'recovery' && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-              </div>
-
-              {/* Custom SVG Icon: Heart with Pulse Line */}
-              <div
-                className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-2 transition-colors ${
-                  category === 'recovery' ? 'bg-[#1E8A4C] text-white' : 'bg-emerald-100 text-[#1E8A4C]'
-                }`}
-              >
-                <svg
-                  className="w-7 h-7"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
-                  <path d="M3.22 12H7l2-4 3 8 2-5 1.5 2.5H20.8" />
-                </svg>
-              </div>
-
-              <span className="text-sm sm:text-base font-bold text-[#0B2B2B]">
-                กายภาพฟื้นฟู
-              </span>
-              <span className="text-[11px] sm:text-xs text-emerald-800/80 font-medium mt-0.5">
-                ฟื้นฟูข้อต่อและข้อพับ
-              </span>
-            </div>
-
-            {/* 3. "กายภาพบำบัด" */}
-            <div
-              role="radio"
-              aria-checked={category === 'therapy'}
-              tabIndex={0}
-              onClick={() => handleSelectCategory('therapy')}
-              onKeyDown={(e) => {
-                if (e.key === ' ' || e.key === 'Enter') {
-                  e.preventDefault();
-                  handleSelectCategory('therapy');
-                }
-              }}
-              className={`relative rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 min-h-[110px] sm:min-h-[120px] select-none outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
-                category === 'therapy'
-                  ? 'border-[2.5px] border-[#1E8A4C] bg-[#E9FCEB] shadow-md shadow-emerald-500/10'
-                  : 'border border-emerald-200/90 bg-white/80 hover:bg-white hover:border-emerald-300'
-              }`}
-            >
-              {/* Top-Right Indicator */}
-              <div
-                className={`absolute top-2.5 right-2.5 w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center transition-all ${
-                  category === 'therapy'
-                    ? 'bg-[#1E8A4C] text-white shadow-sm'
-                    : 'border-2 border-emerald-300 bg-white'
-                }`}
-                aria-hidden="true"
-              >
-                {category === 'therapy' && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-              </div>
-
-              {/* Custom SVG Icon: Medical Cross / Healing Care */}
-              <div
-                className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-2 transition-colors ${
-                  category === 'therapy' ? 'bg-[#1E8A4C] text-white' : 'bg-emerald-100 text-[#1E8A4C]'
-                }`}
-              >
-                <svg
-                  className="w-7 h-7"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect width="18" height="18" x="3" y="3" rx="4" />
-                  <line x1="12" y1="8" x2="12" y2="16" strokeWidth="2.5" />
-                  <line x1="8" y1="12" x2="16" y2="12" strokeWidth="2.5" />
-                </svg>
-              </div>
-
-              <span className="text-sm sm:text-base font-bold text-[#0B2B2B]">
-                กายภาพบำบัด
-              </span>
-              <span className="text-[11px] sm:text-xs text-emerald-800/80 font-medium mt-0.5">
-                รักษาอาการปวดเฉพาะจุด
-              </span>
-            </div>
-
-            {/* 4. "ส่วนอื่นๆ" */}
+            {/* 2. "ส่วนอื่นๆ" */}
             <div
               role="radio"
               aria-checked={category === 'custom'}
