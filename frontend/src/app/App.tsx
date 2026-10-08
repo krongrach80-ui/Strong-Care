@@ -10,6 +10,7 @@ import {
   checkDueReminder,
   getSavedTherapyConfig,
   TherapyScheduleConfig,
+  TherapyMode,
 } from '../services/therapySettingsService';
 import {
   STRETCH_EXERCISES,
@@ -44,8 +45,7 @@ export const App: React.FC = () => {
 
   // Screen 3 Sub-View: 'menu' (Default user menu) | 'config' (เลือกเวลาและท่าทาง)
   const [screen3SubView, setScreen3SubView] = useState<'menu' | 'config'>('menu');
-  const [configMode, setConfigMode] = useState<'physio' | 'minigame'>('physio');
-  const [isGameModeActive, setIsGameModeActive] = useState<boolean>(false);
+  const [configMode, setConfigMode] = useState<TherapyMode>('physio');
 
   // Floating test nav is hidden by default on public demo (enabled only with ?dev=1 or ?test=1)
   const isDevMode = typeof window !== 'undefined' && (
@@ -138,7 +138,7 @@ export const App: React.FC = () => {
   };
 
   // Open Sub-View Configuration ("เลือกเวลาและท่าทาง")
-  const handleOpenScheduleConfig = (mode: 'physio' | 'minigame' = 'physio') => {
+  const handleOpenScheduleConfig = (mode: TherapyMode = 'physio') => {
     setConfigMode(mode);
     setScreen3SubView('config');
     window.history.pushState({ screen: 3, subView: 'config', mode }, '');
@@ -386,7 +386,6 @@ export const App: React.FC = () => {
               patient={selectedPatient}
               onBack={() => handleNavigate(2)}
               onStartTherapy={() => {
-                setIsGameModeActive(false);
                 const savedConfig = getSavedTherapyConfig('physio', selectedPatient?.id);
                 if (savedConfig.category === 'stretch') {
                   const selectedIds = savedConfig.selectedStretchIds && savedConfig.selectedStretchIds.length > 0
@@ -412,7 +411,7 @@ export const App: React.FC = () => {
           )
         )}
 
-        {/* หน้า 4: หน้าทำกายภาพ */}
+        {/* หน้า 4: หน้าทำกายภาพ (Pose Biomechanics ROM Exercise) */}
         {currentScreen === 4 && (
           <Screen4Exercise
             onBack={() => handleNavigate(3)}
@@ -424,7 +423,6 @@ export const App: React.FC = () => {
             stretchQueue={activeStretchQueue}
             customHoldTimes={activeCustomHoldTimes}
             patientId={selectedPatient?.id || 1}
-            isGameMode={isGameModeActive}
           />
         )}
 

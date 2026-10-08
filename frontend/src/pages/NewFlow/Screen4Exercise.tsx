@@ -55,7 +55,6 @@ interface Screen4ExerciseProps {
   stretchQueue?: StretchExerciseItem[];
   customHoldTimes?: Record<string, number>;
   patientId?: number;
-  isGameMode?: boolean;
 }
 
 export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
@@ -65,7 +64,6 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
   stretchQueue,
   customHoldTimes,
   patientId = 1,
-  isGameMode = false,
 }) => {
   // Check if we are running in Stretch Queue Mode
   const isStretchMode = Boolean(stretchQueue && stretchQueue.length > 0);
@@ -1106,12 +1104,6 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
 
         {/* Right Controls: Steps Info + Camera Toggle */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {isGameMode && (
-            <div className="hidden min-[520px]:inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-amber-400 to-orange-400 text-stone-900 font-extrabold text-[11px] shadow-2xs border border-amber-300">
-              <Sparkles className="w-3 h-3 text-stone-900" />
-              <span>🎮 โหมดมินิเกม</span>
-            </div>
-          )}
 
           <button
             type="button"

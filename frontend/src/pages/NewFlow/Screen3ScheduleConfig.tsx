@@ -246,7 +246,7 @@ export const Screen3ScheduleConfig: React.FC<Screen3ScheduleConfigProps> = ({
 
         <div className="flex items-center gap-2">
           <span className="text-xs sm:text-sm font-bold text-emerald-800 bg-[#D7F9E1]/80 px-3 py-1 rounded-full border border-emerald-200">
-            {mode === 'minigame' ? '🎮 ตั้งค่ามินิเกม' : '🩺 ตั้งค่ากายภาพ'}
+            🩺 ตั้งค่ากายภาพบำบัด
           </span>
         </div>
       </header>
