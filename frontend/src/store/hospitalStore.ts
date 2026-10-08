@@ -674,12 +674,14 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
     }
     set({ isLoadingFromDb: true });
     try {
-      const [profiles, therapists, exercises, logs, settings] = await Promise.all([
+      const [profiles, therapists, exercises, logs, settings, bannedDevices, bannedIps] = await Promise.all([
         supabaseService.fetchProfiles(),
         supabaseService.fetchTherapists(),
         supabaseService.fetchExercises(),
         supabaseService.fetchActivityLogs(),
         supabaseService.fetchSystemSettings(),
+        supabaseService.fetchBannedDevices(),
+        supabaseService.fetchBannedIps(),
       ]);
 
       if (profiles && profiles.length > 0) {
@@ -696,6 +698,12 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       }
       if (settings) {
         set({ aiSettings: { ...get().aiSettings, ...settings } });
+      }
+      if (bannedDevices && bannedDevices.length > 0) {
+        set({ bannedDevices });
+      }
+      if (bannedIps && bannedIps.length > 0) {
+        set({ bannedIps });
       }
       set({ isSupabaseConnected: true, isLoadingFromDb: false });
       console.info('✓ HospitalStore synced with live Supabase database');

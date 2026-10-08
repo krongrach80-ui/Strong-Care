@@ -729,28 +729,66 @@ export const supabaseService = {
     }
   },
 
+  async fetchBannedDevices(): Promise<string[]> {
+    if (!isSupabaseConfigured()) return [];
+    try {
+      const { data, error } = await supabase.from('banned_devices').select('device_id');
+      if (error) throw error;
+      return (data || []).map((d: any) => d.device_id).filter(Boolean);
+    } catch {
+      return [];
+    }
+  },
+
+  async fetchBannedIps(): Promise<string[]> {
+    if (!isSupabaseConfigured()) return [];
+    try {
+      const { data, error } = await supabase.from('banned_ips').select('ip_address');
+      if (error) throw error;
+      return (data || []).map((d: any) => d.ip_address).filter(Boolean);
+    } catch {
+      return [];
+    }
+  },
+
   async banDevice(device: string, reason: string): Promise<void> {
     if (!isSupabaseConfigured()) return;
-    await supabase.from('banned_devices').insert([{ value: device, reason }]);
-    await this.logActivity('BAN_DEVICE', `แบนอุปกรณ์: ${device} (เหตุผล: ${reason})`, 'SYSTEM');
+    try {
+      await supabase.from('banned_devices').insert([{ device_id: device, reason }]);
+      await this.logActivity('BAN_DEVICE', `แบนอุปกรณ์: ${device} (เหตุผล: ${reason})`, 'SYSTEM');
+    } catch (e) {
+      console.warn('banDevice error:', e);
+    }
   },
 
   async unbanDevice(device: string): Promise<void> {
     if (!isSupabaseConfigured()) return;
-    await supabase.from('banned_devices').delete().eq('value', device);
-    await this.logActivity('UNBAN_DEVICE', `ยกเลิกแบนอุปกรณ์: ${device}`, 'SYSTEM');
+    try {
+      await supabase.from('banned_devices').delete().eq('device_id', device);
+      await this.logActivity('UNBAN_DEVICE', `ยกเลิกแบนอุปกรณ์: ${device}`, 'SYSTEM');
+    } catch (e) {
+      console.warn('unbanDevice error:', e);
+    }
   },
 
   async banIp(ip: string, reason: string): Promise<void> {
     if (!isSupabaseConfigured()) return;
-    await supabase.from('banned_ips').insert([{ value: ip, reason }]);
-    await this.logActivity('BAN_IP', `แบน IP: ${ip} (เหตุผล: ${reason})`, 'SYSTEM');
+    try {
+      await supabase.from('banned_ips').insert([{ ip_address: ip, reason }]);
+      await this.logActivity('BAN_IP', `แบน IP: ${ip} (เหตุผล: ${reason})`, 'SYSTEM');
+    } catch (e) {
+      console.warn('banIp error:', e);
+    }
   },
 
   async unbanIp(ip: string): Promise<void> {
     if (!isSupabaseConfigured()) return;
-    await supabase.from('banned_ips').delete().eq('value', ip);
-    await this.logActivity('UNBAN_IP', `ยกเลิกแบน IP: ${ip}`, 'SYSTEM');
+    try {
+      await supabase.from('banned_ips').delete().eq('ip_address', ip);
+      await this.logActivity('UNBAN_IP', `ยกเลิกแบน IP: ${ip}`, 'SYSTEM');
+    } catch (e) {
+      console.warn('unbanIp error:', e);
+    }
   },
 
   // =========================================================================
