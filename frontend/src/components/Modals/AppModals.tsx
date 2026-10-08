@@ -737,21 +737,21 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
 
             <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1">
               <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
-                <span>🏛️</span>
-                <span>Hospital & RBAC Portal</span>
+                <span>🔐</span>
+                <span>3-Tier Auth & Real RBAC</span>
               </div>
               <p className="text-slate-600 text-[11px] leading-relaxed">
-                แดชบอร์ดตามบทบาท (ผอรพ / นักกายภาพ / คนไข้) จัดการผู้ใช้ แผนการรักษา Activity Log และตั้งค่าระบบ AI
+                แยก 3 ระบบเด็ดขาด: แอดมินใหญ่ (6 หน้า), นักกายภาพ (4 หน้า), ตู้ Kiosk คนไข้ พร้อม Username+Password จริง ปลดปุ่มสลับสิทธิ์ demo
               </p>
             </div>
 
             <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1">
               <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
-                <span>📋</span>
-                <span>Role-Based Account Form</span>
+                <span>🏥</span>
+                <span>Reception & Patient Onboarding</span>
               </div>
               <p className="text-slate-600 text-[11px] leading-relaxed">
-                ฟอร์มเพิ่มบัญชีแยกสิทธิ์: Admin เพิ่มได้ทั้งคนไข้และนักกายภาพ, Physio เพิ่มได้เฉพาะคนไข้ พร้อมสร้าง Username/PIN และ Real-time Validation
+                ต้อนรับคนไข้ใหม่ กรอกข้อมูล HN/อาการ/นักกายภาพผู้รับผิดชอบก่อน แล้วค่อยสแกนหน้าเพื่อล็อกอินเข้าตู้ทันที
               </p>
             </div>
 
@@ -768,10 +768,10 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
             <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1">
               <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
                 <span>🧘‍♂️</span>
-                <span>15 Kinematic Exercises</span>
+                <span>16 Kinematic Exercises</span>
               </div>
               <p className="text-slate-600 text-[11px] leading-relaxed">
-                คลัง 15 ท่ากายภาพชีวกลศาสตร์ พร้อม 5-State Machine ป้องกันโกงท่า และคำนวณแบบ Aspect-Ratio Invariant
+                คลัง 16 ท่ากายภาพชีวกลศาสตร์ พร้อม 5-State Machine ป้องกันโกงท่า และคำนวณแบบ Aspect-Ratio Invariant
               </p>
             </div>
 
@@ -788,40 +788,30 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
             <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1">
               <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
                 <span>🩺</span>
-                <span>Patient Clinical Editor</span>
+                <span>Patient Clinical Records</span>
               </div>
               <p className="text-slate-600 text-[11px] leading-relaxed">
-                โมดอลดูและแก้ไขเวชระเบียนคนไข้ 3 ส่วน (ข้อมูลส่วนตัว, ประวัติการรักษา/Chief Complaint/ROM/โน้ตนักกายภาพ, สถานะ) พร้อมบังคับสิทธิ์ Admin & Physio
+                เวชระเบียนคนไข้แยกตามความรับผิดชอบ (เฉพาะที่ฉันดูแล/ทั้งหมด) แก้ไขได้เฉพาะคนไข้ที่ดูแล พร้อมโหมดอ่านอย่างเดียว
               </p>
             </div>
 
             <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1 sm:col-span-2">
               <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
                 <span>🤖</span>
-                <span>ResNet-34 Face Biometrics</span>
+                <span>ResNet-34 Face Biometrics & Security</span>
               </div>
               <p className="text-slate-600 text-[11px] leading-relaxed">
-                MediaPipe Mesh 478 จุด + ResNet-34 เวกเตอร์ 128 มิติ พร้อม Liveness Blink ป้องกันภาพนิ่งตาม PDPA
-              </p>
-            </div>
-
-            <div className="p-3 rounded-xl bg-white border border-emerald-100 shadow-sm space-y-1 sm:col-span-2">
-              <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
-                <span>🛡️</span>
-                <span>Safety Watchdog & Secure Kiosk</span>
-              </div>
-              <p className="text-slate-600 text-[11px] leading-relaxed">
-                ตรวจจับ Over-ROM, ลำตัวเอียง (Trunk Lean), ป้องกันข้อมูลคนไข้หน้าตู้ (เฉพาะ Face/PIN ไม่แสดงดรอปดาวน์สาธารณะ) พร้อมเสียง AI
+                MediaPipe Mesh 478 จุด + ResNet-34 128-D พร้อม Liveness Blink ป้องกันภาพนิ่งตาม PDPA และระบบเตะ/แบนเครื่อง/แบน IP สำหรับ Admin
               </p>
             </div>
 
             <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 shadow-sm space-y-1 sm:col-span-2">
               <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5">
                 <span>🎮</span>
-                <span>Mini-Game Cognitive & Physical Rehab</span>
+                <span>Mini-Game Cognitive & Physical Rehab (แยกอิสระ 100%)</span>
               </div>
               <p className="text-slate-600 text-[11px] leading-relaxed">
-                มินิเกมตอบคำถาม ใช่ / ไม่ โดยใช้ท่าทางมือ (ยกมือซ้าย = ใช่, ยกมือขวา = ไม่) ตรวจจับด้วย MediaPipe AI เรียลไทม์ คลังคำถาม 99 ข้อ พร้อมส่งผลรายงานให้นักกายภาพ
+                มินิเกมตอบคำถาม ใช่ / ไม่ โดยใช้ท่าทางมือ (ยกมือซ้าย = ใช่, ยกมือขวา = ไม่) ตรวจจับด้วย MediaPipe AI เรียลไทม์ คลังคำถาม 99 ข้อ พร้อมระบบเสียง และส่งผลรายงานให้นักกายภาพ
               </p>
             </div>
 
