@@ -442,7 +442,7 @@ interface UserProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
   patient: Patient | null;
-  onPatientPurged?: (patientId: number) => void;
+  onPatientPurged?: (patientId: number | string) => void;
 }
 
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, patient, onPatientPurged }) => {
@@ -823,7 +823,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
           <div className="font-bold text-[#0B2B2B]">🛠️ เทคโนโลยีที่ใช้</div>
           <div>• Frontend: React 18, TypeScript 5, Vite 5, Tailwind CSS, Lucide Icons, Zustand, Recharts</div>
           <div>• Computer Vision: MediaPipe Pose Landmarker (WASM), FaceLandmarker, ResNet-34 128-D</div>
-          <div>• Backend & DB: PHP 8.2 REST API, SQLite 3 / MySQL, IndexedDB Local Database</div>
+          <div>• Backend & DB: Supabase (PostgreSQL 15), Supabase Auth, Row Level Security (RLS), IndexedDB Offline-First</div>
         </div>
 
         {/* Action Links */}

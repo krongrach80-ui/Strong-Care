@@ -54,7 +54,7 @@ interface Screen4ExerciseProps {
   selectedExercise: ExerciseDefinition | null;
   stretchQueue?: StretchExerciseItem[];
   customHoldTimes?: Record<string, number>;
-  patientId?: number;
+  patientId?: number | string;
 }
 
 export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({

@@ -31,6 +31,7 @@ import { usePatientStore } from '../store/patientStore';
 import { useExerciseStore } from '../store/exerciseStore';
 import { useSessionStore } from '../store/sessionStore';
 import { api } from '../services/api';
+import { supabaseService } from '../services/supabaseService';
 import { OfflineStorageService } from '../services/offlineStorageService';
 import { IS_STATIC_MODE } from '../config/apiConfig';
 import { Patient } from '../types/patient';
@@ -259,6 +260,20 @@ export const App: React.FC = () => {
         status: 'completed',
         notes: note || `บันทึกผลท่า ${therapistReportData.poseName} ${therapistReportData.romAngle !== null ? `ROM ${therapistReportData.romAngle}°` : 'ไม่มีข้อมูลวัด'}`,
       });
+
+      // Persist to Supabase treatment_sessions
+      if (selectedPatient?.id) {
+        supabaseService.saveTreatmentSession({
+          patient_id: String(selectedPatient.id),
+          exercise_id: selectedExercise?.id ? String(selectedExercise.id) : undefined,
+          score: therapistReportData.score ?? 0,
+          avg_angle: therapistReportData.romAngle ?? 0,
+          accuracy_percent: therapistReportData.score ?? 0,
+          notes: note || `บันทึกผลท่า ${therapistReportData.poseName}`,
+          mode: therapistReportData.poseName.includes('มินิเกม') ? 'minigame' : 'therapy',
+        }).catch(err => console.warn('Supabase saveTreatmentSession error:', err));
+      }
+
       showToast('ส่งผลการฝึกให้นักกายภาพบำบัดเรียบร้อยแล้ว!');
     } catch (e) {
       showToast('⚠️ ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ บันทึกผลไว้ในเครื่องเรียบร้อยแล้ว');

@@ -11,6 +11,7 @@ import {
   AiSystemSettings,
 } from '../types/hospital';
 import { faceService } from '../services/faceService';
+import { supabaseService } from '../services/supabaseService';
 
 const INITIAL_THERAPISTS: PhysicalTherapist[] = [
   {
@@ -580,7 +581,7 @@ const INITIAL_SYMPTOM_REPORTS: PatientSymptomReport[] = [
 
 interface HospitalState {
   currentRole: UserRole;
-  currentUserId: number;
+  currentUserId: number | string;
   users: UserAccount[];
   therapists: PhysicalTherapist[];
   exercises: HospitalExercise[];
@@ -590,41 +591,46 @@ interface HospitalState {
   bannedIps: string[];
   symptomReports: PatientSymptomReport[];
   aiSettings: AiSystemSettings;
+  isSupabaseConnected: boolean;
+  isLoadingFromDb: boolean;
+
+  // Supabase Sync
+  initializeFromSupabase: () => Promise<void>;
 
   // Role & Authentication
   setCurrentRole: (role: UserRole) => void;
-  setCurrentUserId: (id: number) => void;
+  setCurrentUserId: (id: number | string) => void;
   loginStaff: (username: string, password: string) => { success: boolean; user?: UserAccount; error?: string };
   logoutStaff: () => void;
 
   // User Management
   addUser: (user: Omit<UserAccount, 'id' | 'created_at'>) => UserAccount;
-  updateUser: (id: number, data: Partial<UserAccount>) => void;
-  deleteUser: (id: number) => void;
-  toggleUserStatus: (id: number) => void;
-  resetUserPassword: (id: number, newPin?: string) => string;
-  changeUserRole: (id: number, newRole: UserRole) => void;
-  assignTherapist: (patientId: number, therapistId: number, therapistName: string) => void;
+  updateUser: (id: number | string, data: Partial<UserAccount>) => void;
+  deleteUser: (id: number | string) => void;
+  toggleUserStatus: (id: number | string) => void;
+  resetUserPassword: (id: number | string, newPin?: string) => string;
+  changeUserRole: (id: number | string, newRole: UserRole) => void;
+  assignTherapist: (patientId: number | string, therapistId: number | string, therapistName: string) => void;
 
   // Physical Therapist Management
   addTherapist: (therapist: Omit<PhysicalTherapist, 'id'>) => void;
-  updateTherapist: (id: number, data: Partial<PhysicalTherapist>) => void;
-  deleteTherapist: (id: number) => void;
+  updateTherapist: (id: number | string, data: Partial<PhysicalTherapist>) => void;
+  deleteTherapist: (id: number | string) => void;
 
   // Exercise Library Management
   addExercise: (exercise: Omit<HospitalExercise, 'id'>) => HospitalExercise;
-  updateExercise: (id: number, data: Partial<HospitalExercise>) => void;
-  deleteExercise: (id: number) => void;
+  updateExercise: (id: number | string, data: Partial<HospitalExercise>) => void;
+  deleteExercise: (id: number | string) => void;
 
   // Treatment Plans
-  saveTreatmentPlan: (plan: Omit<TreatmentPlan, 'id' | 'createdAt'> & { id?: number }) => void;
-  deleteTreatmentPlan: (id: number) => void;
+  saveTreatmentPlan: (plan: Omit<TreatmentPlan, 'id' | 'createdAt'> & { id?: number | string }) => void;
+  deleteTreatmentPlan: (id: number | string) => void;
 
   // Symptoms & Logs & Security (Kick/Ban)
   reportSymptom: (report: Omit<PatientSymptomReport, 'id' | 'reportedAt' | 'status'>) => void;
-  reviewSymptom: (id: number, reply: string) => void;
+  reviewSymptom: (id: number | string, reply: string) => void;
   addActivityLog: (action: string, category: ActivityLog['category'], details: string, device?: string, ipAddress?: string) => void;
-  kickSession: (logId: number) => void;
+  kickSession: (logId: number | string) => void;
   banDevice: (device: string) => void;
   unbanDevice: (device: string) => void;
   banIp: (ip: string) => void;
@@ -645,6 +651,8 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
   bannedDevices: ['Linux / Curl Automation Client', 'Unknown Android Emulator #99'],
   bannedIps: ['198.51.100.44', '203.0.113.19'],
   symptomReports: INITIAL_SYMPTOM_REPORTS,
+  isSupabaseConnected: supabaseService.isConfigured(),
+  isLoadingFromDb: false,
   aiSettings: {
     similarityThreshold: 0.80,
     marginThreshold: 0.08,
@@ -657,6 +665,44 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
     enableVoiceGuidance: true,
     enableAutoSync: true,
     strictLivenessChallenge: true,
+  },
+
+  initializeFromSupabase: async () => {
+    if (!supabaseService.isConfigured()) {
+      set({ isSupabaseConnected: false });
+      return;
+    }
+    set({ isLoadingFromDb: true });
+    try {
+      const [profiles, therapists, exercises, logs, settings] = await Promise.all([
+        supabaseService.fetchProfiles(),
+        supabaseService.fetchTherapists(),
+        supabaseService.fetchExercises(),
+        supabaseService.fetchActivityLogs(),
+        supabaseService.fetchSystemSettings(),
+      ]);
+
+      if (profiles && profiles.length > 0) {
+        set({ users: profiles });
+      }
+      if (therapists && therapists.length > 0) {
+        set({ therapists });
+      }
+      if (exercises && exercises.length > 0) {
+        set({ exercises });
+      }
+      if (logs && logs.length > 0) {
+        set({ activityLogs: logs });
+      }
+      if (settings) {
+        set({ aiSettings: { ...get().aiSettings, ...settings } });
+      }
+      set({ isSupabaseConnected: true, isLoadingFromDb: false });
+      console.info('✓ HospitalStore synced with live Supabase database');
+    } catch (err) {
+      console.warn('initializeFromSupabase warning:', err);
+      set({ isLoadingFromDb: false });
+    }
   },
 
   setCurrentRole: (role) => set({ currentRole: role }),
@@ -714,6 +760,13 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       '192.168.1.10'
     );
 
+    // Call Supabase auth in background if configured
+    if (supabaseService.isConfigured()) {
+      supabaseService.signInStaff(username, password).catch((e) => {
+        console.warn('Background Supabase auth sync:', e);
+      });
+    }
+
     return { success: true, user };
   },
 
@@ -728,10 +781,13 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
         '192.168.1.10'
       );
     }
+    if (supabaseService.isConfigured()) {
+      supabaseService.signOutStaff();
+    }
   },
 
   addUser: (userData) => {
-    const newId = Math.max(0, ...get().users.map((u) => u.id)) + 1;
+    const newId = Math.max(0, ...get().users.map((u) => typeof u.id === 'number' ? u.id : 0)) + 1;
     const now = new Date().toISOString().split('T')[0];
     const newUser: UserAccount = {
       ...userData,
@@ -745,6 +801,17 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       'AUTH',
       `เพิ่ม ${newUser.name} (${newUser.code}) บทบาท: ${newUser.role}`
     );
+
+    if (supabaseService.isConfigured()) {
+      supabaseService.createProfile(newUser).then((created) => {
+        if (created?.id) {
+          set((state) => ({
+            users: state.users.map((u) => (u.id === newId ? { ...u, id: created.id } : u)),
+          }));
+        }
+      }).catch((e) => console.warn('Supabase createProfile error:', e));
+    }
+
     return newUser;
   },
 
@@ -753,6 +820,10 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       users: state.users.map((u) => (u.id === id ? { ...u, ...data } : u)),
     }));
     get().addActivityLog('แก้ไขข้อมูลผู้ใช้งาน', 'AUTH', `อัปเดตข้อมูลผู้ใช้งาน ID: ${id}`);
+
+    if (supabaseService.isConfigured()) {
+      supabaseService.updateProfile(id, data).catch((e) => console.warn('Supabase updateProfile error:', e));
+    }
   },
 
   deleteUser: (id) => {
@@ -761,13 +832,18 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       users: state.users.filter((u) => u.id !== id),
     }));
     get().addActivityLog('ลบผู้ใช้งาน', 'AUTH', `ลบผู้ใช้งาน ${user?.name || id}`);
+
+    if (supabaseService.isConfigured()) {
+      supabaseService.deleteProfile(id).catch((e) => console.warn('Supabase deleteProfile error:', e));
+    }
   },
 
   toggleUserStatus: (id) => {
+    let nextStatus: UserStatus = 'active';
     set((state) => ({
       users: state.users.map((u) => {
         if (u.id === id) {
-          const nextStatus: UserStatus = u.status === 'active' ? 'suspended' : 'active';
+          nextStatus = u.status === 'active' ? 'suspended' : 'active';
           return { ...u, status: nextStatus };
         }
         return u;
@@ -779,6 +855,10 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       'AUTH',
       `เปลี่ยนสถานะบัญชี ${user?.name}`
     );
+
+    if (supabaseService.isConfigured()) {
+      supabaseService.updateProfile(id, { status: nextStatus }).catch((e) => console.warn('Supabase status error:', e));
+    }
   },
 
   resetUserPassword: (id, newPin = '1234') => {
@@ -787,6 +867,10 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       users: state.users.map((u) => (u.id === id ? { ...u, password: newPin } : u)),
     }));
     get().addActivityLog('รีเซ็ตรหัสผ่าน/PIN', 'AUTH', `รีเซ็ตรหัสผ่านของผู้ใช้งาน ${user?.name} เป็น PIN ค่าเริ่มต้น: ${newPin}`);
+
+    if (supabaseService.isConfigured()) {
+      supabaseService.updateProfile(id, { password: newPin }).catch((e) => console.warn('Supabase password error:', e));
+    }
     return newPin;
   },
 
@@ -796,6 +880,10 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
     }));
     const user = get().users.find((u) => u.id === id);
     get().addActivityLog('เปลี่ยนสิทธิ์ผู้ใช้งาน', 'AUTH', `เปลี่ยนสิทธิ์ ${user?.name} เป็น ${newRole}`);
+
+    if (supabaseService.isConfigured()) {
+      supabaseService.updateProfile(id, { role: newRole }).catch((e) => console.warn('Supabase role error:', e));
+    }
   },
 
   assignTherapist: (patientId, therapistId, therapistName) => {
@@ -812,10 +900,14 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       'PATIENT',
       `มอบหมายคนไข้ ${patient?.name} ให้ ${therapistName} ดูแล`
     );
+
+    if (supabaseService.isConfigured()) {
+      supabaseService.updatePatient(patientId, { responsible_therapist_id: therapistId }).catch((e) => console.warn('Supabase assign error:', e));
+    }
   },
 
   addTherapist: (therapistData) => {
-    const newId = Math.max(0, ...get().therapists.map((t) => t.id)) + 1;
+    const newId = Math.max(0, ...get().therapists.map((t) => typeof t.id === 'number' ? t.id : 0)) + 1;
     const newTherapist: PhysicalTherapist = { ...therapistData, id: newId };
     set((state) => ({ therapists: [...state.therapists, newTherapist] }));
     get().addActivityLog('เพิ่มนักกายภาพบำบัด', 'THERAPIST', `เพิ่ม ${newTherapist.name}`);
@@ -826,6 +918,10 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       therapists: state.therapists.map((t) => (t.id === id ? { ...t, ...data } : t)),
     }));
     get().addActivityLog('แก้ไขข้อมูลนักกายภาพบำบัด', 'THERAPIST', `อัปเดตข้อมูลนักกายภาพ ID: ${id}`);
+
+    if (supabaseService.isConfigured()) {
+      supabaseService.updateTherapist(id, data).catch((e) => console.warn('Supabase updateTherapist error:', e));
+    }
   },
 
   deleteTherapist: (id) => {
@@ -836,10 +932,21 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
   },
 
   addExercise: (exerciseData) => {
-    const newId = Math.max(0, ...get().exercises.map((e) => e.id)) + 1;
+    const newId = Math.max(0, ...get().exercises.map((e) => typeof e.id === 'number' ? e.id : 0)) + 1;
     const newExercise: HospitalExercise = { ...exerciseData, id: newId };
     set((state) => ({ exercises: [newExercise, ...state.exercises] }));
     get().addActivityLog('เพิ่มท่าทางกายภาพบำบัด', 'TREATMENT', `เพิ่มท่าใหม่: ${newExercise.name} (${newExercise.englishName})`);
+
+    if (supabaseService.isConfigured()) {
+      supabaseService.createExercise(exerciseData).then((created) => {
+        if (created?.id) {
+          set((state) => ({
+            exercises: state.exercises.map((e) => (e.id === newId ? { ...e, id: created.id } : e)),
+          }));
+        }
+      }).catch((e) => console.warn('Supabase createExercise error:', e));
+    }
+
     return newExercise;
   },
 
@@ -851,6 +958,10 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
     }));
     const exercise = get().exercises.find((e) => e.id === id);
     get().addActivityLog('แก้ไขท่าทางกายภาพบำบัด', 'TREATMENT', `แก้ไขข้อมูลท่า: ${exercise?.name || id}`);
+
+    if (supabaseService.isConfigured()) {
+      supabaseService.updateExercise(id, data).catch((e) => console.warn('Supabase updateExercise error:', e));
+    }
   },
 
   deleteExercise: (id) => {
@@ -859,6 +970,10 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       exercises: state.exercises.filter((e) => e.id !== id),
     }));
     get().addActivityLog('ลบท่าทางกายภาพบำบัด', 'TREATMENT', `ลบท่า: ${exercise?.name || id}`);
+
+    if (supabaseService.isConfigured()) {
+      supabaseService.deleteExercise(id).catch((e) => console.warn('Supabase deleteExercise error:', e));
+    }
   },
 
   saveTreatmentPlan: (planData) => {
@@ -871,7 +986,7 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       }));
       get().addActivityLog('อัปเดตแผนการรักษา', 'TREATMENT', `อัปเดตแผนการรักษาของ ${planData.patientName}`);
     } else {
-      const newId = Math.max(0, ...get().treatmentPlans.map((p) => p.id)) + 1;
+      const newId = Math.max(0, ...get().treatmentPlans.map((p) => typeof p.id === 'number' ? p.id : 0)) + 1;
       const newPlan: TreatmentPlan = {
         ...planData,
         id: newId,
@@ -890,7 +1005,7 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
   },
 
   reportSymptom: (reportData) => {
-    const newId = Math.max(0, ...get().symptomReports.map((r) => r.id)) + 1;
+    const newId = Math.max(0, ...get().symptomReports.map((r) => typeof r.id === 'number' ? r.id : 0)) + 1;
     const now = new Date().toISOString().replace('T', ' ').substring(0, 16);
     const newReport: PatientSymptomReport = {
       ...reportData,
@@ -918,7 +1033,7 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
   addActivityLog: (action, category, details, device, ipAddress) => {
     const user = get().users.find((u) => u.id === get().currentUserId);
     const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    const newId = Math.max(0, ...get().activityLogs.map((l) => l.id)) + 1;
+    const newId = Math.max(0, ...get().activityLogs.map((l) => typeof l.id === 'number' ? l.id : 0)) + 1;
     const log: ActivityLog = {
       id: newId,
       timestamp: now,
@@ -932,6 +1047,10 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       ipAddress: ipAddress || '192.168.1.100',
     };
     set((state) => ({ activityLogs: [log, ...state.activityLogs].slice(0, 200) }));
+
+    if (supabaseService.isConfigured()) {
+      supabaseService.logActivity(action, details, category, get().currentRole, get().currentUserId, user?.name);
+    }
   },
 
   kickSession: (logId) => {
@@ -950,6 +1069,10 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       bannedDevices: state.bannedDevices.includes(device) ? state.bannedDevices : [...state.bannedDevices, device],
     }));
     get().addActivityLog('แบนอุปกรณ์ (Ban Device Fingerprint)', 'SYSTEM', `แบนอุปกรณ์: ${device}`);
+
+    if (supabaseService.isConfigured()) {
+      supabaseService.banDevice(device, 'Security violation / banned by Admin');
+    }
   },
 
   unbanDevice: (device) => {
@@ -957,6 +1080,10 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       bannedDevices: state.bannedDevices.filter((d) => d !== device),
     }));
     get().addActivityLog('ปลดแบนอุปกรณ์ (Unban Device)', 'SYSTEM', `ปลดแบนอุปกรณ์: ${device}`);
+
+    if (supabaseService.isConfigured()) {
+      supabaseService.unbanDevice(device);
+    }
   },
 
   banIp: (ip) => {
@@ -965,6 +1092,10 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       bannedIps: state.bannedIps.includes(ip) ? state.bannedIps : [...state.bannedIps, ip],
     }));
     get().addActivityLog('แบนที่อยู่ IP (Ban IP Address)', 'SYSTEM', `แบนที่อยู่ IP: ${ip}`);
+
+    if (supabaseService.isConfigured()) {
+      supabaseService.banIp(ip, 'Suspicious network traffic / banned by Admin');
+    }
   },
 
   unbanIp: (ip) => {
@@ -972,6 +1103,10 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       bannedIps: state.bannedIps.filter((i) => i !== ip),
     }));
     get().addActivityLog('ปลดแบนที่อยู่ IP (Unban IP Address)', 'SYSTEM', `ปลดแบน IP: ${ip}`);
+
+    if (supabaseService.isConfigured()) {
+      supabaseService.unbanIp(ip);
+    }
   },
 
   updateAiSettings: (newSettings) => {
@@ -981,5 +1116,9 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       faceService.setSimilarityThreshold(updated.similarityThreshold);
     }
     get().addActivityLog('ตั้งค่าระบบและการทำงานของ AI', 'AI', 'ปรับเปลี่ยนพารามิเตอร์ระบบ AI ชีวกลศาสตร์');
+
+    if (supabaseService.isConfigured()) {
+      supabaseService.saveSystemSettings(updated);
+    }
   },
 }));

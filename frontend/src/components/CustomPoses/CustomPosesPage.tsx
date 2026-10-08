@@ -22,7 +22,7 @@ import {
 } from '../../services/customPoseService';
 
 interface CustomPosesPageProps {
-  patientId?: number;
+  patientId?: number | string;
   onBack: () => void;
 }
 

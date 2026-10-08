@@ -6,7 +6,7 @@ export type UserRole = 'admin' | 'therapist' | 'patient';
 export type UserStatus = 'active' | 'suspended';
 
 export interface UserAccount {
-  id: number;
+  id: number | string;
   username: string;
   name: string;
   role: UserRole;
@@ -14,7 +14,7 @@ export interface UserAccount {
   code: string; // e.g. P-0012, T-003, ADM-01
   password?: string;
   assignedTherapistName?: string;
-  assignedTherapistId?: number;
+  assignedTherapistId?: number | string;
   phone?: string;
   email?: string;
   age?: number;
@@ -29,7 +29,7 @@ export interface UserAccount {
 }
 
 export interface PhysicalTherapist {
-  id: number;
+  id: number | string;
   code: string; // T-003
   name: string;
   specialty: string;
@@ -43,7 +43,7 @@ export interface PhysicalTherapist {
 }
 
 export interface HospitalExercise {
-  id: number;
+  id: number | string;
   name: string;
   englishName: string;
   category: string;
@@ -69,11 +69,11 @@ export interface PrescribedExercise {
 }
 
 export interface TreatmentPlan {
-  id: number;
-  patientId: number;
+  id: number | string;
+  patientId: number | string;
   patientName: string;
   patientCode: string;
-  therapistId: number;
+  therapistId: number | string;
   therapistName: string;
   diagnosis: string;
   targetJoint: string;
@@ -85,9 +85,9 @@ export interface TreatmentPlan {
 }
 
 export interface ActivityLog {
-  id: number;
+  id: number | string;
   timestamp: string;
-  userId: number;
+  userId: number | string;
   userName: string;
   role: UserRole;
   action: string;
@@ -100,10 +100,10 @@ export interface ActivityLog {
 }
 
 export interface PatientSymptomReport {
-  id: number;
-  patientId: number;
+  id: number | string;
+  patientId: number | string;
   patientName: string;
-  therapistId: number;
+  therapistId: number | string;
   reportedAt: string;
   symptomType: 'pain' | 'dizziness' | 'fatigue' | 'difficulty' | 'other';
   severity: 1 | 2 | 3 | 4 | 5; // 1-5 pain score

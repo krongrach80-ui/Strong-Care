@@ -193,7 +193,7 @@ export class IndexedDBStorageService {
    * Complete Right to be Forgotten: Purge all biometric and session data for a patient
    * ลบ rep_results, safety_events, pending_sync_queue และคีย์ localStorage ที่เกี่ยวข้อง
    */
-  public static async purgePatientData(patientId: number): Promise<void> {
+  public static async purgePatientData(patientId: number | string): Promise<void> {
     try {
       const db = await this.getDB();
       
@@ -211,7 +211,7 @@ export class IndexedDBStorageService {
         }
 
         // 2. Delete all sessions and capture their session IDs
-        const deletedSessionIds = new Set<number>();
+        const deletedSessionIds = new Set<number | string>();
         if (db.objectStoreNames.contains('sessions')) {
           const sessionStore = tx.objectStore('sessions');
           const index = sessionStore.index('patient_id');

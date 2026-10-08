@@ -32,6 +32,7 @@ import { useCamera } from '../../hooks/useCamera';
 import { usePose } from '../../hooks/usePose';
 import { MiniGameCard } from '../../components/MiniGame/MiniGameCard';
 import { MiniGameCameraView } from '../../components/MiniGame/MiniGameCameraView';
+import { supabaseService } from '../../services/supabaseService';
 
 interface Screen5MiniGameProps {
   patient: Patient | null;
@@ -140,6 +141,20 @@ export const Screen5MiniGame: React.FC<Screen5MiniGameProps> = ({
       handleRestart();
     }
   }, [settings.questionCount, questions.length, handleRestart]);
+
+  // Persist minigame result to Supabase when round finishes
+  useEffect(() => {
+    if (isRoundFinished && patient?.id) {
+      supabaseService.saveMinigameResult({
+        patient_id: String(patient.id),
+        score: score,
+        total_questions: questions.length,
+        correct_count: score,
+      }).catch((err) => {
+        console.warn('Auto-save minigame result to Supabase failed:', err);
+      });
+    }
+  }, [isRoundFinished, patient?.id, score, questions.length]);
 
   // Trigger answer evaluation
   const handleAnswer = useCallback(

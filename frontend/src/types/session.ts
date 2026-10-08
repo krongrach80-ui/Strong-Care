@@ -1,9 +1,9 @@
 import { RepResult } from './exercise';
 
 export interface Session {
-  id: number;
-  patient_id: number;
-  exercise_id: number;
+  id: number | string;
+  patient_id: number | string;
+  exercise_id: number | string;
   patient_name?: string;
   patient_code?: string;
   exercise_name?: string;
@@ -24,7 +24,7 @@ export interface Session {
 export interface SessionReport {
   session: Session;
   patient: {
-    id: number;
+    id: number | string;
     patient_code: string;
     name: string;
     age: number;

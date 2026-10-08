@@ -8,7 +8,7 @@
 
 export interface CustomPoseItem {
   id: string;
-  patientId?: number;
+  patientId?: number | string;
   name: string;
   instructions: string;
   imageDataUrl?: string;
@@ -21,14 +21,14 @@ const STORAGE_KEY_PREFIX = 'strongcare_custom_poses_';
 /**
  * Returns the localStorage key partitioned by patientId
  */
-export function getCustomPoseStorageKey(patientId?: number): string {
+export function getCustomPoseStorageKey(patientId?: number | string): string {
   return `${STORAGE_KEY_PREFIX}${patientId ?? 'guest'}`;
 }
 
 /**
  * Retrieve all custom poses for a given patient
  */
-export function getCustomPoses(patientId?: number): CustomPoseItem[] {
+export function getCustomPoses(patientId?: number | string): CustomPoseItem[] {
   try {
     const key = getCustomPoseStorageKey(patientId);
     const raw = localStorage.getItem(key);
@@ -47,7 +47,7 @@ export function getCustomPoses(patientId?: number): CustomPoseItem[] {
 /**
  * Get count of custom poses for a given patient
  */
-export function getCustomPoseCount(patientId?: number): number {
+export function getCustomPoseCount(patientId?: number | string): number {
   return getCustomPoses(patientId).length;
 }
 
@@ -55,7 +55,7 @@ export function getCustomPoseCount(patientId?: number): number {
  * Save (create or update) a custom pose
  */
 export function saveCustomPose(
-  patientId: number | undefined,
+  patientId: number | string | undefined,
   data: {
     id?: string;
     name: string;
@@ -116,7 +116,7 @@ export function saveCustomPose(
 /**
  * Delete a custom pose by ID
  */
-export function deleteCustomPose(patientId: number | undefined, id: string): boolean {
+export function deleteCustomPose(patientId: number | string | undefined, id: string): boolean {
   try {
     const existingList = getCustomPoses(patientId);
     const updatedList = existingList.filter((item) => item.id !== id);

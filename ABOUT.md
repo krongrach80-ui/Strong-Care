@@ -180,6 +180,74 @@
 
 ---
 
+### 🗄️ สถาปัตยกรรมฐานข้อมูลจริงด้วย Supabase (PostgreSQL + RLS + Real Auth)
+
+ระบบ STRONG CARE ได้รับการอัปเกรดจากระบบ Demo / localStorage ให้เป็นระบบใช้งานจริงในระดับ Production โดยเชื่อมต่อกับ **Supabase (Managed PostgreSQL)** เป็น Backend หลัก:
+
+```
+                                    ┌───────────────────────────────────┐
+                                    │      SUPABASE CLOUD / POSTGRES    │
+                                    │     (Row Level Security Enabled)  │
+                                    └─────────────────┬─────────────────┘
+                                                      │
+                    ┌─────────────────────────────────┼─────────────────────────────────┐
+                    ▼                                 ▼                                 ▼
+         ┌─────────────────────┐           ┌─────────────────────┐           ┌─────────────────────┐
+         │     auth.users      │           │      profiles       │           │   patients/therapists│
+         │  (Supabase Auth)    │◀─────────▶│ (id, role, username)│◀─────────▶│(Clinical Records &  │
+         │  Admin / PT Logins  │           │   Admin/PT/Patient  │           │ Responsible PT Link)│
+         └─────────────────────┘           └─────────────────────┘           └─────────────────────┘
+                    │                                 │                                 │
+                    ▼                                 ▼                                 ▼
+         ┌─────────────────────┐           ┌─────────────────────┐           ┌─────────────────────┐
+         │      exercises      │           │ treatment_sessions  │           │   minigame_results  │
+         │  (16 Clinical Poses)│           │  & Real ROM History │           │  (99-Q Quiz Scores) │
+         └─────────────────────┘           └─────────────────────┘           └─────────────────────┘
+                    │                                 │                                 │
+                    ▼                                 ▼                                 ▼
+         ┌─────────────────────┐           ┌─────────────────────┐           ┌─────────────────────┐
+         │    activity_logs    │           │   banned_devices    │           │   system_settings   │
+         │ (Audit Trail Logs)  │           │    & banned_ips     │           │   & face_embeddings │
+         └─────────────────────┘           └─────────────────────┘           └─────────────────────┘
+```
+
+#### 1. โครงสร้าง 11 ตารางฐานข้อมูล (Database Schema)
+1. **`profiles`**: จัดเก็บข้อมูลผู้ใช้งานทุกคน (`id` UUID เชื่อม `auth.users`, `username` unique, `full_name`, `role: 'admin'|'therapist'|'patient'`, `phone`, `email`, `is_active`, `created_at`, `updated_at`)
+2. **`patients`**: ทะเบียนคนไข้เวชระเบียน (`id` UUID, `profile_id` FK profiles, `patient_code` unique เช่น `P-0012`, `full_name`, `age`, `gender`, `phone`, `chief_complaint`, `medical_history`, `treatment_outcome`, `therapist_notes`, `responsible_therapist_id` FK profiles, `pin_hash` แฮช SHA-256, `started_at`, `status`)
+3. **`therapists`**: ทะเบียนนักกายภาพบำบัด (`id` UUID, `profile_id` FK profiles, `license_no`, `specialty`, `bio`, `phone`, `email`, `status: 'active'|'on_leave'|'suspended'`)
+4. **`exercises`**: คลังท่าทางกายภาพบำบัดชีวกลศาสตร์ (`id` UUID, `slug`, `name_th`, `name_en`, `category`, `difficulty`, `target_angle`, `hold_seconds`, `reps`, `sets`, `target_joint`, `instructions`, `caution`, `contraindication`, `is_active`)
+5. **`treatment_sessions`**: ประวัติการฝึกกายภาพบำบัดจริง (`id` UUID, `patient_id` FK, `exercise_id` FK, `therapist_id` FK, `score`, `avg_angle`, `hold_completed_seconds`, `accuracy_percent`, `total_reps`, `correct_reps`, `notes`, `mode: 'therapy'|'minigame'`, `created_at`)
+6. **`minigame_results`**: ผลลัพธ์และสถิติกายภาพแบบมินิเกม (`id` UUID, `patient_id` FK, `score`, `total_questions`, `correct_count`, `stars`, `duration_seconds`, `created_at`)
+7. **`activity_logs`**: บันทึก Audit Trail ความปลอดภัย (`id` UUID, `actor_id` FK profiles, `actor_name`, `action`, `detail`, `category`, `device_info`, `ip_address`, `created_at`)
+8. **`banned_devices`**: ทะเบียนอุปกรณ์ที่ถูกแบน (`id` UUID, `value`, `reason`, `banned_by`, `created_at`)
+9. **`banned_ips`**: ทะเบียน IP Address ที่ถูกแบน (`id` UUID, `value`, `reason`, `banned_by`, `created_at`)
+10. **`system_settings`**: การตั้งค่าพารามิเตอร์ AI และระบบ (`key` text PK, `value` jsonb, `updated_at`)
+11. **`face_embeddings`**: เวกเตอร์ชีวมิติใบหน้า 128 มิติ (`id` UUID, `patient_id` FK patients, `embedding` jsonb, `created_at`)
+
+#### 2. นโยบายความปลอดภัยระดับแถว (Row Level Security - RLS)
+- **Admin**: สิทธิ์เต็มรูปแบบ (Full Read/Write/Delete) บนทุกตาราง
+- **Physiotherapist**:
+  - `profiles`: ดูได้ทั้งหมด, เพิ่มได้เฉพาะบทบาท `'patient'`
+  - `patients`: เพิ่มคนไข้ใหม่ได้, แก้ไขได้เฉพาะคนไข้ที่ตนเองรับผิดชอบ (`responsible_therapist_id = current_user_id()`), อ่านข้อมูลคนไข้คนอื่นในโหมด Read-Only
+  - `therapists`: แก้ไขได้เฉพาะโปรไฟล์ของตนเอง
+  - `exercises`: ดูและจัดการท่าทางกายภาพได้
+  - `activity_logs` & `system_settings`: **ปิดกั้นการเข้าถึง 100%**
+- **Patient**:
+  - อ่านเฉพาะข้อมูลเวชระเบียนของตนเอง (`id = patient_id`)
+  - บันทึกผลการฝึก `treatment_sessions` และ `minigame_results` ของตนเองได้
+  - **ห้ามมองเห็นหรือเข้าถึงข้อมูลของผู้ป่วยท่านอื่นอย่างเด็ดขาด**
+
+#### 3. การเชื่อมต่อและระบบความปลอดภัยฝั่ง Frontend
+- **Singleton Client**: ไฟล์ [`frontend/src/lib/supabase.ts`](file:///frontend/src/lib/supabase.ts) ใช้ `@supabase/supabase-js` ผ่านตัวแปรสภาพแวดล้อม:
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_ANON_KEY`
+  *(ไม่มีการ hardcode service role key ฝั่ง frontend อย่างเด็ดขาด)*
+- **PIN Cryptographic Hashing**: รหัส PIN คนไข้หน้าตู้ Kiosk ถูกเข้ารหัสด้วย Web Crypto API **SHA-256** ก่อนบันทึกหรือเทียบเคียงเสมอ (ไม่มีการเก็บ Plaintext PIN ในฐานข้อมูล)
+- **Data Persistence**: ข้อมูลทุกส่วนคงอยู่ถาวร แม้รีเฟรชหน้าเว็บหรือเปิดจากอุปกรณ์อื่น
+- **Resilient Fallback**: มีกลไกตรวจจับการเชื่อมต่อฐานข้อมูล หากเครือข่ายขัดข้องจะสลับเข้าสู่โหมด Offline Storage อัตโนมัติโดยที่ระบบไม่แครช
+
+---
+
 ### 🧪 การทดสอบระบบอัตโนมัติ (Automated Test Suite: 31/31 Passed)
 
 ระบบครอบคลุมชุดทดสอบอัตโนมัติระดับ Production ผ่านครบ 100% ทั้ง 31 กรณีทดสอบ (`npm test`):
@@ -197,8 +265,8 @@
 
 ### 🛠️ เทคโนโลยีที่ใช้ (Tech Stack)
 - **Frontend**: React 18, TypeScript 5, Vite 5, Tailwind CSS, Lucide Icons, Canvas-Confetti, Zustand, Recharts
+- **Database & Backend**: Supabase (PostgreSQL 15), Supabase Auth, Row Level Security (RLS), Web Crypto SHA-256
 - **Computer Vision & AI**: Google MediaPipe Pose Landmarker Full (WASM 0.10.35), MediaPipe FaceLandmarker (478 Dense Landmarks), ResNet-34 128-D Feature Embeddings
 - **Design System**: Strong Care Mint Aesthetic (`#1E8A4C`, `#6FD67F`, `#E9FCEB`), Hospital Dark Slate (`#0F2F2B`), WCAG AAA High Contrast
-- **Backend API**: PHP 8.2 REST API, PDO, MVC Architecture
-- **Database**: SQLite 3 / MySQL พร้อม IndexedDB Offline-First Fallback
-- **Hosting & CI/CD**: GitHub Pages Static SPA Deployment
+- **Offline & Fallback**: IndexedDB (`StrongCareDB`), LocalStorage Preference Caching, Auto-sync Queue
+- **Hosting & CI/CD**: GitHub Pages Static SPA Deployment, Supabase Cloud Database

@@ -15,7 +15,7 @@ interface ChangePasswordModalProps {
   isOpen: boolean;
   onClose: () => void;
   user: UserAccount | null;
-  onSavePassword: (userId: number, newPassword: string) => void;
+  onSavePassword: (userId: number | string, newPassword: string) => void;
   onSuccessToast: (msg: string) => void;
 }
 

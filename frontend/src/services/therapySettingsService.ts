@@ -22,7 +22,7 @@ export interface TherapyScheduleConfig {
   customArea?: string; // e.g. 'คอ', 'บ่า', 'ไหล่', 'หลัง'
   selectedStretchIds?: string[]; // IDs of selected 11 stretching exercises
   customHoldTimes?: Record<string, number>; // Custom duration per pose (seconds) e.g. { stretch_neck_lateral: 25 }
-  patientId?: number;
+  patientId?: number | string;
   savedAt?: string;
   notes?: string;
 }
@@ -108,7 +108,7 @@ export function formatThaiDateTime(dateStr: string, timeStr: string): string {
 /**
  * Retrieve saved configuration with sensible defaults, partitioned per patientId
  */
-export function getSavedTherapyConfig(mode: TherapyMode = 'physio', patientId?: number): TherapyScheduleConfig {
+export function getSavedTherapyConfig(mode: TherapyMode = 'physio', patientId?: number | string): TherapyScheduleConfig {
   const pId = patientId ?? 1;
   const key = `${STORAGE_KEY_PREFIX}p${pId}_${mode}`;
   const legacyKey = `${STORAGE_KEY_PREFIX}${mode}`;
@@ -165,7 +165,7 @@ export function getSavedTherapyConfig(mode: TherapyMode = 'physio', patientId?: 
 /**
  * Save configuration to localStorage partitioned by patientId and schedule reminder
  */
-export function saveTherapyConfig(config: TherapyScheduleConfig, patientId?: number): void {
+export function saveTherapyConfig(config: TherapyScheduleConfig, patientId?: number | string): void {
   const pId = patientId ?? config.patientId ?? 1;
   const key = `${STORAGE_KEY_PREFIX}p${pId}_${config.mode}`;
   const record: TherapyScheduleConfig = {
@@ -194,7 +194,7 @@ export function saveTherapyConfig(config: TherapyScheduleConfig, patientId?: num
 /**
  * Get all scheduled reminders for a specific patientId
  */
-export function getSavedReminders(patientId?: number): TherapyScheduleConfig[] {
+export function getSavedReminders(patientId?: number | string): TherapyScheduleConfig[] {
   try {
     const pId = patientId ?? 1;
     const reminderKey = `${REMINDER_KEY_PREFIX}p${pId}`;
@@ -208,7 +208,7 @@ export function getSavedReminders(patientId?: number): TherapyScheduleConfig[] {
 /**
  * Check if any reminder is due right now for a specific patientId
  */
-export function checkDueReminder(patientId?: number): TherapyScheduleConfig | null {
+export function checkDueReminder(patientId?: number | string): TherapyScheduleConfig | null {
   const reminders = getSavedReminders(patientId);
   if (!reminders.length) return null;
 

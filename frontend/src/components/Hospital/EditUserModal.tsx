@@ -21,12 +21,12 @@ interface EditUserModalProps {
   onClose: () => void;
   user: UserAccount | null;
   currentRole: UserRole;
-  currentUserId: number;
+  currentUserId: number | string;
   currentUserName: string;
   therapists: PhysicalTherapist[];
   existingUsers: UserAccount[];
   onSubmitUser: (
-    userId: number,
+    userId: number | string,
     updatedUser: Partial<UserAccount>,
     therapistExtra?: Partial<PhysicalTherapist>
   ) => void;
@@ -57,7 +57,7 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
   // Section 3 (Patient specific)
   const [age, setAge] = useState<number | string>(60);
   const [gender, setGender] = useState<'male' | 'female' | 'other'>('male');
-  const [assignedTherapistId, setAssignedTherapistId] = useState<number>(1);
+  const [assignedTherapistId, setAssignedTherapistId] = useState<number | string>(1);
   const [admissionDate, setAdmissionDate] = useState<string>('');
   const [chiefComplaint, setChiefComplaint] = useState<string>('');
 

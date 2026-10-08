@@ -14,6 +14,7 @@ import { Patient } from '../../types/patient';
 import { IS_STATIC_MODE } from '../../config/apiConfig';
 import { useHospitalStore } from '../../store/hospitalStore';
 import { api } from '../../services/api';
+import { supabaseService } from '../../services/supabaseService';
 
 interface Screen2LoginProps {
   onBack: () => void;
@@ -57,7 +58,20 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
     try {
       const q = idOrPhone.toLowerCase();
 
-      // 1. ตรวจสอบในฐานข้อมูล hospitalStore
+      // 1. ตรวจสอบกับฐานข้อมูล Supabase ก่อนถ้ามีการตั้งค่า
+      if (supabaseService.isConfigured()) {
+        const sbAuth = await supabaseService.verifyPatientPin(idOrPhone, enteredPin);
+        if (sbAuth.success && sbAuth.patient) {
+          onLoginSuccess(sbAuth.patient);
+          return;
+        } else if (sbAuth.error) {
+          setSelectionError(sbAuth.error);
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // 2. ตรวจสอบในฐานข้อมูล hospitalStore
       const matchedUser = users.find((u) => {
         const codeMatch = u.code.toLowerCase() === q;
         const phoneMatch = u.phone && u.phone.replace(/[^0-9]/g, '') === idOrPhone.replace(/[^0-9]/g, '');
@@ -67,7 +81,7 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
         return (codeMatch || phoneMatch || userMatch || nameMatch || idMatch) && u.role === 'patient';
       });
 
-      // 2. ตรวจสอบในฐานข้อมูล patients (API / Local store)
+      // 3. ตรวจสอบในฐานข้อมูล patients (API / Local store)
       const matchedPatient = patients.find((p) => {
         return (
           p.patient_code.toLowerCase() === q ||
@@ -76,9 +90,9 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
         );
       });
 
-      // ตรวจสอบรหัส PIN: อนุญาตถ้าตรงกับ password ของผู้ใช้ หรือ PIN มาตรฐาน 1234 / 0000
+      // ตรวจสอบรหัส PIN: อนุญาตถ้าตรงกับ password ของผู้ใช้ หรือ PIN มาตรฐาน 1234
       const expectedPin = matchedUser?.password || '1234';
-      if (enteredPin !== expectedPin && enteredPin !== '1234' && enteredPin !== '0000') {
+      if (enteredPin !== expectedPin && enteredPin !== '1234') {
         setSelectionError('รหัส PIN ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง');
         setIsSubmitting(false);
         return;

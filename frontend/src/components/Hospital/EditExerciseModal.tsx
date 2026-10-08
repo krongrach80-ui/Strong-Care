@@ -19,7 +19,7 @@ interface EditExerciseModalProps {
   isOpen: boolean;
   onClose: () => void;
   exercise: HospitalExercise | null;
-  onUpdateExercise: (id: number, data: Partial<HospitalExercise>) => void;
+  onUpdateExercise: (id: number | string, data: Partial<HospitalExercise>) => void;
   onSuccessToast: (msg: string) => void;
 }
 

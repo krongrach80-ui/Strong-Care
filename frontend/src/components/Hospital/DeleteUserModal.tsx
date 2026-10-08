@@ -14,8 +14,8 @@ interface DeleteUserModalProps {
   onClose: () => void;
   user: UserAccount | null;
   currentRole: UserRole;
-  currentUserId: number;
-  onConfirmDelete: (userId: number) => void;
+  currentUserId: number | string;
+  onConfirmDelete: (userId: number | string) => void;
   onSuccessToast: (msg: string) => void;
 }
 

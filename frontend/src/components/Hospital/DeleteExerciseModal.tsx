@@ -14,7 +14,7 @@ interface DeleteExerciseModalProps {
   isOpen: boolean;
   onClose: () => void;
   exercise: HospitalExercise | null;
-  onConfirmDelete: (id: number) => void;
+  onConfirmDelete: (id: number | string) => void;
   onSuccessToast: (msg: string) => void;
 }
 

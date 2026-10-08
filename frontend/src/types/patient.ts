@@ -1,10 +1,17 @@
 export interface Patient {
-  id: number;
+  id: number | string;
   patient_code: string;
   name: string;
   age: number;
   gender: 'male' | 'female' | 'other';
   notes?: string;
+  phone?: string;
+  chief_complaint?: string;
+  medical_history?: string;
+  treatment_outcome?: string;
+  therapist_notes?: string;
+  therapist_name?: string;
+  responsible_therapist_id?: number | string;
   created_at?: string;
   updated_at?: string;
 }

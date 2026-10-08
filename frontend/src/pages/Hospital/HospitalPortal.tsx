@@ -56,7 +56,7 @@ import { BannedManagementModal } from '../../components/Hospital/BannedManagemen
 
 interface HospitalPortalProps {
   onClose: () => void;
-  onLaunchKioskExercise?: (exerciseId?: number) => void;
+  onLaunchKioskExercise?: (exerciseId?: number | string) => void;
   onSelectPatientForKiosk?: (patientData: any) => void;
 }
 
@@ -97,13 +97,22 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
     addActivityLog,
     loginStaff,
     logoutStaff,
+    isSupabaseConnected,
+    isLoadingFromDb,
+    initializeFromSupabase,
   } = useHospitalStore();
+
+  // Load from Supabase on mount
+  useEffect(() => {
+    initializeFromSupabase();
+  }, [initializeFromSupabase]);
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<TabKey>('users');
 
   // Staff Authentication Barrier
   const [isStaffAuthenticated, setIsStaffAuthenticated] = useState<boolean>(false);
+  const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
   const [staffUsernameInput, setStaffUsernameInput] = useState<string>('');
   const [staffPasswordInput, setStaffPasswordInput] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -127,7 +136,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
   };
 
   // Staff Login Submission (Checks real username + password)
-  const handleStaffLogin = (e?: React.FormEvent, overrideUsername?: string, overridePassword?: string) => {
+  const handleStaffLogin = async (e?: React.FormEvent, overrideUsername?: string, overridePassword?: string) => {
     if (e) e.preventDefault();
     const u = (overrideUsername !== undefined ? overrideUsername : staffUsernameInput).trim();
     const p = (overridePassword !== undefined ? overridePassword : staffPasswordInput).trim();
@@ -141,29 +150,33 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
       return;
     }
 
-    const result = loginStaff(u, p);
-    if (result.success && result.user) {
-      setIsStaffAuthenticated(true);
-      setStaffAuthError(null);
-      setStaffUsernameInput('');
-      setStaffPasswordInput('');
-      if (result.user.role === 'therapist' && (activeTab === 'logs' || activeTab === 'settings')) {
-        setActiveTab('users');
+    setIsLoggingIn(true);
+    setStaffAuthError(null);
+
+    try {
+      const result = await loginStaff(u, p);
+      if (result.success && result.user) {
+        setIsStaffAuthenticated(true);
+        setStaffAuthError(null);
+        setStaffUsernameInput('');
+        setStaffPasswordInput('');
+        if (result.user.role === 'therapist' && (activeTab === 'logs' || activeTab === 'settings')) {
+          setActiveTab('users');
+        }
+        showToast(`เข้าสู่ระบบสำเร็จ: ยินดีต้อนรับ ${result.user.name} (${result.user.role === 'admin' ? 'แอดมินใหญ่' : 'นักกายภาพบำบัด'})`);
+      } else {
+        setStaffAuthError(result.error || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
       }
-      showToast(`เข้าสู่ระบบสำเร็จ: ยินดีต้อนรับ ${result.user.name} (${result.user.role === 'admin' ? 'แอดมินใหญ่' : 'นักกายภาพบำบัด'})`);
-    } else {
-      setStaffAuthError(result.error || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
-  // Quick Demo Account Filler
-  const handleFillDemoAccount = (username: string, pass: string, autoLogin: boolean = false) => {
+  // Helper to pre-fill credentials into form
+  const handleFillDemoAccount = (username: string, pass: string) => {
     setStaffUsernameInput(username);
     setStaffPasswordInput(pass);
     setStaffAuthError(null);
-    if (autoLogin) {
-      handleStaffLogin(undefined, username, pass);
-    }
   };
 
   // Guard against forbidden tab navigation for Physiotherapist
@@ -197,11 +210,11 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
   // =========================================================================
   const [userSearch, setUserSearch] = useState<string>('');
   const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'patient' | 'therapist'>('all');
-  const [revealedPasswords, setRevealedPasswords] = useState<Record<number, boolean>>({});
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string | number, boolean>>({});
   const [userPage, setUserPage] = useState<number>(1);
   const userPageSize = 8;
 
-  const togglePasswordVisibility = (userId: number) => {
+  const togglePasswordVisibility = (userId: string | number) => {
     setRevealedPasswords((prev) => ({ ...prev, [userId]: !prev[userId] }));
   };
 
@@ -243,7 +256,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
 
   const handleEditUser = (
-    userId: number,
+    userId: number | string,
     updatedData: Partial<UserAccount>,
     therapistExtra?: Partial<PhysicalTherapist>
   ) => {
@@ -455,7 +468,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
   const [logSearch, setLogSearch] = useState<string>('');
   const [logCategoryFilter, setLogCategoryFilter] = useState<string>('all');
   const [isBannedManagementOpen, setIsBannedManagementOpen] = useState<boolean>(false);
-  const [kickedLogIds, setKickedLogIds] = useState<number[]>([]);
+  const [kickedLogIds, setKickedLogIds] = useState<(number | string)[]>([]);
   const [confirmKickLog, setConfirmKickLog] = useState<ActivityLog | null>(null);
   const [confirmBanDevice, setConfirmBanDevice] = useState<string | null>(null);
   const [confirmBanIp, setConfirmBanIp] = useState<string | null>(null);
@@ -639,11 +652,21 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
             <div className="flex flex-col gap-2.5 pt-2">
               <button
                 type="submit"
-                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-[#10B981] to-[#059669] text-white font-extrabold text-sm shadow-md shadow-emerald-600/20 hover:brightness-105 transition active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                disabled={isLoggingIn}
+                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-[#10B981] to-[#059669] text-white font-extrabold text-sm shadow-md shadow-emerald-600/20 hover:brightness-105 transition active:scale-95 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
                 id="btnStaffLoginSubmit"
               >
-                <LogIn className="w-4 h-4" />
-                <span>เข้าสู่ระบบบุคลากร</span>
+                {isLoggingIn ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>กำลังเข้าสู่ระบบ Supabase...</span>
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="w-4 h-4" />
+                    <span>เข้าสู่ระบบบุคลากร</span>
+                  </>
+                )}
               </button>
 
               <button
@@ -688,19 +711,11 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     <button
                       type="button"
-                      onClick={() => handleFillDemoAccount(acc.username, acc.password, false)}
-                      className="px-2.5 py-1 rounded-xl bg-white border border-slate-200 hover:border-emerald-300 text-slate-700 hover:text-emerald-700 font-bold text-[11px] transition cursor-pointer shadow-2xs"
-                      title="กรอกข้อมูลลงฟอร์ม"
+                      onClick={() => handleFillDemoAccount(acc.username, acc.password)}
+                      className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:border-emerald-400 text-slate-700 hover:text-emerald-800 font-bold text-[11px] transition cursor-pointer shadow-2xs"
+                      title="กรอกชื่อผู้ใช้ลงในฟอร์ม"
                     >
-                      กรอกฟอร์ม
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleFillDemoAccount(acc.username, acc.password, true)}
-                      className="px-2.5 py-1 rounded-xl bg-[#10B981] hover:bg-emerald-600 text-white font-bold text-[11px] transition cursor-pointer shadow-2xs"
-                      title="ล็อกอินเข้าใช้งานทันที"
-                    >
-                      ล็อกอินเลย
+                      ใช้ชื่อนี้
                     </button>
                   </div>
                 </div>
@@ -776,7 +791,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
         {/* Bottom Sidebar Info & Logout */}
         <div className="pt-4 border-t border-emerald-900/60 space-y-2">
           <div className="px-3 py-2 rounded-2xl bg-emerald-950/40 border border-emerald-800/40 text-[11px] text-emerald-300/80">
-            <div>สถานะระบบ: <span className="text-[#4AE387] font-bold">ออนไลน์ (Online)</span></div>
+            <div>ฐานข้อมูล: <span className={isSupabaseConnected ? "text-[#4AE387] font-bold" : "text-amber-400 font-bold"}>{isSupabaseConnected ? "Supabase Cloud 🟢" : "Local Fallback 🟡"}</span></div>
             <div>บทบาท: <span className="text-white font-bold">{currentRole === 'admin' ? 'แอดมินใหญ่ (6 หน้า)' : 'นักกายภาพ (4 หน้า)'}</span></div>
             <div className="text-[10px] text-emerald-400/80 truncate mt-0.5">ผู้ใช้: {currentUser?.name}</div>
           </div>
@@ -820,6 +835,12 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
 
           {/* Right Header Controls */}
           <div className="flex items-center gap-3">
+            {/* Supabase Connection Status Indicator */}
+            <div className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${isSupabaseConnected ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-amber-50 text-amber-800 border-amber-300'}`}>
+              <span className={`w-2 h-2 rounded-full ${isSupabaseConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+              <span>{isSupabaseConnected ? 'Supabase DB เชื่อมต่อแล้ว 🟢' : 'Supabase Local Fallback 🟡'}</span>
+            </div>
+
             {/* Quick Reception Action button */}
             <button
               onClick={() => setIsReceptionOpen(true)}

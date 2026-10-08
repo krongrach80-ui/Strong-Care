@@ -5,6 +5,7 @@ import { api } from '../services/api';
 import { poseService } from '../services/poseService';
 import { OfflineStorageService } from '../services/offlineStorageService';
 import { SafetyViolation } from '../biomechanics/SafetyEngine';
+import { supabaseService } from '../services/supabaseService';
 
 /**
  * Format Date as Local MySQL DateTime string (YYYY-MM-DD HH:mm:ss)
@@ -133,6 +134,22 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         status: 'completed',
         results: repResults,
       };
+    }
+
+    // Persist to Supabase if configured
+    if (supabaseService.isConfigured()) {
+      supabaseService.saveTreatmentSession({
+        patientId: patientId,
+        exerciseId: exerciseId,
+        score: avgAccuracy,
+        avgAngle: avgAngle,
+        holdCompletedSeconds: totalReps * 5,
+        accuracyPercent: avgAccuracy,
+        totalReps: totalReps,
+        correctReps: correctReps,
+        notes: `บันทึกอัตโนมัติจากการฝึกท่า (ความแม่นยำ ${avgAccuracy}%)`,
+        mode: 'therapy',
+      }).catch((e) => console.warn('Supabase saveTreatmentSession error:', e));
     }
 
     // Always persist to local offline storage (Offline-first!) พร้อมส่งต่อ safetyEvents

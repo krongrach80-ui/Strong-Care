@@ -23,10 +23,10 @@ interface EditPatientModalProps {
   patient: UserAccount | null;
   therapists: PhysicalTherapist[];
   currentRole: UserRole;
-  currentUserId: number;
+  currentUserId: number | string;
   currentUserName: string;
   canEdit: boolean;
-  onSavePatient: (patientId: number, data: Partial<UserAccount>) => void;
+  onSavePatient: (patientId: number | string, data: Partial<UserAccount>) => void;
   onSuccessToast: (msg: string) => void;
 }
 
@@ -50,7 +50,7 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({
   const [createdAt, setCreatedAt] = useState<string>('');
 
   // Section 2: Clinical & Treatment Info
-  const [assignedTherapistId, setAssignedTherapistId] = useState<number>(1);
+  const [assignedTherapistId, setAssignedTherapistId] = useState<number | string>(1);
   const [assignedTherapistName, setAssignedTherapistName] = useState<string>('');
   const [chiefComplaint, setChiefComplaint] = useState<string>('');
   const [patientBackground, setPatientBackground] = useState<string>('');

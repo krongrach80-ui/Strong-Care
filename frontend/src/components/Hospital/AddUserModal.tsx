@@ -25,7 +25,7 @@ interface AddUserModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentRole: UserRole;
-  currentUserId: number;
+  currentUserId: number | string;
   currentUserName: string;
   therapists: PhysicalTherapist[];
   existingUsers: UserAccount[];
@@ -60,7 +60,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
   // Section 3 (Patient specific)
   const [age, setAge] = useState<number | string>(65);
   const [gender, setGender] = useState<'male' | 'female' | 'other'>('male');
-  const [assignedTherapistId, setAssignedTherapistId] = useState<number>(1);
+  const [assignedTherapistId, setAssignedTherapistId] = useState<number | string>(1);
   const [admissionDate, setAdmissionDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );

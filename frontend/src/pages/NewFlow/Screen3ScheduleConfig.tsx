@@ -42,7 +42,7 @@ import { getCustomPoseCount } from '../../services/customPoseService';
 
 interface Screen3ScheduleConfigProps {
   mode: TherapyMode; // 'physio' | 'minigame'
-  patientId?: number;
+  patientId?: number | string;
   onBack: () => void;
   onStartNow: (config: TherapyScheduleConfig) => void;
   onScheduleSaved: (config: TherapyScheduleConfig, message: string) => void;

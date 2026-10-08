@@ -27,10 +27,10 @@ export interface EditTherapistModalProps {
   therapist: PhysicalTherapist | null;
   allPatients: UserAccount[];
   currentRole: UserRole;
-  currentUserId: number;
+  currentUserId: number | string;
   currentUserName: string;
   canEdit: boolean;
-  onSaveTherapist: (therapistId: number, data: Partial<PhysicalTherapist>) => void;
+  onSaveTherapist: (therapistId: number | string, data: Partial<PhysicalTherapist>) => void;
   onSuccessToast: (msg: string) => void;
 }
 

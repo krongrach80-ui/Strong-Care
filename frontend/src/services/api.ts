@@ -91,7 +91,7 @@ export const api = {
   /**
    * เข้าสู่ระบบด้วย PIN หรือรหัสผ่านฝั่งเซิร์ฟเวอร์
    */
-  async login(payload: { patient_id?: number; patient_code?: string; pin?: string; username?: string; password?: string }): Promise<any> {
+  async login(payload: { patient_id?: number | string; patient_code?: string; pin?: string; username?: string; password?: string }): Promise<any> {
     if (IS_STATIC_MODE) {
       return {
         status: 'success',
@@ -284,7 +284,7 @@ export const api = {
   /**
    * ลบข้อมูลผู้ป่วยทั้งหมดตามสิทธิ์ PDPA (ทั้งเซิร์ฟเวอร์และแคช)
    */
-  async purgePatientData(patientId: number): Promise<{ success: boolean; message: string }> {
+  async purgePatientData(patientId: number | string): Promise<{ success: boolean; message: string }> {
     if (IS_STATIC_MODE) {
       await IndexedDbService.purgePatientData(patientId);
       return { success: true, message: 'ลบข้อมูลในเครื่องและโหมดสาธิตสำเร็จตาม PDPA [โหมดสาธิต]' };
