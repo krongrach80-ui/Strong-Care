@@ -35,6 +35,8 @@ import { supabaseService } from '../services/supabaseService';
 import { OfflineStorageService } from '../services/offlineStorageService';
 import { IS_STATIC_MODE } from '../config/apiConfig';
 import { Patient } from '../types/patient';
+import { TreatmentPlan } from '../types/hospital';
+import { KioskSixStepWorkflow } from '../components/Kiosk/KioskSixStepWorkflow';
 import { CheckCircle2, Shield } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -372,13 +374,41 @@ export const App: React.FC = () => {
         }`}
       >
         
-        {/* หน้า 1: หน้าแรก */}
+        {/* หน้า 1: ตู้ Kiosk อัจฉริยะ 6 ขั้นตอน (พักหน้าจอ -> ถามความพร้อม -> สแกนหน้า -> ล็อคอินสำเร็จ -> รายการที่หมอเซ็ต) */}
         {currentScreen === 1 && (
-          <Screen1Home
-            onStart={() => handleNavigate(2)}
-            onOpenAdmin={() => setIsHospitalPortalOpen(true)}
+          <KioskSixStepWorkflow
+            onLoginComplete={(patient) => {
+              handleLoginSuccess(patient);
+            }}
+            onStartExerciseDirectly={(patient, plan) => {
+              selectPatient(patient);
+              setCurrentUserName(patient.name);
+              if (plan?.assignedExercises && plan.assignedExercises.length > 0) {
+                const firstExSlug = plan.assignedExercises[0].exerciseSlug;
+                const matchedEx = exercises.find((e) => e.slug === firstExSlug);
+                if (matchedEx) {
+                  selectExercise(matchedEx);
+                } else {
+                  selectExercise({
+                    id: 1,
+                    name: plan.assignedExercises[0].exerciseName,
+                    slug: plan.assignedExercises[0].exerciseSlug,
+                    category: 'Upper Body',
+                    description: plan.clinicalNotes || 'ฝึกตามที่หมอกำหนด',
+                    target_joint: 'shoulder',
+                    target_angle: 90,
+                    min_angle: 75,
+                    max_angle: 110,
+                    target_reps: plan.assignedExercises[0].reps || 10,
+                    difficulty: 'beginner',
+                  });
+                }
+              }
+              showToast(`ยินดีต้อนรับ ${patient.name} เริ่มต้นโปรแกรมการรักษา`);
+              handleNavigate(4);
+            }}
+            onOpenHospitalPortal={() => setIsHospitalPortalOpen(true)}
             onOpenAbout={() => setIsAboutOpen(true)}
-            onOpenReception={() => setIsReceptionOpen(true)}
           />
         )}
 
