@@ -77,11 +77,12 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
-  // Motion/Presence simulation for Step 1
+  // Motion/Presence detection for Step 1 (ชะลอดีเลย์ 1.8 - 2.0 วินาที)
   const [isPersonDetected, setIsPersonDetected] = useState<boolean>(false);
+  const [presenceProgress, setPresenceProgress] = useState<number>(0); // 0 to 100%
   const [isSlideUpAnimating, setIsSlideUpAnimating] = useState<boolean>(false);
 
-  // Gamified Arm Pose Detection State (ยกแขนขวา = ใช่ | ยกแขนซ้าย = ไม่)
+  // Gamified Arm Pose Detection State for Steps 2 & 3 (ชะลอดีเลย์ 1.8 วินาที)
   const [detectedArmPose, setDetectedArmPose] = useState<'none' | 'right_yes' | 'left_no'>('none');
   const [armHoldProgress, setArmHoldProgress] = useState<number>(0); // 0 to 100%
   const [gameXp, setGameXp] = useState<number>(100);
@@ -94,8 +95,9 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
   const detectionFrameRef = useRef<number | null>(null);
   const lastPoseDetectedRef = useRef<'none' | 'right_yes' | 'left_no'>('none');
 
-  // Step 4: Face Scanning & Multi-Phase Biometric Verification
+  // Step 4: Face Scanning & Multi-Phase Biometric Verification (ชะลอดีเลย์ท่าทาง 1.6 วินาที/ท่า)
   const [scanStep, setScanStep] = useState<'front' | 'left' | 'right' | 'done'>('front');
+  const [faceHoldProgress, setFaceHoldProgress] = useState<number>(0); // 0 to 100%
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [scanStatusMessage, setScanStatusMessage] = useState<string>('กรุณาจัดใบหน้าให้อยู่ในกรอบวงรี');
   const [matchedProfile, setMatchedProfile] = useState<any | null>(null);
@@ -103,7 +105,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
   const [regName, setRegName] = useState<string>('คุณสมชาย ใจดี');
   const [regHn, setRegHn] = useState<string>('P-0012');
 
-  // Realistic Biometric Verification Loading (2.2 - 2.5 วินาที)
+  // Realistic Biometric Verification Loading (3.0 - 4.5 วินาที รวมแสดงผล)
   const [biometricPhase, setBiometricPhase] = useState<number>(0); // 0=idle, 1=anti-spoofing, 2=landmarks/embedding, 3=matching, 4=success
   const [biometricProgress, setBiometricProgress] = useState<number>(0);
   const [challengeProgress, setChallengeProgress] = useState<{
@@ -224,8 +226,8 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     }
   }, [currentStep, isCameraActive]);
 
-  // 3. Step 1: Detect presence or trigger slide-up
-  const triggerSlideUp = () => {
+  // 3. Step 1: Slide-up trigger
+  const triggerSlideUp = useCallback(() => {
     if (isSlideUpAnimating) return;
     setIsSlideUpAnimating(true);
     audioFeedback.playRepSuccess();
@@ -238,8 +240,10 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     setTimeout(() => {
       setCurrentStep(2);
       setIsSlideUpAnimating(false);
-    }, 400);
-  };
+      setPresenceProgress(0);
+      setIsPersonDetected(false);
+    }, 600);
+  }, [isSlideUpAnimating]);
 
   // 4. Gamified Arm Gesture Confirmation (ขวา = ใช่, ซ้าย = ไม่)
   const triggerMiniGameConfetti = (originX = 0.5) => {
@@ -265,8 +269,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
       setCurrentStep(3);
     } else if (currentStep === 3) {
       setCurrentStep(4);
-      // ในโหมด Demo เมื่อเข้า Step 4 สามารถเริ่มไกด์ได้
-      setScanStatusMessage('กรุณาจัดใบหน้าให้อยู่ในกรอบวงรี และทำตามขั้นตอน');
+      setScanStatusMessage('กรุณาจัดใบหน้าให้อยู่ในกรอบวงรี (มองตรงเพื่อเริ่มต้น)');
     }
   }, [currentStep]);
 
@@ -283,32 +286,87 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     }
   }, [currentStep]);
 
-  // Real-time Mini-Game Pose Detection Loop in Steps 2 & 3
+  // =========================================================================
+  // Unified Real-Time Pose, Presence & Face Detection Loop (Steps 1, 2, 3, 4)
+  // ปรับดีเลย์ให้ช้าลงและนุ่มนวล ไม่เด้งผ่านเร็วเกินไป (Hold 1.6 - 1.8s)
+  // =========================================================================
   useEffect(() => {
-    if ((currentStep !== 2 && currentStep !== 3) || seniorSimpleMode) {
+    // If Step 5 or 6, or seniorSimpleMode in 2/3, cancel loop
+    if (currentStep === 5 || currentStep === 6 || (seniorSimpleMode && (currentStep === 2 || currentStep === 3))) {
       if (detectionFrameRef.current) {
         cancelAnimationFrame(detectionFrameRef.current);
         detectionFrameRef.current = null;
       }
       setDetectedArmPose('none');
       setArmHoldProgress(0);
+      setPresenceProgress(0);
+      setFaceHoldProgress(0);
+      setIsPersonDetected(false);
       setHandWristCoords({ right: null, left: null });
       return;
     }
 
     let isRunning = true;
-    let holdCounter = 0;
-    const REQUIRED_HOLD_FRAMES = 16; // ~500ms smooth charge-up
+    let presenceHoldCounter = 0;
+    let armHoldCounter = 0;
+    let faceHoldCounter = 0;
 
-    const runPoseLoop = () => {
+    // Deliberate, smooth frame counts (1.6 - 1.8s)
+    const REQUIRED_PRESENCE_FRAMES = 52; // ~1.8 วินาที
+    const REQUIRED_ARM_HOLD_FRAMES = 52; // ~1.8 วินาที
+    const REQUIRED_FACE_HOLD_FRAMES = 48; // ~1.6 วินาที
+
+    const runDetectionLoop = () => {
       if (!isRunning) return;
 
       const video = videoRef.current;
       if (video && video.readyState >= 2 && !video.paused) {
         try {
           const res = poseService.detectHolistic(video, performance.now());
-          if (res && res.poseLandmarks && res.poseLandmarks.length >= 17) {
-            const lm = res.poseLandmarks;
+          const hasLandmarks = Boolean(res && res.poseLandmarks && res.poseLandmarks.length >= 17);
+          const lm = hasLandmarks ? res!.poseLandmarks! : null;
+
+          // ==========================================================
+          // Step 1: Detect Person Sitting in Front of Camera (ชะลอ 1.8s)
+          // ==========================================================
+          if (currentStep === 1) {
+            const isPersonVisible = Boolean(
+              lm && (
+                (lm[0] && (lm[0].visibility === undefined || lm[0].visibility > 0.35)) ||
+                (lm[11] && lm[12])
+              )
+            );
+
+            if (isPersonVisible) {
+              presenceHoldCounter++;
+              setIsPersonDetected(true);
+              const prog = Math.min(100, Math.round((presenceHoldCounter / REQUIRED_PRESENCE_FRAMES) * 100));
+              setPresenceProgress(prog);
+
+              if (presenceHoldCounter % 15 === 0) {
+                audioFeedback.playHoldTick();
+              }
+
+              if (presenceHoldCounter >= REQUIRED_PRESENCE_FRAMES) {
+                presenceHoldCounter = 0;
+                setPresenceProgress(100);
+                triggerSlideUp();
+                return;
+              }
+            } else {
+              if (presenceHoldCounter > 0) {
+                presenceHoldCounter = Math.max(0, presenceHoldCounter - 2);
+                setPresenceProgress(Math.round((presenceHoldCounter / REQUIRED_PRESENCE_FRAMES) * 100));
+              } else {
+                setIsPersonDetected(false);
+              }
+            }
+          }
+
+          // ==========================================================
+          // Steps 2 & 3: Gamified Arm Pose Confirmation (ชะลอ 1.8s)
+          // ==========================================================
+          if ((currentStep === 2 || currentStep === 3) && !seniorSimpleMode && lm) {
             const leftShoulder = lm[11];
             const leftWrist = lm[15];
             const rightShoulder = lm[12];
@@ -326,45 +384,129 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
 
             if (isRightRaised && !isLeftRaised) {
               if (lastPoseDetectedRef.current === 'right_yes') {
-                holdCounter++;
+                armHoldCounter++;
               } else {
-                holdCounter = 1;
+                armHoldCounter = 1;
                 lastPoseDetectedRef.current = 'right_yes';
                 setDetectedArmPose('right_yes');
-                audioFeedback.playHoldTick();
               }
 
-              const prog = Math.min(100, Math.round((holdCounter / REQUIRED_HOLD_FRAMES) * 100));
+              if (armHoldCounter % 12 === 0) audioFeedback.playHoldTick();
+
+              const prog = Math.min(100, Math.round((armHoldCounter / REQUIRED_ARM_HOLD_FRAMES) * 100));
               setArmHoldProgress(prog);
 
-              if (holdCounter >= REQUIRED_HOLD_FRAMES) {
-                holdCounter = 0;
+              if (armHoldCounter >= REQUIRED_ARM_HOLD_FRAMES) {
+                armHoldCounter = 0;
                 handleConfirmYes();
                 return;
               }
             } else if (isLeftRaised && !isRightRaised) {
               if (lastPoseDetectedRef.current === 'left_no') {
-                holdCounter++;
+                armHoldCounter++;
               } else {
-                holdCounter = 1;
+                armHoldCounter = 1;
                 lastPoseDetectedRef.current = 'left_no';
                 setDetectedArmPose('left_no');
-                audioFeedback.playHoldTick();
               }
 
-              const prog = Math.min(100, Math.round((holdCounter / REQUIRED_HOLD_FRAMES) * 100));
+              if (armHoldCounter % 12 === 0) audioFeedback.playHoldTick();
+
+              const prog = Math.min(100, Math.round((armHoldCounter / REQUIRED_ARM_HOLD_FRAMES) * 100));
               setArmHoldProgress(prog);
 
-              if (holdCounter >= REQUIRED_HOLD_FRAMES) {
-                holdCounter = 0;
+              if (armHoldCounter >= REQUIRED_ARM_HOLD_FRAMES) {
+                armHoldCounter = 0;
                 handleConfirmNo();
                 return;
               }
             } else {
-              holdCounter = 0;
-              lastPoseDetectedRef.current = 'none';
-              setDetectedArmPose('none');
-              setArmHoldProgress(0);
+              if (armHoldCounter > 0) {
+                armHoldCounter = Math.max(0, armHoldCounter - 2);
+                setArmHoldProgress(Math.round((armHoldCounter / REQUIRED_ARM_HOLD_FRAMES) * 100));
+              } else {
+                lastPoseDetectedRef.current = 'none';
+                setDetectedArmPose('none');
+                setArmHoldProgress(0);
+              }
+            }
+          }
+
+          // ==========================================================
+          // Step 4: Camera Head Pose Detection with 1.6s Hold Delay
+          // ==========================================================
+          if (currentStep === 4 && !isScanning && scanStep !== 'done' && lm) {
+            const nose = lm[0];
+            const leftEye = lm[2];
+            const rightEye = lm[5];
+
+            if (nose && leftEye && rightEye) {
+              const eyeMidX = (leftEye.x + rightEye.x) / 2;
+              const eyeDist = Math.max(0.04, Math.abs(leftEye.x - rightEye.x));
+              const yawOffset = (nose.x - eyeMidX) / eyeDist;
+
+              if (scanStep === 'front') {
+                const isFacingFront = Math.abs(yawOffset) < 0.28;
+                if (isFacingFront) {
+                  faceHoldCounter++;
+                  const prog = Math.min(100, Math.round((faceHoldCounter / REQUIRED_FACE_HOLD_FRAMES) * 100));
+                  setFaceHoldProgress(prog);
+                  if (faceHoldCounter % 15 === 0) audioFeedback.playHoldTick();
+
+                  if (faceHoldCounter >= REQUIRED_FACE_HOLD_FRAMES) {
+                    faceHoldCounter = 0;
+                    setFaceHoldProgress(0);
+                    setChallengeProgress((prev) => ({ ...prev, front: true }));
+                    setScanStep('left');
+                    setScanStatusMessage('✓ 1. หน้าตรง สำเร็จ! ต่อไปค่อยๆ หันศีรษะไปทางซ้าย (ค้างไว้ 1.5 วินาที)');
+                    audioFeedback.playRepSuccess();
+                  }
+                } else {
+                  faceHoldCounter = Math.max(0, faceHoldCounter - 1);
+                  setFaceHoldProgress(Math.round((faceHoldCounter / REQUIRED_FACE_HOLD_FRAMES) * 100));
+                }
+              } else if (scanStep === 'left') {
+                const isTurningLeft = yawOffset > 0.22;
+                if (isTurningLeft) {
+                  faceHoldCounter++;
+                  const prog = Math.min(100, Math.round((faceHoldCounter / REQUIRED_FACE_HOLD_FRAMES) * 100));
+                  setFaceHoldProgress(prog);
+                  if (faceHoldCounter % 15 === 0) audioFeedback.playHoldTick();
+
+                  if (faceHoldCounter >= REQUIRED_FACE_HOLD_FRAMES) {
+                    faceHoldCounter = 0;
+                    setFaceHoldProgress(0);
+                    setChallengeProgress((prev) => ({ ...prev, left: true }));
+                    setScanStep('right');
+                    setScanStatusMessage('✓ 2. หันซ้าย สำเร็จ! ต่อไปค่อยๆ หันศีรษะไปทางขวา (ค้างไว้ 1.5 วินาที)');
+                    audioFeedback.playRepSuccess();
+                  }
+                } else {
+                  faceHoldCounter = Math.max(0, faceHoldCounter - 1);
+                  setFaceHoldProgress(Math.round((faceHoldCounter / REQUIRED_FACE_HOLD_FRAMES) * 100));
+                }
+              } else if (scanStep === 'right') {
+                const isTurningRight = yawOffset < -0.22;
+                if (isTurningRight) {
+                  faceHoldCounter++;
+                  const prog = Math.min(100, Math.round((faceHoldCounter / REQUIRED_FACE_HOLD_FRAMES) * 100));
+                  setFaceHoldProgress(prog);
+                  if (faceHoldCounter % 15 === 0) audioFeedback.playHoldTick();
+
+                  if (faceHoldCounter >= REQUIRED_FACE_HOLD_FRAMES) {
+                    faceHoldCounter = 0;
+                    setFaceHoldProgress(0);
+                    setChallengeProgress((prev) => ({ ...prev, right: true }));
+                    setScanStep('done');
+                    setScanStatusMessage('✓ ครบทุกท่าแล้ว! กำลังตรวจสอบข้อมูลชีวมิติ...');
+                    audioFeedback.playRepSuccess();
+                    handlePerformFaceScan();
+                  }
+                } else {
+                  faceHoldCounter = Math.max(0, faceHoldCounter - 1);
+                  setFaceHoldProgress(Math.round((faceHoldCounter / REQUIRED_FACE_HOLD_FRAMES) * 100));
+                }
+              }
             }
           }
         } catch (e) {
@@ -372,10 +514,10 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         }
       }
 
-      detectionFrameRef.current = requestAnimationFrame(runPoseLoop);
+      detectionFrameRef.current = requestAnimationFrame(runDetectionLoop);
     };
 
-    detectionFrameRef.current = requestAnimationFrame(runPoseLoop);
+    detectionFrameRef.current = requestAnimationFrame(runDetectionLoop);
 
     return () => {
       isRunning = false;
@@ -384,7 +526,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         detectionFrameRef.current = null;
       }
     };
-  }, [currentStep, seniorSimpleMode, handleConfirmYes, handleConfirmNo]);
+  }, [currentStep, seniorSimpleMode, scanStep, isScanning, handleConfirmYes, handleConfirmNo, triggerSlideUp]);
 
   // 5. Step 5 Countdown (ค้างไว้ 5 วินาที พร้อมปุ่มหยุดเวลาเพื่ออ่านข้อมูล)
   useEffect(() => {
@@ -401,7 +543,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
       } catch {}
 
       timer = setInterval(() => {
-        if (isStep5Paused) return; // ไม่นับถอยหลังถ้าถูกหยุดไว้
+        if (isStep5Paused) return;
         setStep5Countdown((prev) => {
           if (prev <= 1) {
             clearInterval(timer);
@@ -423,7 +565,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     if (currentStep === 6) {
       setStep6Countdown(5);
       timer = setInterval(() => {
-        if (isStep6Paused) return; // ไม่นับถอยหลังถ้าถูกหยุดไว้
+        if (isStep6Paused) return;
         setStep6Countdown((prev) => {
           if (prev <= 1) {
             clearInterval(timer);
@@ -481,9 +623,8 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     onStartExerciseDirectly(activePatient, activePlan || undefined, mode);
   };
 
-  // Step 4: Multi-Phase Biometric Face Verification (2.2 - 2.5s Realistic Process)
+  // Step 4: Multi-Phase Biometric Face Verification (3.0s Realistic Process)
   const handlePerformFaceScan = () => {
-    // If strict mode, require all 3 challenges
     if (!isDemoMode) {
       if (!challengeProgress.front || !challengeProgress.left || !challengeProgress.right) {
         setScanStatusMessage('⚠️ โหมดความปลอดภัยสูง: กรุณาทำท่า หน้าตรง, หันซ้าย และหันขวา ให้ครบก่อน');
@@ -498,23 +639,23 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     setScanStatusMessage('🛡️ [1/3] ตรวจสอบ Liveness & 3D Anti-Spoofing (ป้องกันภาพถ่าย/วิดีโอ)...');
     audioFeedback.playHoldTick();
 
-    // Stage 1 -> 2
+    // Stage 1 -> 2 (1.0 วินาที)
     setTimeout(() => {
       setBiometricPhase(2);
       setBiometricProgress(55);
       setScanStatusMessage('🧬 [2/3] วิเคราะห์โครงสร้างใบหน้า 468 จุด และสกัด 128-D Biometric Embedding...');
       audioFeedback.playHoldTick();
-    }, 700);
+    }, 1000);
 
-    // Stage 2 -> 3
+    // Stage 2 -> 3 (2.0 วินาที)
     setTimeout(() => {
       setBiometricPhase(3);
       setBiometricProgress(85);
       setScanStatusMessage('📋 [3/3] เปรียบเทียบอัตลักษณ์บุคคล (Dual-Metric: Cosine ≥ 0.90, Distance ≤ 0.42)...');
       audioFeedback.playHoldTick();
-    }, 1500);
+    }, 2000);
 
-    // Stage 3 -> Success verification
+    // Stage 3 -> Success verification (3.0 วินาที)
     setTimeout(() => {
       const profiles = faceRegistryService.getAllProfiles();
       let targetPatient: Patient = {
@@ -552,13 +693,13 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         });
       } catch {}
 
-      // แสดงผลสำเร็จค้างไว้อย่างน้อย 1.2 วินาที ก่อนเปลี่ยนหน้า ไม่กะพริบหายไป
+      // แสดงผลสำเร็จค้างไว้อย่างน้อย 1.5 วินาที ก่อนเปลี่ยนหน้า ไม่กะพริบหายไป
       setTimeout(() => {
         setIsScanning(false);
         setBiometricPhase(0);
         setCurrentStep(5);
-      }, 1200);
-    }, 2300);
+      }, 1500);
+    }, 3000);
   };
 
   // Step 4: Register New Face
@@ -631,7 +772,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
       return;
     }
 
-    // Check valid PINs: 1234, 123456, 5678, 9999 หรือ HN P-0012, P-0013, P-0021
     if (cleanPin === '1234' || cleanPin === '123456' || cleanPin.toUpperCase() === 'P-0012') {
       const somchai: Patient = {
         id: 12,
@@ -680,7 +820,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
       return;
     }
 
-    // Check existing patient list from store
     const foundInStore = patients.find(
       (p) => p.patient_code.toLowerCase() === cleanPin.toLowerCase()
     );
@@ -703,11 +842,9 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
       {/* ส่วนหัวทุกภาพ: ชื่อเครื่อง & ว/ด/ป (ตามภาพวาด) */}
       {/* ======================================================== */}
       <div className="flex flex-col items-center justify-center text-center mb-2.5 sm:mb-3">
-        {/* ชื่อเครื่อง (ขีดเส้นใต้ หนา ชัดเจน) */}
         <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-[#0B2B2B] tracking-wide underline underline-offset-8 decoration-2 decoration-[#0B2B2B]">
           {kioskStationName}
         </h1>
-        {/* ว/ด/ป วันเดือนปีและเวลาแบบไทย */}
         <p className="text-xs sm:text-sm md:text-base font-bold text-[#0B2B2B]/85 mt-2 flex items-center gap-1.5 justify-center">
           <Calendar className="w-4 h-4 text-[#1E8A4C]" />
           <span>{thaiDateStr || 'กำลังโหลดวันที่...'}</span>
@@ -784,6 +921,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         
         {/* ---------------------------------------------------- */}
         {/* ภาพที่ 1: หน้าพักหน้าจอ (Screensaver)               */}
+        {/* มีระบบกล้องตรวจจับคนไข้ + ชะลอดีเลย์ 1.8 วินาทีก่อนเลื่อนขึ้น */}
         {/* ---------------------------------------------------- */}
         {currentStep === 1 && (
           <div
@@ -791,7 +929,31 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               isSlideUpAnimating ? '-translate-y-full opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'
             }`}
           >
-            {/* โลโก้ทรงกลม ตาม Mockup ภาพที่ 1 */}
+            {/* กล่องแจ้งเตือนการตรวจพบคนไข้นั่งหน้ากล้อง พร้อมแถบชาร์จดีเลย์ */}
+            {isPersonDetected && (
+              <div className="absolute top-2 inset-x-2 sm:inset-x-4 z-30 bg-emerald-950/90 backdrop-blur-md border-2 border-emerald-400 text-white rounded-2xl p-3 shadow-2xl flex flex-col items-center animate-fadeIn">
+                <div className="flex items-center justify-between w-full text-xs font-black mb-1">
+                  <span className="flex items-center gap-1.5 text-emerald-300">
+                    <User className="w-4 h-4 text-emerald-400 animate-pulse" />
+                    <span>ตรวจพบคนไข้นั่งหน้ากล้อง</span>
+                  </span>
+                  <span className="font-mono text-yellow-300 font-black text-sm">{presenceProgress}%</span>
+                </div>
+
+                <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden mb-1 border border-emerald-500/30">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-yellow-400 transition-all duration-75 rounded-full"
+                    style={{ width: `${presenceProgress}%` }}
+                  />
+                </div>
+
+                <p className="text-[11px] text-emerald-200 font-semibold">
+                  ⏳ กรุณานั่งนิ่งๆ สักครู่ ระบบกำลังเปิดหน้าต่างใน 1.8 วินาที...
+                </p>
+              </div>
+            )}
+
+            {/* โลโก้ทรงกลม ตาม Mockup ภาพที่ 1 พร้อมวงแหวนชาร์จ */}
             <div className="relative group cursor-pointer" onClick={triggerSlideUp}>
               <div className="w-56 h-56 sm:w-64 sm:h-64 rounded-full border-2 border-emerald-300 shadow-xl overflow-hidden flex items-center justify-center bg-gradient-to-b from-[#BEE5F9] via-[#D5F0FD] to-[#86C232] relative transform group-hover:scale-105 transition duration-300">
                 <svg className="w-full h-full" viewBox="0 0 200 200" fill="none">
@@ -831,19 +993,37 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
 
                 <div className="absolute inset-0 rounded-full border-4 border-white/40 pointer-events-none animate-pulse" />
               </div>
+
+              {/* วงแหวนชาร์จรอบนอกเมื่อกล้องดีเทคคนไข้ได้ */}
+              {presenceProgress > 0 && (
+                <svg className="absolute -inset-2 w-[calc(100%+16px)] h-[calc(100%+16px)] -rotate-90 pointer-events-none z-20">
+                  <circle
+                    cx="50%"
+                    cy="50%"
+                    r="47%"
+                    fill="none"
+                    stroke="#10b981"
+                    strokeWidth="6"
+                    strokeDasharray="600"
+                    strokeDashoffset={600 - (600 * presenceProgress) / 100}
+                    strokeLinecap="round"
+                    className="filter drop-shadow-[0_0_8px_rgba(16,185,129,0.8)]"
+                  />
+                </svg>
+              )}
             </div>
 
-            <div className="mt-8 flex flex-col items-center">
+            <div className="mt-6 flex flex-col items-center">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 border border-emerald-300 text-[#1E8A4C] text-sm font-bold shadow-sm animate-bounce">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-                <span>หน้าพักหน้าจอ (ระบบพร้อมใช้งาน)</span>
+                <span>หน้าพักหน้าจอ (ระบบกล้องพร้อมทำงาน)</span>
               </div>
-              <p className="text-xs sm:text-sm text-gray-500 font-semibold mt-2.5">
-                เมื่อมีคนมานั่งหน้ากล้อง หรือแตะหน้าจอ ระบบจะเลื่อนขึ้นอัตโนมัติ
+              <p className="text-xs sm:text-sm text-gray-500 font-semibold mt-2">
+                เมื่อคนไข้นั่งหน้ากล้องนิ่งๆ 1.8 วินาที หรือแตะปุ่ม ระบบจะเลื่อนขึ้นอัตโนมัติ
               </p>
             </div>
 
-            <div className="mt-6 w-full max-w-xs space-y-2">
+            <div className="mt-5 w-full max-w-xs space-y-2">
               <button
                 onClick={triggerSlideUp}
                 className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#6FD67F] to-[#1E8A4C] text-white font-extrabold text-base shadow-lg hover:shadow-xl active:scale-95 transition flex items-center justify-center gap-2 cursor-pointer"
@@ -865,11 +1045,10 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         )}
 
         {/* ---------------------------------------------------- */}
-        {/* ภาพที่ 2: ถามความพร้อมกายภาพ (ดีเทคแบบมินิเกม หรือ ปุ่มใหญ่) */}
+        {/* ภาพที่ 2: ถามความพร้อมกายภาพ (ชะลอดีเลย์ 1.8 วินาที)   */}
         {/* ---------------------------------------------------- */}
         {currentStep === 2 && (
           <div className="w-full flex-1 flex flex-col items-center justify-between animate-fadeIn">
-            {/* กล่องข้อความฟ้าด้านบน */}
             <div className="w-full bg-[#E3F5FC] border border-[#BDE3F5] rounded-3xl py-2.5 px-4 text-center shadow-sm relative">
               <div className="flex items-center justify-between mb-1">
                 <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-800 bg-emerald-200/80 px-2 py-0.5 rounded-full">
@@ -888,7 +1067,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               <p className="text-xs font-bold text-emerald-900 mt-0.5">
                 {seniorSimpleMode
                   ? 'แตะปุ่มขนาดใหญ่ด้านล่างเพื่อเลือกคำตอบ'
-                  : '🙋‍♂️ ยกแขนขวาชาร์จลูกแก้วสีเขียว (ใช่) | 🙋‍♀️ ยกแขนซ้ายสีแดง (ไม่)'}
+                  : '🙋‍♂️ ยกแขนขวาค้างไว้ 1.8s (ใช่) | 🙋‍♀️ ยกแขนซ้ายค้างไว้ 1.8s (ไม่)'}
               </p>
             </div>
 
@@ -987,13 +1166,17 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                 </span>
               </div>
 
-              {/* Live Charging Power Bar */}
+              {/* Live Charging Power Bar (ชะลอ 1.8s พร้อมบอกเวลานุ่มนวล) */}
               {detectedArmPose !== 'none' && (
-                <div className="absolute bottom-10 inset-x-6 bg-black/85 backdrop-blur-md rounded-2xl p-2 border border-emerald-400 flex flex-col items-center z-20 animate-fadeIn">
+                <div className="absolute bottom-10 inset-x-6 bg-black/85 backdrop-blur-md rounded-2xl p-2.5 border border-emerald-400 flex flex-col items-center z-20 animate-fadeIn">
                   <div className="flex items-center justify-between w-full text-xs font-black text-white px-1 mb-1">
                     <span className="flex items-center gap-1.5">
                       <Zap className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400 animate-bounce" />
-                      <span>{detectedArmPose === 'right_yes' ? '⚡ กำลังชาร์จ: ใช่ (ยกแขนขวา)' : '⚡ กำลังชาร์จ: ไม่ (ยกแขนซ้าย)'}</span>
+                      <span>
+                        {detectedArmPose === 'right_yes'
+                          ? '⚡ กำลังชาร์จ: ใช่ (ยกแขนขวาค้างไว้ 1.8s)'
+                          : '⚡ กำลังชาร์จ: ไม่ (ยกแขนซ้ายค้างไว้ 1.8s)'}
+                      </span>
                     </span>
                     <span className="text-yellow-300 font-mono text-sm">{armHoldProgress}%</span>
                   </div>
@@ -1005,15 +1188,18 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                       style={{ width: `${armHoldProgress}%` }}
                     />
                   </div>
+                  <span className="text-[10px] text-slate-300 mt-1">
+                    ยกแขนค้างไว้จนครบ 100% เพื่อยืนยันคำตอบ
+                  </span>
                 </div>
               )}
 
               <div className="absolute bottom-2 inset-x-2 bg-black/75 backdrop-blur-md rounded-xl py-1 px-3 text-center text-white text-[11px] font-bold z-10">
-                🎮 มินิเกม: นำมือไปสัมผัสลูกแก้วพลังบนจอ หรือยกแขนค้างไว้ 1 วินาที
+                🎮 มินิเกม: นำมือไปสัมผัสลูกแก้วพลังบนจอ หรือยกแขนค้างไว้ 1.8 วินาที
               </div>
             </div>
 
-            {/* ปุ่มสัมผัสขนาดใหญ่ด้านล่าง (Senior / Fallback) */}
+            {/* ปุ่มสัมผัสขนาดใหญ่ด้านล่าง */}
             <div className="w-full flex items-center justify-center gap-2 mt-1">
               <button
                 onClick={handleConfirmYes}
@@ -1034,7 +1220,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         )}
 
         {/* ---------------------------------------------------- */}
-        {/* ภาพที่ 3: ถามความพร้อมเข้าสู่ระบบ (ดีเทคแบบมินิเกม)   */}
+        {/* ภาพที่ 3: ถามความพร้อมเข้าสู่ระบบ (ชะลอดีเลย์ 1.8 วินาที) */}
         {/* ---------------------------------------------------- */}
         {currentStep === 3 && (
           <div className="w-full flex-1 flex flex-col items-center justify-between animate-fadeIn">
@@ -1056,7 +1242,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               <p className="text-xs font-bold text-emerald-900 mt-0.5">
                 {seniorSimpleMode
                   ? 'แตะปุ่มขนาดใหญ่ด้านล่างเพื่อเข้าสู่ระบบ'
-                  : '🙋‍♂️ ยกแขนขวาชาร์จลูกแก้ว (เข้าสู่ระบบ) | 🙋‍♀️ ยกแขนซ้าย (ย้อนกลับ)'}
+                  : '🙋‍♂️ ยกแขนขวาค้างไว้ 1.8s (เข้าสู่ระบบ) | 🙋‍♀️ ยกแขนซ้าย (ย้อนกลับ)'}
               </p>
             </div>
 
@@ -1154,11 +1340,15 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
 
               {/* Live Charging Power Bar */}
               {detectedArmPose !== 'none' && (
-                <div className="absolute bottom-10 inset-x-6 bg-black/85 backdrop-blur-md rounded-2xl p-2 border border-emerald-400 flex flex-col items-center z-20 animate-fadeIn">
+                <div className="absolute bottom-10 inset-x-6 bg-black/85 backdrop-blur-md rounded-2xl p-2.5 border border-emerald-400 flex flex-col items-center z-20 animate-fadeIn">
                   <div className="flex items-center justify-between w-full text-xs font-black text-white px-1 mb-1">
                     <span className="flex items-center gap-1.5">
                       <Zap className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400 animate-bounce" />
-                      <span>{detectedArmPose === 'right_yes' ? '⚡ กำลังชาร์จ: ใช่ (เข้าสู่ระบบ)' : '⚡ กำลังชาร์จ: ไม่ (ย้อนกลับ)'}</span>
+                      <span>
+                        {detectedArmPose === 'right_yes'
+                          ? '⚡ กำลังชาร์จ: ใช่ (เข้าสู่ระบบค้างไว้ 1.8s)'
+                          : '⚡ กำลังชาร์จ: ไม่ (ย้อนกลับค้างไว้ 1.8s)'}
+                      </span>
                     </span>
                     <span className="text-yellow-300 font-mono text-sm">{armHoldProgress}%</span>
                   </div>
@@ -1178,7 +1368,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               </div>
             </div>
 
-            {/* ปุ่มสัมผัสขนาดใหญ่ด้านล่าง */}
             <div className="w-full flex items-center justify-center gap-2 mt-1">
               <button
                 onClick={handleConfirmYes}
@@ -1199,11 +1388,11 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         )}
 
         {/* ---------------------------------------------------- */}
-        {/* ภาพที่ 4: หน้าต่างสแกนใบหน้า + Biometric Pipeline   */}
+        {/* ภาพที่ 4: หน้าต่างสแกนใบหน้า + AI Head Pose Tracker  */}
+        {/* มีดีเลย์ตรวจจับท่าละ 1.6 วินาที + ตรวจจับจริงจากกล้อง   */}
         {/* ---------------------------------------------------- */}
         {currentStep === 4 && (
           <div className="w-full flex-1 flex flex-col items-center justify-between animate-fadeIn">
-            {/* กล่องฟ้าด้านบนตาม Wireframe 4 */}
             <div className="w-full bg-[#E3F5FC] border border-[#BDE3F5] rounded-3xl py-2 px-4 text-center shadow-sm">
               <div className="flex items-center justify-between mb-0.5">
                 <span className="text-[10px] font-black text-emerald-800 bg-emerald-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -1211,7 +1400,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                   <span>Face Verification ({isDemoMode ? 'โหมดสาธิต' : 'โหมดความปลอดภัยสูง'})</span>
                 </span>
                 <span className="text-[10px] font-bold text-slate-600">
-                  {scanStep === 'done' ? '⭐⭐⭐ ผ่านการรับรอง' : 'ทำภารกิจตามลำดับ'}
+                  {scanStep === 'done' ? '⭐⭐⭐ ผ่านการรับรอง' : 'ทำภารกิจตามลำดับ (ค้างไว้ 1.5s/ท่า)'}
                 </span>
               </div>
               <h2 className="text-base sm:text-lg font-black text-[#0B2B2B]">
@@ -1244,7 +1433,32 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                 )}
               </div>
 
-              {/* HUD แสดงขั้นตอนชีวมิติแบบสมจริง (Multi-Phase Biometric HUD) */}
+              {/* HUD แสดงการตรวจจับท่าทางใบหน้าสด (Face Pose Hold Progress) */}
+              {faceHoldProgress > 0 && !isScanning && (
+                <div className="absolute bottom-1 inset-x-4 bg-black/85 backdrop-blur-md rounded-2xl p-2 border border-emerald-400 text-white animate-fadeIn shadow-xl flex flex-col items-center">
+                  <div className="flex items-center justify-between w-full text-[11px] font-bold mb-1">
+                    <span className="flex items-center gap-1 text-emerald-300">
+                      <Camera className="w-3.5 h-3.5 animate-pulse" />
+                      <span>
+                        {scanStep === 'front'
+                          ? '🎯 ตรวจจับหน้าตรง (ค้างไว้ 1.5s)'
+                          : scanStep === 'left'
+                          ? '🎯 ตรวจจับหันซ้าย (ค้างไว้ 1.5s)'
+                          : '🎯 ตรวจจับหันขวา (ค้างไว้ 1.5s)'}
+                      </span>
+                    </span>
+                    <span className="font-mono text-yellow-300 font-black">{faceHoldProgress}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-400 via-teal-300 to-yellow-400 transition-all duration-75 rounded-full"
+                      style={{ width: `${faceHoldProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* HUD แสดงขั้นตอนชีวมิติแบบสมจริง (Multi-Phase Biometric HUD 3.0s) */}
               {isScanning && (
                 <div className="w-full max-w-[340px] bg-black/85 backdrop-blur-md rounded-2xl p-2.5 mt-2 border border-emerald-400/80 text-white animate-fadeIn shadow-xl">
                   <div className="flex items-center justify-between text-[11px] font-bold mb-1">
@@ -1255,7 +1469,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                     <span className="font-mono text-yellow-300 font-black">{biometricProgress}%</span>
                   </div>
 
-                  {/* Progress Bar */}
                   <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden mb-2">
                     <div
                       className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-yellow-400 transition-all duration-300"
@@ -1263,7 +1476,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                     />
                   </div>
 
-                  {/* 3 Step Status Indicators */}
                   <div className="grid grid-cols-3 gap-1 text-[9px] text-center font-bold">
                     <div className={`p-1 rounded ${biometricPhase >= 1 ? 'bg-emerald-900/80 text-emerald-300 border border-emerald-500' : 'bg-slate-800 text-slate-400'}`}>
                       {biometricPhase > 1 ? '✓ 1. Liveness' : '1. Liveness'}
@@ -1284,9 +1496,13 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               <button
                 onClick={() => {
                   setScanStep('front');
-                  setChallengeProgress((prev) => ({ ...prev, front: true }));
-                  setScanStatusMessage('✓ 1. จัดใบหน้ามองตรงไปที่กล้อง (บันทึกภาพหน้าตรง)');
-                  audioFeedback.playRepSuccess();
+                  setFaceHoldProgress(100);
+                  setTimeout(() => {
+                    setChallengeProgress((prev) => ({ ...prev, front: true }));
+                    setScanStatusMessage('✓ 1. จัดใบหน้ามองตรงไปที่กล้อง (บันทึกภาพหน้าตรง)');
+                    setFaceHoldProgress(0);
+                    audioFeedback.playRepSuccess();
+                  }, 800);
                 }}
                 className={`py-2 px-1 rounded-2xl text-xs sm:text-sm font-extrabold border-2 transition ${
                   challengeProgress.front
@@ -1300,9 +1516,13 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               <button
                 onClick={() => {
                   setScanStep('left');
-                  setChallengeProgress((prev) => ({ ...prev, left: true }));
-                  setScanStatusMessage('✓ 2. ค่อยๆ เอียงหรือหันศีรษะไปทางซ้าย (บันทึกมุมซ้าย)');
-                  audioFeedback.playRepSuccess();
+                  setFaceHoldProgress(100);
+                  setTimeout(() => {
+                    setChallengeProgress((prev) => ({ ...prev, left: true }));
+                    setScanStatusMessage('✓ 2. ค่อยๆ เอียงหรือหันศีรษะไปทางซ้าย (บันทึกมุมซ้าย)');
+                    setFaceHoldProgress(0);
+                    audioFeedback.playRepSuccess();
+                  }, 800);
                 }}
                 className={`py-2 px-1 rounded-2xl text-xs sm:text-sm font-extrabold border-2 transition ${
                   challengeProgress.left
@@ -1316,9 +1536,13 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               <button
                 onClick={() => {
                   setScanStep('right');
-                  setChallengeProgress((prev) => ({ ...prev, right: true }));
-                  setScanStatusMessage('✓ 3. ค่อยๆ เอียงหรือหันศีรษะไปทางขวา (บันทึกมุมขวา)');
-                  audioFeedback.playRepSuccess();
+                  setFaceHoldProgress(100);
+                  setTimeout(() => {
+                    setChallengeProgress((prev) => ({ ...prev, right: true }));
+                    setScanStatusMessage('✓ 3. ค่อยๆ เอียงหรือหันศีรษะไปทางขวา (บันทึกมุมขวา)');
+                    setFaceHoldProgress(0);
+                    audioFeedback.playRepSuccess();
+                  }, 800);
                 }}
                 className={`py-2 px-1 rounded-2xl text-xs sm:text-sm font-extrabold border-2 transition ${
                   challengeProgress.right
@@ -1416,7 +1640,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
           <div className="w-full flex-1 flex flex-col items-center justify-center animate-fadeIn text-center py-4">
             <div className="w-full max-w-[330px] bg-[#F8F9FA] border border-gray-200 rounded-3xl py-6 px-5 text-center shadow-lg flex flex-col items-center relative">
               
-              {/* Biometric Verification Certified Badge */}
               <div className="absolute -top-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black text-xs px-3 py-1 rounded-full shadow flex items-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5 fill-white" />
                 <span>ยืนยันอัตลักษณ์ชีวมิติสำเร็จ (96.4%)</span>
@@ -1443,7 +1666,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               </div>
             </div>
 
-            {/* Countdown Controls (ควบคุมเวลาได้ ไม่รีบเร่งผู้สูงอายุ) */}
             <div className="mt-6 flex flex-col items-center w-full max-w-xs">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 border border-emerald-300 text-[#1E8A4C] text-xs sm:text-sm font-bold shadow-sm">
                 <span className={`w-3 h-3 rounded-full ${isStep5Paused ? 'bg-amber-500' : 'bg-emerald-500 animate-ping'}`} />
@@ -1490,18 +1712,13 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         {/* ---------------------------------------------------- */}
         {currentStep === 6 && (
           <div className="w-full flex-1 flex flex-col items-center justify-between animate-fadeIn text-left py-1">
-            
-            {/* กล่องหัวข้อด้านบน: "รายการกายภาพวันนี้" */}
             <div className="w-full bg-gradient-to-b from-[#EAEAEA] to-[#D5D5D5] border-2 border-[#BEBEBE] rounded-2xl py-3 px-5 text-center shadow-md mb-3">
               <h2 className="text-lg sm:text-xl font-black text-[#0B2B2B] tracking-wide">
                 รายการกายภาพวันนี้
               </h2>
             </div>
 
-            {/* ส่วนรายการ 2 แถวตาม Wireframe 6 */}
             <div className="w-full space-y-3 px-1 mb-3">
-              
-              {/* แถวที่ 1: [ 1 ] [ กายภาพบำบัด ] [ ✓ ] */}
               <div
                 onClick={() => setSelectedTherapyType('physio')}
                 className={`w-full flex items-center gap-2 sm:gap-3 cursor-pointer group transition ${
@@ -1534,7 +1751,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                 </div>
               </div>
 
-              {/* แถวที่ 2: [ 1 ] [ กายภาพมินิเกม ] [ ] */}
               <div
                 onClick={() => setSelectedTherapyType('minigame')}
                 className={`w-full flex items-center gap-2 sm:gap-3 cursor-pointer group transition ${
@@ -1566,10 +1782,8 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                   <Check className={`w-8 h-8 stroke-[3.5] ${selectedTherapyType === 'minigame' ? 'opacity-100' : 'opacity-0'}`} />
                 </div>
               </div>
-
             </div>
 
-            {/* กล่องล่างสีเขียว: ข้อมูลหมอกายภาพ */}
             <div className="w-full bg-[#C8F5D0] border-2 border-black/85 rounded-3xl p-3 sm:p-4 shadow-md flex items-center gap-3 sm:gap-4 my-2">
               <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white border-2 border-slate-300 shadow-sm flex items-center justify-center flex-shrink-0 p-2">
                 <svg viewBox="0 0 100 100" className="w-full h-full text-black fill-current">
@@ -1594,7 +1808,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               </div>
             </div>
 
-            {/* แถบล่างสุด: นับถอยหลัง 5 วินาที พร้อมปุ่มควบคุม */}
             <div className="w-full mt-2 flex flex-col items-center">
               <div className="text-xs text-slate-600 font-semibold mb-2 flex items-center gap-2">
                 <Clock className={`w-3.5 h-3.5 ${isStep6Paused ? 'text-amber-600' : 'text-emerald-600 animate-spin'}`} />
@@ -1648,7 +1861,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 animate-fadeIn">
           <div className="w-full max-w-sm bg-white rounded-[32px] p-5 shadow-2xl border-2 border-emerald-500 relative flex flex-col items-center">
             
-            {/* ปุ่มปิด */}
             <button
               onClick={() => {
                 setShowPinModal(false);
@@ -1670,7 +1882,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               สำหรับผู้สูงอายุ หรือเมื่อไม่สะดวกสแกนใบหน้า
             </p>
 
-            {/* ช่องแสดงรหัส PIN */}
             <div className="w-full bg-slate-50 border-2 border-emerald-300 rounded-2xl py-3 px-4 my-3 text-center">
               <span className="font-mono text-2xl font-black tracking-widest text-emerald-800">
                 {pinInput ? pinInput.replace(/./g, '● ') : 'ป้อน PIN 4-6 หลัก'}
@@ -1683,7 +1894,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               </p>
             )}
 
-            {/* ตัวอย่างบัญชีคนไข้สำหรับกดทดสอบด่วน */}
             <div className="w-full mb-3">
               <span className="text-[11px] font-bold text-slate-500 block mb-1">
                 บัญชีคนไข้ตัวอย่าง (แตะเพื่อเข้าทันที):
@@ -1728,7 +1938,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               </div>
             </div>
 
-            {/* แป้นพิมพ์ตัวเลขขนาดใหญ่ (Numeric Keypad 3x4) */}
             <div className="w-full grid grid-cols-3 gap-2">
               {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
                 <button
@@ -1762,7 +1971,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               </button>
             </div>
 
-            {/* ปุ่มยืนยัน PIN */}
             <button
               onClick={handleVerifyPinSubmit}
               className="w-full mt-3 py-3 rounded-2xl bg-[#1E8A4C] hover:bg-emerald-700 text-white font-extrabold text-sm shadow-lg active:scale-95 transition cursor-pointer"
