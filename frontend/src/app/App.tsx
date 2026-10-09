@@ -1,9 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { MintBackground } from '../components/Background/MintBackground';
-import { Screen1Home } from '../pages/NewFlow/Screen1Home';
-import { Screen2Login } from '../pages/NewFlow/Screen2Login';
-import { Screen3Menu } from '../pages/NewFlow/Screen3Menu';
-import { Screen3ScheduleConfig } from '../pages/NewFlow/Screen3ScheduleConfig';
 import { Screen4Exercise } from '../pages/NewFlow/Screen4Exercise';
 import { Screen5MiniGame } from '../pages/NewFlow/Screen5MiniGame';
 import {
@@ -119,10 +115,10 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Listen for unauthorized 401 events to redirect to login
+  // Listen for unauthorized 401 events to redirect to Kiosk
   useEffect(() => {
     const handleUnauthorized = () => {
-      setCurrentScreen(2);
+      setCurrentScreen(1);
       showToast('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
     };
     window.addEventListener('auth:unauthorized', handleUnauthorized);
@@ -131,12 +127,12 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Navigate & scroll to top smoothly
+  // Navigate & scroll to top smoothly (หน้า 2 และ 3 ถูกนำออกไป - วิ่งเข้าหน้า 1 ตู้ Kiosk เสมอ)
   const handleNavigate = (screenNumber: number) => {
-    setCurrentScreen(screenNumber);
-    if (screenNumber === 3) {
-      setScreen3SubView('menu');
+    if (screenNumber === 2 || screenNumber === 3) {
+      screenNumber = 1;
     }
+    setCurrentScreen(screenNumber);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -230,7 +226,7 @@ export const App: React.FC = () => {
     selectPatient(patient);
     showToast(`เข้าสู่ระบบสำเร็จ ยินดีต้อนรับ ${patient.name}`);
     setTimeout(() => {
-      handleNavigate(3);
+      handleNavigate(4);
     }, 350);
   };
 
@@ -238,7 +234,7 @@ export const App: React.FC = () => {
   const handleLogout = () => {
     selectPatient(null as any);
     setCurrentUserName('');
-    handleNavigate(2);
+    handleNavigate(1);
     showToast('ออกจากระบบเรียบร้อยแล้ว');
   };
 
@@ -253,7 +249,7 @@ export const App: React.FC = () => {
       showToast('เข้าสู่ระบบด้วยใบหน้าสำเร็จ');
     }
     setTimeout(() => {
-      handleNavigate(3);
+      handleNavigate(4);
     }, 350);
   };
 
@@ -309,10 +305,8 @@ export const App: React.FC = () => {
           aria-label="แถบสลับหน้าทดสอบ"
         >
           {[
-            { num: 1, label: '1: หน้าแรก' },
-            { num: 2, label: '2: เข้าสู่ระบบ' },
-            { num: 3, label: '3: เมนูผู้ใช้' },
-            { num: 4, label: '4: กายภาพ' },
+            { num: 1, label: '1: ตู้ Kiosk (6 ขั้นตอน)' },
+            { num: 4, label: '4: กายภาพบำบัด' },
             { num: 5, label: '5: มินิเกม' },
           ].map((tab) => (
             <button
@@ -419,62 +413,10 @@ export const App: React.FC = () => {
           />
         )}
 
-        {/* หน้า 2: เข้าสู่ระบบ */}
-        {currentScreen === 2 && (
-          <Screen2Login
-            onBack={() => handleNavigate(1)}
-            onLoginSuccess={handleLoginSuccess}
-            onOpenFaceLogin={() => openFaceAuth('login')}
-            onRegister={() => setIsReceptionOpen(true)}
-            patients={patients}
-          />
-        )}
-
-        {/* หน้า 3: เมนูผู้ใช้ และหน้าย่อยตั้งค่า "เลือกเวลาและท่าทาง" */}
-        {currentScreen === 3 && (
-          screen3SubView === 'config' ? (
-            <Screen3ScheduleConfig
-              mode={configMode}
-              patientId={selectedPatient?.id}
-              onBack={handleBackToMenu}
-              onStartNow={handleStartNowFromConfig}
-              onScheduleSaved={handleScheduleSaved}
-            />
-          ) : (
-            <Screen3Menu
-              userName={selectedPatient?.name || currentUserName || 'ผู้ใช้งาน'}
-              patient={selectedPatient}
-              onBack={handleLogout}
-              onStartTherapy={() => {
-                const savedConfig = getSavedTherapyConfig('physio', selectedPatient?.id);
-                if (savedConfig.category === 'stretch') {
-                  const selectedIds = savedConfig.selectedStretchIds && savedConfig.selectedStretchIds.length > 0
-                    ? savedConfig.selectedStretchIds
-                    : ['stretch_neck_lateral', 'stretch_shoulder_cross', 'stretch_chest_open'];
-                  const queue = STRETCH_EXERCISES.filter((item) => selectedIds.includes(item.id));
-                  setActiveStretchQueue(queue);
-                  setActiveCustomHoldTimes(savedConfig.customHoldTimes || {});
-                } else {
-                  setActiveStretchQueue([]);
-                  setActiveCustomHoldTimes({});
-                }
-                handleNavigate(4);
-              }}
-              onOpenTherapySettings={() => handleOpenScheduleConfig('physio')}
-              onStartMiniGame={() => {
-                showToast('🎮 เข้าสู่มินิเกมกายภาพ: ยกมือตอบคำถาม!');
-                handleNavigate(5);
-              }}
-              onOpenMiniGameSettings={() => setIsMiniGameSettingsOpen(true)}
-              onOpenUserInfo={() => setIsProfileModalOpen(true)}
-            />
-          )
-        )}
-
         {/* หน้า 4: หน้าทำกายภาพ (Pose Biomechanics ROM Exercise) */}
         {currentScreen === 4 && (
           <Screen4Exercise
-            onBack={() => handleNavigate(3)}
+            onBack={() => handleNavigate(1)}
             onOpenTherapistModal={(score, poseName, romAngle) => {
               setTherapistReportData({ score, poseName, romAngle });
               setIsTherapistReportOpen(true);
@@ -490,7 +432,7 @@ export const App: React.FC = () => {
         {currentScreen === 5 && (
           <Screen5MiniGame
             patient={selectedPatient}
-            onBack={() => handleNavigate(3)}
+            onBack={() => handleNavigate(1)}
             onOpenTherapistModal={(score, poseName, romAngle) => {
               setTherapistReportData({ score, poseName, romAngle });
               setIsTherapistReportOpen(true);
