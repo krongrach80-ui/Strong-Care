@@ -387,9 +387,10 @@ export const api = {
             name: targetPatient.full_name,
             age: targetPatient.age,
             gender: targetPatient.gender,
+            photo: payload.photo || targetPatient.photo,
           };
           if (rawVectors.length > 0) {
-            await supabaseService.saveFaceEmbeddings(targetPatient.id, rawVectors).catch(() => {});
+            await supabaseService.saveFaceEmbeddings(targetPatient.id, rawVectors, payload.photo).catch(() => {});
           }
         } else {
           // สร้างข้อมูลคนไข้ใหม่ลงตาราง patients เสมอ
@@ -417,7 +418,7 @@ export const api = {
               photo: payload.photo || null,
             };
             if (rawVectors.length > 0) {
-              await supabaseService.saveFaceEmbeddings(created.id, rawVectors).catch(() => {});
+              await supabaseService.saveFaceEmbeddings(created.id, rawVectors, payload.photo).catch(() => {});
             }
           }
         }
@@ -476,6 +477,7 @@ export const api = {
               name: item.name,
               age: item.age,
               gender: item.gender,
+              photo: item.photo,
               embeddings: item.embeddings,
               enrolledAt: new Date().toISOString(),
             });

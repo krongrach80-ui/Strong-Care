@@ -36,7 +36,7 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
   onLoginSuccess,
 }) => {
   const [mode, setMode] = useState<'login' | 'enroll'>(initialMode);
-  const { selectPatient, fetchPatients } = usePatientStore();
+  const { selectPatient, fetchPatients, patients } = usePatientStore();
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -335,24 +335,35 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
 
       if (res.status === 'success' && res.match && res.patient) {
         setVerifySuccess(true);
-        if (res.patient.photo || res.matchedPhoto) {
-          setMatchedPhoto(res.patient.photo || res.matchedPhoto);
+        const fullPatient = (patients || []).find(
+          (pt) =>
+            (pt.patient_code && res.patient.patient_code && pt.patient_code.toLowerCase() === res.patient.patient_code.toLowerCase()) ||
+            String(pt.id) === String(res.patient.id)
+        );
+        const resolvedPatient = {
+          ...res.patient,
+          ...(fullPatient || {}),
+          photo: res.patient.photo || fullPatient?.photo || res.matchedPhoto,
+          avatar_url: res.patient.photo || fullPatient?.photo || res.matchedPhoto,
+        };
+        if (resolvedPatient.photo) {
+          setMatchedPhoto(resolvedPatient.photo);
         }
         setVerifyMessage(res.message);
         audioFeedback.playRepSuccess();
         confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 } });
 
-        const pName = res.patient.name ? res.patient.name.split(' ')[0] : 'ท่าน';
+        const pName = resolvedPatient.name ? resolvedPatient.name.split(' ')[0] : 'ท่าน';
         voiceAssistant.speakSystem(`สวัสดีครับคุณ${pName} ยินดีต้อนรับกลับมาครับ`, {
           priority: 'success',
           force: true,
           chime: true,
         });
 
-        selectPatient(res.patient);
+        selectPatient(resolvedPatient);
 
         setTimeout(() => {
-          if (onLoginSuccess) onLoginSuccess(res.patient);
+          if (onLoginSuccess) onLoginSuccess(resolvedPatient);
           onClose();
         }, 1500);
       } else {

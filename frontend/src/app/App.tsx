@@ -232,6 +232,14 @@ export const App: React.FC = () => {
     }, 350);
   };
 
+  // Logout handler to clean user session and prevent account crosstalk
+  const handleLogout = () => {
+    selectPatient(null as any);
+    setCurrentUserName('');
+    handleNavigate(2);
+    showToast('ออกจากระบบเรียบร้อยแล้ว');
+  };
+
   // Face auth login callback
   const handleFaceLoginDone = (patientData?: any) => {
     closeFaceAuth();
@@ -397,9 +405,9 @@ export const App: React.FC = () => {
             />
           ) : (
             <Screen3Menu
-              userName={currentUserName}
+              userName={selectedPatient?.name || currentUserName || 'ผู้ใช้งาน'}
               patient={selectedPatient}
-              onBack={() => handleNavigate(2)}
+              onBack={handleLogout}
               onStartTherapy={() => {
                 const savedConfig = getSavedTherapyConfig('physio', selectedPatient?.id);
                 if (savedConfig.category === 'stretch') {

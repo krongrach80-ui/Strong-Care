@@ -54,8 +54,8 @@ export const usePatientStore = create<PatientState>((set, get) => ({
 
           const currentSelected = get().selectedPatient;
           const updatedSelected = currentSelected
-            ? mapped.find((p) => p.id === currentSelected.id) || mapped[0] || null
-            : mapped[0] || null;
+            ? mapped.find((p) => p.id === currentSelected.id) || currentSelected
+            : null;
 
           set({
             patients: mapped,
@@ -74,8 +74,8 @@ export const usePatientStore = create<PatientState>((set, get) => ({
       const data = await api.getPatients();
       const currentSelected = get().selectedPatient;
       const updatedSelected = currentSelected
-        ? data.find((p) => p.id === currentSelected.id) || data[0] || null
-        : data[0] || null;
+        ? data.find((p) => p.id === currentSelected.id) || currentSelected
+        : null;
       set({
         patients: data,
         selectedPatient: updatedSelected,
@@ -91,9 +91,10 @@ export const usePatientStore = create<PatientState>((set, get) => ({
         gender: 'male',
         notes: 'ปวดและขยับข้อไหล่ติดขัด ยกแขนได้ไม่สุด 3 สัปดาห์',
       };
+      const currentSelected = get().selectedPatient;
       set({
         patients: [fallbackPatient],
-        selectedPatient: fallbackPatient,
+        selectedPatient: currentSelected || null,
         isLoading: false,
       });
     }

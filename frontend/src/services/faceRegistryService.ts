@@ -278,18 +278,24 @@ export class FaceRegistryService {
       let embeddings: number[][] = [];
 
       // ตรวจสอบ medical_history
-      if (typeof p.medical_history === 'string' && p.medical_history.startsWith('FACE_EMB:')) {
+      if (typeof p.medical_history === 'string' && p.medical_history.includes('FACE_EMB:')) {
         try {
-          const parsed = JSON.parse(p.medical_history.slice('FACE_EMB:'.length));
-          if (Array.isArray(parsed)) embeddings = parsed;
+          const match = p.medical_history.match(/FACE_EMB:(\[.*?\])/);
+          if (match) {
+            const parsed = JSON.parse(match[1]);
+            if (Array.isArray(parsed)) embeddings = parsed;
+          }
         } catch {}
       }
 
       // ตรวจสอบ therapist_notes เป็น fallback
-      if (embeddings.length === 0 && typeof p.therapist_notes === 'string' && p.therapist_notes.startsWith('FACE_EMB:')) {
+      if (embeddings.length === 0 && typeof p.therapist_notes === 'string' && p.therapist_notes.includes('FACE_EMB:')) {
         try {
-          const parsed = JSON.parse(p.therapist_notes.slice('FACE_EMB:'.length));
-          if (Array.isArray(parsed)) embeddings = parsed;
+          const match = p.therapist_notes.match(/FACE_EMB:(\[.*?\])/);
+          if (match) {
+            const parsed = JSON.parse(match[1]);
+            if (Array.isArray(parsed)) embeddings = parsed;
+          }
         } catch {}
       }
 

@@ -921,7 +921,7 @@ export const supabaseService = {
     return this.saveFaceEmbeddings(patientId, [embeddingVector]);
   },
 
-  async saveFaceEmbeddings(patientId: any, embeddings: number[][]): Promise<any> {
+  async saveFaceEmbeddings(patientId: any, embeddings: number[][], photo?: string): Promise<any> {
     if (!isSupabaseConfigured() || !embeddings || !embeddings.length) return null;
 
     // 1. ลองบันทึกลงตาราง face_embeddings
@@ -935,20 +935,40 @@ export const supabaseService = {
         angle_tag: idx === 0 ? 'center' : idx === 1 ? 'left' : 'right',
         model_version: 'face-resnet34-v2',
       }));
-      const { data, error } = await supabase.from('face_embeddings').insert(rows).select();
-      if (!error && data) {
-        return data;
-      }
+      await supabase.from('face_embeddings').insert(rows).select();
     } catch {
       // ตาราง face_embeddings อาจยังไม่ได้สร้างใน Supabase
     }
 
-    // 2. Fallback บันทึกสำรองลงคอลัมน์ medical_history ในตาราง patients
+    // 2. บันทึกรูปถ่ายและเวกเตอร์ลงตาราง patients โดยรักษาประวัติการรักษาเดิมไว้
     try {
-      const payload = 'FACE_EMB:' + JSON.stringify(embeddings);
+      const { data: currentP } = await supabase
+        .from('patients')
+        .select('medical_history')
+        .eq('id', patientId)
+        .maybeSingle();
+
+      let existingMed = (currentP?.medical_history as string) || '';
+      // นำแท็กเดิมออกเพื่ออัปเดตชุดใหม่
+      existingMed = existingMed.replace(/FACE_EMB:\[.*?\](\n|$)/gs, '').trim();
+
+      let photoTag = '';
+      if (photo) {
+        existingMed = existingMed.replace(/FACE_PHOTO:data:image\/[^\s\n]+(\n|$)/g, '').trim();
+        photoTag = `FACE_PHOTO:${photo}\n`;
+      } else if (existingMed.includes('FACE_PHOTO:')) {
+        const photoMatch = existingMed.match(/FACE_PHOTO:(data:image\/[^\s\n]+)/);
+        if (photoMatch) {
+          existingMed = existingMed.replace(/FACE_PHOTO:data:image\/[^\s\n]+(\n|$)/g, '').trim();
+          photoTag = `FACE_PHOTO:${photoMatch[1]}\n`;
+        }
+      }
+
+      const newMedHistory = `${photoTag}FACE_EMB:${JSON.stringify(embeddings)}${existingMed ? '\n' + existingMed : ''}`;
+
       const { data, error } = await supabase
         .from('patients')
-        .update({ medical_history: payload })
+        .update({ medical_history: newMedHistory })
         .eq('id', patientId)
         .select()
         .single();
@@ -959,27 +979,34 @@ export const supabaseService = {
     return null;
   },
 
-  async fetchFaceEmbeddings(): Promise<{ patient_id: any; patient_code: string; name: string; age?: number; gender?: string; embeddings: number[][] }[]> {
+  async fetchFaceEmbeddings(): Promise<{ patient_id: any; patient_code: string; name: string; age?: number; gender?: string; photo?: string; embeddings: number[][] }[]> {
     if (!isSupabaseConfigured()) return [];
-    const results: { patient_id: any; patient_code: string; name: string; age?: number; gender?: string; embeddings: number[][] }[] = [];
+    const results: { patient_id: any; patient_code: string; name: string; age?: number; gender?: string; photo?: string; embeddings: number[][] }[] = [];
 
     // 1. ตรวจสอบตาราง face_embeddings ถ้ามี
     try {
       const { data, error } = await supabase
         .from('face_embeddings')
-        .select('patient_id, embedding, patients!patient_id(patient_code, full_name, age, gender)');
+        .select('patient_id, embedding, patients!patient_id(patient_code, full_name, age, gender, medical_history)');
       if (!error && data && data.length > 0) {
         const byPatient: Record<string, any> = {};
         for (const row of (data as any[])) {
           const pid = row.patient_id;
           const patientObj = Array.isArray(row.patients) ? row.patients[0] : row.patients;
           if (!byPatient[pid]) {
+            let photo: string | undefined = (patientObj as any)?.photo || (patientObj as any)?.avatar_url;
+            if (!photo && typeof (patientObj as any)?.medical_history === 'string' && (patientObj as any).medical_history.includes('FACE_PHOTO:')) {
+              const match = (patientObj as any).medical_history.match(/FACE_PHOTO:(data:image\/[^\s\n]+)/);
+              if (match) photo = match[1];
+            }
+
             byPatient[pid] = {
               patient_id: pid,
               patient_code: patientObj?.patient_code || '',
               name: patientObj?.full_name || '',
               age: patientObj?.age,
               gender: patientObj?.gender,
+              photo,
               embeddings: [],
             };
           }
@@ -998,9 +1025,17 @@ export const supabaseService = {
       const { data: pts } = await supabase.from('patients').select('id, patient_code, full_name, age, gender, medical_history');
       if (pts) {
         for (const p of pts) {
-          if (typeof p.medical_history === 'string' && p.medical_history.startsWith('FACE_EMB:')) {
+          if (typeof p.medical_history === 'string' && p.medical_history.includes('FACE_EMB:')) {
             try {
-              const embs = JSON.parse(p.medical_history.slice('FACE_EMB:'.length));
+              const embMatch = p.medical_history.match(/FACE_EMB:(\[.*?\])/);
+              const embs = embMatch ? JSON.parse(embMatch[1]) : null;
+
+              let photo = (p as any).photo || (p as any).avatar_url;
+              if (!photo && p.medical_history.includes('FACE_PHOTO:')) {
+                const photoMatch = p.medical_history.match(/FACE_PHOTO:(data:image\/[^\s\n]+)/);
+                if (photoMatch) photo = photoMatch[1];
+              }
+
               if (Array.isArray(embs) && embs.length > 0) {
                 results.push({
                   patient_id: p.id,
@@ -1008,6 +1043,7 @@ export const supabaseService = {
                   name: p.full_name,
                   age: p.age,
                   gender: p.gender,
+                  photo,
                   embeddings: embs,
                 });
               }
