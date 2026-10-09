@@ -380,9 +380,16 @@ export const App: React.FC = () => {
             onLoginComplete={(patient) => {
               handleLoginSuccess(patient);
             }}
-            onStartExerciseDirectly={(patient, plan) => {
+            onStartExerciseDirectly={(patient, plan, mode) => {
               selectPatient(patient);
               setCurrentUserName(patient.name);
+
+              if (mode === 'minigame') {
+                showToast(`🎮 ยินดีต้อนรับ ${patient.name} เข้าสู่มินิเกมกายภาพ!`);
+                handleNavigate(5);
+                return;
+              }
+
               if (plan?.assignedExercises && plan.assignedExercises.length > 0) {
                 const firstExSlug = plan.assignedExercises[0].exerciseSlug;
                 const matchedEx = exercises.find((e) => e.slug === firstExSlug);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Camera,
   CheckCircle2,
@@ -19,19 +19,23 @@ import {
   Info,
   Maximize2,
   Volume2,
+  Gamepad2,
+  Activity,
+  Hand,
 } from 'lucide-react';
 import { Patient } from '../../types/patient';
 import { useHospitalStore } from '../../store/hospitalStore';
 import { usePatientStore } from '../../store/patientStore';
 import { useExerciseStore } from '../../store/exerciseStore';
 import { faceRegistryService } from '../../services/faceRegistryService';
+import { poseService } from '../../services/poseService';
 import { audioFeedback } from '../../services/audioService';
 import { voiceAssistant } from '../../services/voiceAssistantService';
 import { TreatmentPlan } from '../../types/hospital';
 
 interface KioskSixStepWorkflowProps {
   onLoginComplete: (patient: Patient) => void;
-  onStartExerciseDirectly: (patient: Patient, plan?: TreatmentPlan) => void;
+  onStartExerciseDirectly: (patient: Patient, plan?: TreatmentPlan, mode?: 'physio' | 'minigame') => void;
   onOpenHospitalPortal: () => void;
   onOpenAbout?: () => void;
   kioskStationName?: string;
@@ -61,6 +65,13 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
   const [isPersonDetected, setIsPersonDetected] = useState<boolean>(false);
   const [isSlideUpAnimating, setIsSlideUpAnimating] = useState<boolean>(false);
 
+  // Arm Pose Detection State (ยกแขนขวา = ใช่ | ยกแขนซ้าย = ไม่)
+  const [detectedArmPose, setDetectedArmPose] = useState<'none' | 'right_yes' | 'left_no'>('none');
+  const [armHoldProgress, setArmHoldProgress] = useState<number>(0); // 0 to 100%
+  const armHoldTimerRef = useRef<any>(null);
+  const detectionFrameRef = useRef<number | null>(null);
+  const lastPoseDetectedRef = useRef<'none' | 'right_yes' | 'left_no'>('none');
+
   // Step 4: Face Scanning & Registration states
   const [scanStep, setScanStep] = useState<'front' | 'left' | 'right' | 'done'>('front');
   const [isScanning, setIsScanning] = useState<boolean>(false);
@@ -73,7 +84,8 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
   // Step 5: Countdown timer (5 seconds)
   const [step5Countdown, setStep5Countdown] = useState<number>(5);
 
-  // Step 6: Countdown timer (5 seconds)
+  // Step 6: Selected Therapy Mode & Countdown (5 seconds)
+  const [selectedTherapyType, setSelectedTherapyType] = useState<'physio' | 'minigame'>('physio');
   const [step6Countdown, setStep6Countdown] = useState<number>(5);
 
   // Logged-in Patient & Associated Treatment Plan
@@ -98,7 +110,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     ];
     const thaiMonthNames = [
       'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
-      'กรกฎาคม', 'สหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+      'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
     ];
 
     const updateClock = () => {
@@ -121,7 +133,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  // 2. Initialize Camera for live interaction across steps
+  // 2. Initialize Camera
   const startCamera = async () => {
     if (streamRef.current) return;
     try {
@@ -145,17 +157,21 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
       }
     } catch (err: any) {
       console.warn('Kiosk Camera start warning:', err);
-      setCameraError('ไม่สามารถเปิดกล้องจริงได้ (เปิดโหมดจำลองหน้าคนไข้)');
+      setCameraError('ไม่สามารถเปิดกล้องจริงได้ (เปิดโหมดจำลองภาพ)');
       setIsCameraActive(false);
     }
   };
 
   useEffect(() => {
     startCamera();
+    poseService.initialize().catch(() => {});
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
+      }
+      if (detectionFrameRef.current) {
+        cancelAnimationFrame(detectionFrameRef.current);
       }
     };
   }, []);
@@ -176,7 +192,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     setIsSlideUpAnimating(true);
     audioFeedback.playRepSuccess();
     try {
-      voiceAssistant.speak('ยินดีต้อนรับสู่ระบบ Strong Care ค่ะ กรุณายืนยันความพร้อม', {
+      voiceAssistant.speak('ยินดีต้อนรับสู่ระบบ Strong Care ค่ะ ยกแขนขวาเพื่อตอบใช่ หรือยกแขนซ้ายเพื่อตอบไม่', {
         level: 'system',
       });
     } catch {}
@@ -187,17 +203,136 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     }, 600);
   };
 
-  // Auto-detect person in front of camera simulation
-  useEffect(() => {
-    if (currentStep === 1) {
-      const timer = setTimeout(() => {
-        setIsPersonDetected(true);
-      }, 3500);
-      return () => clearTimeout(timer);
+  // 4. Arm Detection Logic for Steps 2 & 3:
+  // "ถ้าใช่ ให้ยกแขนขวา | ถ้าไม่ ให้ยกแขนซ้าย"
+  const handleConfirmYes = useCallback(() => {
+    audioFeedback.playRepSuccess();
+    setArmHoldProgress(0);
+    setDetectedArmPose('none');
+    if (currentStep === 2) {
+      setCurrentStep(3);
+    } else if (currentStep === 3) {
+      setCurrentStep(4);
+      handlePerformFaceScan();
     }
   }, [currentStep]);
 
-  // 4. Step 5 Countdown (ค้างไว้ 5 วินาที)
+  const handleConfirmNo = useCallback(() => {
+    audioFeedback.playHoldTick();
+    setArmHoldProgress(0);
+    setDetectedArmPose('none');
+    if (currentStep === 2) {
+      alert('พักผ่อนให้สบายนะคะ เมื่อพร้อมสามารถมานั่งหน้ากล้องใหม่ได้ทุกเมื่อค่ะ');
+      setCurrentStep(1);
+    } else if (currentStep === 3) {
+      setCurrentStep(2);
+    }
+  }, [currentStep]);
+
+  // Pose Detection Loop in Steps 2 & 3
+  useEffect(() => {
+    if (currentStep !== 2 && currentStep !== 3) {
+      if (detectionFrameRef.current) {
+        cancelAnimationFrame(detectionFrameRef.current);
+        detectionFrameRef.current = null;
+      }
+      setDetectedArmPose('none');
+      setArmHoldProgress(0);
+      return;
+    }
+
+    let isRunning = true;
+    let holdCounter = 0;
+    const REQUIRED_HOLD_FRAMES = 18; // ~600ms hold to confirm
+
+    const runPoseLoop = () => {
+      if (!isRunning) return;
+
+      const video = videoRef.current;
+      if (video && video.readyState >= 2 && !video.paused) {
+        try {
+          const res = poseService.detectHolistic(video, performance.now());
+          if (res && res.poseLandmarks && res.poseLandmarks.length >= 17) {
+            const lm = res.poseLandmarks;
+            // 11: left shoulder, 13: left elbow, 15: left wrist
+            // 12: right shoulder, 14: right elbow, 16: right wrist
+            const leftShoulder = lm[11];
+            const leftWrist = lm[15];
+            const rightShoulder = lm[12];
+            const rightWrist = lm[16];
+
+            // In user's body:
+            // Right arm raised = right wrist y < right shoulder y (wrist above shoulder)
+            // Left arm raised = left wrist y < left shoulder y (wrist above shoulder)
+            const isRightRaised = rightWrist && rightShoulder && rightWrist.y < (rightShoulder.y - 0.05);
+            const isLeftRaised = leftWrist && leftShoulder && leftWrist.y < (leftShoulder.y - 0.05);
+
+            if (isRightRaised && !isLeftRaised) {
+              // Right arm = YES
+              if (lastPoseDetectedRef.current === 'right_yes') {
+                holdCounter++;
+              } else {
+                holdCounter = 1;
+                lastPoseDetectedRef.current = 'right_yes';
+                setDetectedArmPose('right_yes');
+                audioFeedback.playHoldTick();
+              }
+
+              const prog = Math.min(100, Math.round((holdCounter / REQUIRED_HOLD_FRAMES) * 100));
+              setArmHoldProgress(prog);
+
+              if (holdCounter >= REQUIRED_HOLD_FRAMES) {
+                holdCounter = 0;
+                handleConfirmYes();
+                return;
+              }
+            } else if (isLeftRaised && !isRightRaised) {
+              // Left arm = NO
+              if (lastPoseDetectedRef.current === 'left_no') {
+                holdCounter++;
+              } else {
+                holdCounter = 1;
+                lastPoseDetectedRef.current = 'left_no';
+                setDetectedArmPose('left_no');
+                audioFeedback.playHoldTick();
+              }
+
+              const prog = Math.min(100, Math.round((holdCounter / REQUIRED_HOLD_FRAMES) * 100));
+              setArmHoldProgress(prog);
+
+              if (holdCounter >= REQUIRED_HOLD_FRAMES) {
+                holdCounter = 0;
+                handleConfirmNo();
+                return;
+              }
+            } else {
+              // Neither or both
+              holdCounter = 0;
+              lastPoseDetectedRef.current = 'none';
+              setDetectedArmPose('none');
+              setArmHoldProgress(0);
+            }
+          }
+        } catch (e) {
+          // ignore frame errors
+        }
+      }
+
+      detectionFrameRef.current = requestAnimationFrame(runPoseLoop);
+    };
+
+    detectionFrameRef.current = requestAnimationFrame(runPoseLoop);
+
+    return () => {
+      isRunning = false;
+      if (detectionFrameRef.current) {
+        cancelAnimationFrame(detectionFrameRef.current);
+        detectionFrameRef.current = null;
+      }
+    };
+  }, [currentStep, handleConfirmYes, handleConfirmNo]);
+
+  // 5. Step 5 Countdown (ค้างไว้ 5 วินาที)
   useEffect(() => {
     let timer: any;
     if (currentStep === 5) {
@@ -206,7 +341,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         setStep5Countdown((prev) => {
           if (prev <= 1) {
             clearInterval(timer);
-            // Advance to Step 6
             setCurrentStep(6);
             return 0;
           }
@@ -219,7 +353,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     };
   }, [currentStep]);
 
-  // 5. Step 6 Countdown (ค้างไว้ 5 วินาที)
+  // 6. Step 6 Countdown (ค้างไว้ 5 วินาที)
   useEffect(() => {
     let timer: any;
     if (currentStep === 6) {
@@ -228,8 +362,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         setStep6Countdown((prev) => {
           if (prev <= 1) {
             clearInterval(timer);
-            // Automatically start workout
-            handleProceedToExercise();
+            handleProceedToExercise(selectedTherapyType);
             return 0;
           }
           return prev - 1;
@@ -239,7 +372,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [currentStep, activePatient, activePlan]);
+  }, [currentStep, selectedTherapyType, activePatient, activePlan]);
 
   // Find treatment plan when activePatient changes
   useEffect(() => {
@@ -252,7 +385,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     if (plan) {
       setActivePlan(plan);
     } else {
-      // Fallback default plan for Somchai
       setActivePlan({
         id: 1,
         patientId: activePatient.id,
@@ -277,11 +409,11 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     }
   }, [activePatient, treatmentPlans]);
 
-  // Proceed to exercise
-  const handleProceedToExercise = () => {
+  // Proceed to exercise (กายภาพบำบัด หรือ กายภาพมินิเกม)
+  const handleProceedToExercise = (mode: 'physio' | 'minigame' = selectedTherapyType) => {
     audioFeedback.playRepSuccess();
     selectPatient(activePatient);
-    onStartExerciseDirectly(activePatient, activePlan || undefined);
+    onStartExerciseDirectly(activePatient, activePlan || undefined, mode);
   };
 
   // Step 4: Execute Scan & Match Check
@@ -291,10 +423,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     audioFeedback.playHoldTick();
 
     setTimeout(() => {
-      // Check stored face profiles
       const profiles = faceRegistryService.getAllProfiles();
-      
-      // Default to Somchai or matched profile
       let targetPatient: Patient = {
         id: 12,
         patient_code: 'P-0012',
@@ -329,7 +458,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         });
       } catch {}
 
-      // Advance to Step 5 (Login Successful)
       setTimeout(() => {
         setCurrentStep(5);
       }, 1000);
@@ -363,8 +491,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     setActivePatient(createdPatient);
     setIsNewRegistration(false);
     audioFeedback.playRepSuccess();
-
-    // Advance to Step 5
     setCurrentStep(5);
   };
 
@@ -406,9 +532,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
             {/* โลโก้ทรงกลม (วิวธรรมชาติ ท้องฟ้า ก้อนเมฆ และภูเขาเขียว) ตาม Mockup ภาพที่ 1 */}
             <div className="relative group cursor-pointer" onClick={triggerSlideUp}>
               <div className="w-56 h-56 sm:w-64 sm:h-64 rounded-full border-2 border-emerald-300 shadow-xl overflow-hidden flex items-center justify-center bg-gradient-to-b from-[#BEE5F9] via-[#D5F0FD] to-[#86C232] relative transform group-hover:scale-105 transition duration-300">
-                {/* SVG Landscape Illustration matching Wireframe 1 */}
                 <svg className="w-full h-full" viewBox="0 0 200 200" fill="none">
-                  {/* Sky background */}
                   <rect width="200" height="200" fill="url(#skyGradient)" />
                   <defs>
                     <linearGradient id="skyGradient" x1="100" y1="0" x2="100" y2="150" gradientUnits="userSpaceOnUse">
@@ -426,7 +550,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                     </linearGradient>
                   </defs>
 
-                  {/* Fluffy White Cloud */}
                   <g fill="#FFFFFF" opacity="0.95">
                     <ellipse cx="100" cy="80" rx="32" ry="18" />
                     <circle cx="85" cy="74" r="16" />
@@ -434,24 +557,20 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                     <circle cx="100" cy="65" r="15" />
                   </g>
 
-                  {/* Rolling Hill 1 (Back) */}
                   <path
                     d="M-20 160 Q 60 110, 150 145 T 220 160 L 220 220 L -20 220 Z"
                     fill="url(#hillGreen1)"
                   />
-                  {/* Rolling Hill 2 (Front) */}
                   <path
                     d="M-10 180 Q 90 135, 210 170 L 210 220 L -10 220 Z"
                     fill="url(#hillGreen2)"
                   />
                 </svg>
 
-                {/* Subtle Pulsing Center Ring */}
                 <div className="absolute inset-0 rounded-full border-4 border-white/40 pointer-events-none animate-pulse" />
               </div>
             </div>
 
-            {/* ข้อความแจ้งเตือนหน้าพักหน้าจอ */}
             <div className="mt-8 flex flex-col items-center">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 border border-emerald-300 text-[#1E8A4C] text-sm font-bold shadow-sm animate-bounce">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
@@ -462,7 +581,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               </p>
             </div>
 
-            {/* ปุ่มจำลองการมานั่งหน้ากล้อง */}
             <div className="mt-6 w-full max-w-xs">
               <button
                 onClick={triggerSlideUp}
@@ -486,42 +604,70 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               <h2 className="text-lg sm:text-xl font-bold text-[#0B2B2B]">
                 คุณพร้อมแล้วใช่หรือไม่
               </h2>
-              <p className="text-xs text-slate-600 mt-0.5">
-                (คุณพร้อมกายภาพแล้วใช่หรือไม่)
-              </p>
+              {/* คำแนะนำระบบ Detection: ยกแขนขวา = ใช่ | ยกแขนซ้าย = ไม่ */}
+              <div className="mt-1 flex items-center justify-center gap-3 text-xs font-extrabold">
+                <span className="text-[#1E8A4C] bg-emerald-100/90 px-2 py-0.5 rounded-md flex items-center gap-1">
+                  🙋‍♂️ ยกแขนขวา = <b>ใช่</b>
+                </span>
+                <span className="text-[#E03131] bg-rose-100/90 px-2 py-0.5 rounded-md flex items-center gap-1">
+                  🙋‍♀️ ยกแขนซ้าย = <b>ไม่</b>
+                </span>
+              </div>
             </div>
 
             {/* ปุ่ม 2 ข้าง: ซ้าย = ใช่ (เขียว) | ขวา = ไม่ (แดง) ตาม Wireframe 2 */}
             <div className="w-full flex items-center justify-between px-2 sm:px-4 my-3">
-              {/* ปุ่ม ใช่ */}
-              <button
-                onClick={() => {
-                  audioFeedback.playRepSuccess();
-                  setCurrentStep(3);
-                }}
-                className="w-28 h-20 sm:w-32 sm:h-24 rounded-3xl bg-[#E8F8EE] border-2 border-[#A8E6BA] text-[#1E8A4C] text-2xl sm:text-3xl font-extrabold flex items-center justify-center shadow-md hover:bg-[#d5f5df] active:scale-95 transition cursor-pointer"
-                id="btnReadyYes"
-              >
-                ใช่
-              </button>
+              {/* ปุ่ม ใช่ (ยกแขนขวา) */}
+              <div className="relative">
+                <button
+                  onClick={handleConfirmYes}
+                  className={`w-28 h-20 sm:w-32 sm:h-24 rounded-3xl border-2 flex flex-col items-center justify-center shadow-md active:scale-95 transition cursor-pointer relative overflow-hidden ${
+                    detectedArmPose === 'right_yes'
+                      ? 'bg-emerald-200 border-emerald-600 text-emerald-950 scale-105 shadow-emerald-400/50 shadow-lg'
+                      : 'bg-[#E8F8EE] border-[#A8E6BA] text-[#1E8A4C] hover:bg-[#d5f5df]'
+                  }`}
+                  id="btnReadyYes"
+                >
+                  <span className="text-2xl sm:text-3xl font-extrabold">ใช่</span>
+                  <span className="text-[10px] font-bold text-emerald-800">ยกแขนขวา 🙋‍♂️</span>
 
-              {/* ปุ่ม ไม่ */}
-              <button
-                onClick={() => {
-                  audioFeedback.playHoldTick();
-                  alert('พักผ่อนให้สบายนะคะ เมื่อพร้อมสามารถมานั่งหน้ากล้องใหม่ได้ทุกเมื่อค่ะ');
-                  setCurrentStep(1);
-                }}
-                className="w-28 h-20 sm:w-32 sm:h-24 rounded-3xl bg-[#FEECEC] border-2 border-[#F9B7B7] text-[#E03131] text-2xl sm:text-3xl font-extrabold flex items-center justify-center shadow-md hover:bg-[#fedcdc] active:scale-95 transition cursor-pointer"
-                id="btnReadyNo"
-              >
-                ไม่
-              </button>
+                  {/* Progress bar inside button when holding arm */}
+                  {detectedArmPose === 'right_yes' && (
+                    <div
+                      className="absolute bottom-0 left-0 h-2 bg-emerald-500 transition-all duration-75"
+                      style={{ width: `${armHoldProgress}%` }}
+                    />
+                  )}
+                </button>
+              </div>
+
+              {/* ปุ่ม ไม่ (ยกแขนซ้าย) */}
+              <div className="relative">
+                <button
+                  onClick={handleConfirmNo}
+                  className={`w-28 h-20 sm:w-32 sm:h-24 rounded-3xl border-2 flex flex-col items-center justify-center shadow-md active:scale-95 transition cursor-pointer relative overflow-hidden ${
+                    detectedArmPose === 'left_no'
+                      ? 'bg-rose-200 border-rose-600 text-rose-950 scale-105 shadow-rose-400/50 shadow-lg'
+                      : 'bg-[#FEECEC] border-[#F9B7B7] text-[#E03131] hover:bg-[#fedcdc]'
+                  }`}
+                  id="btnReadyNo"
+                >
+                  <span className="text-2xl sm:text-3xl font-extrabold">ไม่</span>
+                  <span className="text-[10px] font-bold text-rose-800">ยกแขนซ้าย 🙋‍♀️</span>
+
+                  {/* Progress bar inside button when holding arm */}
+                  {detectedArmPose === 'left_no' && (
+                    <div
+                      className="absolute bottom-0 left-0 h-2 bg-rose-500 transition-all duration-75"
+                      style={{ width: `${armHoldProgress}%` }}
+                    />
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* หน้าเราที่กล้องจับอยู่ (Live Camera Feed Silhouette) ตรงกลาง-ล่าง */}
             <div className="w-full flex-1 max-h-[300px] sm:max-h-[340px] rounded-[32px] overflow-hidden border-2 border-slate-300 relative bg-slate-100 flex items-center justify-center shadow-inner">
-              {/* Video Element */}
               <video
                 ref={videoRef}
                 autoPlay
@@ -530,17 +676,47 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                 className="w-full h-full object-cover transform -scale-x-100"
               />
 
-              {/* Silhouette Overlay ตามภาพ Wireframe 2 */}
+              {/* Silhouette Overlay */}
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
                 <div className="w-32 h-32 rounded-full border-2 border-emerald-400/60 bg-emerald-500/10 backdrop-blur-[1px] animate-pulse flex items-center justify-center">
                   <User className="w-20 h-20 text-emerald-700/40" />
                 </div>
               </div>
 
+              {/* Live Detection Status Banner */}
+              {detectedArmPose !== 'none' && (
+                <div className="absolute top-2 inset-x-3 bg-black/80 backdrop-blur-md text-white text-xs py-1.5 px-3 rounded-xl flex items-center justify-between border border-emerald-400 animate-fadeIn">
+                  <span className="font-bold flex items-center gap-1.5">
+                    {detectedArmPose === 'right_yes' ? (
+                      <span className="text-emerald-400">🟢 ตรวจพบ: ยกแขนขวา (ใช่)</span>
+                    ) : (
+                      <span className="text-rose-400">🔴 ตรวจพบ: ยกแขนซ้าย (ไม่)</span>
+                    )}
+                  </span>
+                  <span className="font-mono text-yellow-300 font-bold">{armHoldProgress}%</span>
+                </div>
+              )}
+
               {/* Hand Touch Prompt Guide */}
-              <div className="absolute bottom-2 inset-x-2 bg-black/60 backdrop-blur-md rounded-2xl py-1.5 px-3 text-center text-white text-xs font-medium">
-                👆 หากใช่ ให้นำมือไปแตะที่ปุ่ม <span className="text-emerald-400 font-bold">"ใช่"</span> | หากไม่ ให้แตะปุ่ม <span className="text-red-400 font-bold">"ไม่"</span>
+              <div className="absolute bottom-2 inset-x-2 bg-black/75 backdrop-blur-md rounded-2xl py-1.5 px-3 text-center text-white text-[11px] font-medium">
+                ยกแขน <span className="text-emerald-300 font-bold">ขวา = ใช่</span> | ยกแขน <span className="text-rose-300 font-bold">ซ้าย = ไม่</span> (หรือเอามือแตะที่จอ)
               </div>
+            </div>
+
+            {/* Quick Test Simulation Row (for testing without camera) */}
+            <div className="w-full flex items-center justify-center gap-2 mt-2">
+              <button
+                onClick={handleConfirmYes}
+                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200"
+              >
+                🙋‍♂️ จำลองยกแขนขวา (ใช่)
+              </button>
+              <button
+                onClick={handleConfirmNo}
+                className="text-[11px] font-bold text-rose-700 hover:text-rose-900 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200"
+              >
+                🙋‍♀️ จำลองยกแขนซ้าย (ไม่)
+              </button>
             </div>
           </div>
         )}
@@ -555,36 +731,64 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               <h2 className="text-lg sm:text-xl font-bold text-[#0B2B2B]">
                 คุณพร้อมเข้าสู่ระบบใช่หรือไม่
               </h2>
-              <p className="text-xs text-slate-600 mt-0.5">
-                ระบบจะเปิดกล้องสแกนใบหน้าเพื่อค้นหาประวัติการรักษา
-              </p>
+              {/* คำแนะนำระบบ Detection: ยกแขนขวา = ใช่ | ยกแขนซ้าย = ไม่ */}
+              <div className="mt-1 flex items-center justify-center gap-3 text-xs font-extrabold">
+                <span className="text-[#1E8A4C] bg-emerald-100/90 px-2 py-0.5 rounded-md flex items-center gap-1">
+                  🙋‍♂️ ยกแขนขวา = <b>ใช่</b>
+                </span>
+                <span className="text-[#E03131] bg-rose-100/90 px-2 py-0.5 rounded-md flex items-center gap-1">
+                  🙋‍♀️ ยกแขนซ้าย = <b>ไม่</b>
+                </span>
+              </div>
             </div>
 
             {/* ปุ่ม 2 ข้าง: ใช่ (เขียว) | ไม่ (แดง) ตาม Wireframe 3 */}
             <div className="w-full flex items-center justify-between px-2 sm:px-4 my-3">
-              {/* ปุ่ม ใช่ */}
-              <button
-                onClick={() => {
-                  audioFeedback.playRepSuccess();
-                  setCurrentStep(4);
-                  handlePerformFaceScan();
-                }}
-                className="w-28 h-20 sm:w-32 sm:h-24 rounded-3xl bg-[#E8F8EE] border-2 border-[#A8E6BA] text-[#1E8A4C] text-2xl sm:text-3xl font-extrabold flex items-center justify-center shadow-md hover:bg-[#d5f5df] active:scale-95 transition cursor-pointer"
-                id="btnLoginYes"
-              >
-                ใช่
-              </button>
+              {/* ปุ่ม ใช่ (ยกแขนขวา) */}
+              <div className="relative">
+                <button
+                  onClick={handleConfirmYes}
+                  className={`w-28 h-20 sm:w-32 sm:h-24 rounded-3xl border-2 flex flex-col items-center justify-center shadow-md active:scale-95 transition cursor-pointer relative overflow-hidden ${
+                    detectedArmPose === 'right_yes'
+                      ? 'bg-emerald-200 border-emerald-600 text-emerald-950 scale-105 shadow-emerald-400/50 shadow-lg'
+                      : 'bg-[#E8F8EE] border-[#A8E6BA] text-[#1E8A4C] hover:bg-[#d5f5df]'
+                  }`}
+                  id="btnLoginYes"
+                >
+                  <span className="text-2xl sm:text-3xl font-extrabold">ใช่</span>
+                  <span className="text-[10px] font-bold text-emerald-800">ยกแขนขวา 🙋‍♂️</span>
 
-              {/* ปุ่ม ไม่ */}
-              <button
-                onClick={() => {
-                  setCurrentStep(2);
-                }}
-                className="w-28 h-20 sm:w-32 sm:h-24 rounded-3xl bg-[#FEECEC] border-2 border-[#F9B7B7] text-[#E03131] text-2xl sm:text-3xl font-extrabold flex items-center justify-center shadow-md hover:bg-[#fedcdc] active:scale-95 transition cursor-pointer"
-                id="btnLoginNo"
-              >
-                ไม่
-              </button>
+                  {detectedArmPose === 'right_yes' && (
+                    <div
+                      className="absolute bottom-0 left-0 h-2 bg-emerald-500 transition-all duration-75"
+                      style={{ width: `${armHoldProgress}%` }}
+                    />
+                  )}
+                </button>
+              </div>
+
+              {/* ปุ่ม ไม่ (ยกแขนซ้าย) */}
+              <div className="relative">
+                <button
+                  onClick={handleConfirmNo}
+                  className={`w-28 h-20 sm:w-32 sm:h-24 rounded-3xl border-2 flex flex-col items-center justify-center shadow-md active:scale-95 transition cursor-pointer relative overflow-hidden ${
+                    detectedArmPose === 'left_no'
+                      ? 'bg-rose-200 border-rose-600 text-rose-950 scale-105 shadow-rose-400/50 shadow-lg'
+                      : 'bg-[#FEECEC] border-[#F9B7B7] text-[#E03131] hover:bg-[#fedcdc]'
+                  }`}
+                  id="btnLoginNo"
+                >
+                  <span className="text-2xl sm:text-3xl font-extrabold">ไม่</span>
+                  <span className="text-[10px] font-bold text-rose-800">ยกแขนซ้าย 🙋‍♀️</span>
+
+                  {detectedArmPose === 'left_no' && (
+                    <div
+                      className="absolute bottom-0 left-0 h-2 bg-rose-500 transition-all duration-75"
+                      style={{ width: `${armHoldProgress}%` }}
+                    />
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* หน้าเราที่กล้องจับอยู่ ตรงกลาง-ล่าง */}
@@ -597,10 +801,40 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                 className="w-full h-full object-cover transform -scale-x-100"
               />
 
+              {/* Live Detection Status Banner */}
+              {detectedArmPose !== 'none' && (
+                <div className="absolute top-2 inset-x-3 bg-black/80 backdrop-blur-md text-white text-xs py-1.5 px-3 rounded-xl flex items-center justify-between border border-emerald-400 animate-fadeIn">
+                  <span className="font-bold flex items-center gap-1.5">
+                    {detectedArmPose === 'right_yes' ? (
+                      <span className="text-emerald-400">🟢 ตรวจพบ: ยกแขนขวา (ใช่)</span>
+                    ) : (
+                      <span className="text-rose-400">🔴 ตรวจพบ: ยกแขนซ้าย (ไม่)</span>
+                    )}
+                  </span>
+                  <span className="font-mono text-yellow-300 font-bold">{armHoldProgress}%</span>
+                </div>
+              )}
+
               {/* Hand Touch Prompt Guide */}
-              <div className="absolute bottom-2 inset-x-2 bg-black/60 backdrop-blur-md rounded-2xl py-1.5 px-3 text-center text-white text-xs font-medium">
-                👆 หากใช่ ให้นำมือไปแตะที่ปุ่ม <span className="text-emerald-400 font-bold">"ใช่"</span> เพื่อสแกนใบหน้า
+              <div className="absolute bottom-2 inset-x-2 bg-black/75 backdrop-blur-md rounded-2xl py-1.5 px-3 text-center text-white text-[11px] font-medium">
+                ยกแขน <span className="text-emerald-300 font-bold">ขวา = สแกนหน้า</span> | ยกแขน <span className="text-rose-300 font-bold">ซ้าย = ย้อนกลับ</span>
               </div>
+            </div>
+
+            {/* Quick Test Simulation Row */}
+            <div className="w-full flex items-center justify-center gap-2 mt-2">
+              <button
+                onClick={handleConfirmYes}
+                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200"
+              >
+                🙋‍♂️ จำลองยกแขนขวา (ใช่)
+              </button>
+              <button
+                onClick={handleConfirmNo}
+                className="text-[11px] font-bold text-rose-700 hover:text-rose-900 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200"
+              >
+                🙋‍♀️ จำลองยกแขนซ้าย (ไม่)
+              </button>
             </div>
           </div>
         )}
@@ -623,7 +857,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
             {/* กรอบวงรีเส้นประไข่ (Dashed Oval Face Guide) ตรงกลางตาม Wireframe 4 */}
             <div className="w-full flex-1 max-h-[320px] sm:max-h-[350px] relative flex items-center justify-center my-2">
               <div className="w-60 h-72 sm:w-64 sm:h-80 border-[3px] border-dashed border-gray-800 rounded-[50%] relative overflow-hidden flex items-center justify-center bg-black/5 shadow-inner">
-                {/* Live Camera Feed inside Oval */}
                 <video
                   ref={videoRef}
                   autoPlay
@@ -632,14 +865,12 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                   className="w-full h-full object-cover transform -scale-x-100"
                 />
 
-                {/* Oval Glow border indicating scanning */}
                 <div
                   className={`absolute inset-0 rounded-[50%] pointer-events-none transition-all duration-300 ${
                     isScanning ? 'border-4 border-emerald-400 animate-pulse' : 'border-2 border-transparent'
                   }`}
                 />
 
-                {/* Scanning Laser Beam */}
                 {isScanning && (
                   <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-bounce shadow-lg shadow-emerald-400/50" />
                 )}
@@ -701,7 +932,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               </button>
             </div>
 
-            {/* ตัวเลือกลงทะเบียนใหม่ หากยังไม่มีบัญชี */}
+            {/* ตัวเลือกลงทะเบียนใหม่ */}
             <div className="w-full flex items-center justify-between text-xs text-slate-500 font-medium mt-3 px-1">
               <button
                 onClick={() => setIsNewRegistration(!isNewRegistration)}
@@ -718,7 +949,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               </button>
             </div>
 
-            {/* Modal/Inline Form สำหรับลงทะเบียนใบหน้าใหม่ */}
             {isNewRegistration && (
               <div className="w-full bg-emerald-50 border border-emerald-200 rounded-2xl p-3 mt-2 text-left animate-fadeIn">
                 <span className="text-xs font-bold text-emerald-900 block mb-1">
@@ -756,19 +986,15 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         {/* ---------------------------------------------------- */}
         {currentStep === 5 && (
           <div className="w-full flex-1 flex flex-col items-center justify-center animate-fadeIn text-center py-6">
-            {/* กล่องขาวมนตรงกลางตาม Mockup 5: คุณล็อกอินสำเร็จ */}
             <div className="w-full max-w-[320px] bg-[#F8F9FA] border border-gray-200 rounded-3xl py-8 px-6 text-center shadow-lg flex flex-col items-center transform hover:scale-105 transition duration-300">
-              {/* ตราติ๊กถูกสีเขียวขนาดใหญ่ */}
               <div className="w-20 h-20 rounded-full bg-emerald-100 border-2 border-emerald-400 text-[#1E8A4C] flex items-center justify-center mb-4 shadow-sm animate-bounce">
                 <Check className="w-12 h-12 stroke-[3]" />
               </div>
 
-              {/* ข้อความ คุณล็อกอินสำเร็จ ตามภาพวาด 5 เป๊ะๆ */}
               <h2 className="text-2xl sm:text-3xl font-extrabold text-[#0B2B2B]">
                 คุณล็อกอินสำเร็จ
               </h2>
 
-              {/* รายละเอียดคนไข้ */}
               <div className="mt-4 p-3 rounded-2xl bg-white border border-slate-200 w-full shadow-inner">
                 <p className="text-base font-bold text-[#1E8A4C]">
                   {activePatient.name}
@@ -782,14 +1008,12 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               </div>
             </div>
 
-            {/* ตัวนับถอยหลัง 5 วินาที (ตามคำสั่ง) */}
             <div className="mt-8 flex flex-col items-center">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 border border-emerald-300 text-[#1E8A4C] text-sm font-bold shadow-sm">
                 <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
                 <span>กำลังนำท่านสู่รายการที่หมอเซ็ตไว้ในอีก: <b className="text-lg font-mono text-emerald-800">{step5Countdown}</b> วินาที</span>
               </div>
 
-              {/* ปุ่มลัดข้าม */}
               <button
                 onClick={() => setCurrentStep(6)}
                 className="mt-3 text-xs text-emerald-700 font-bold hover:underline flex items-center gap-1"
@@ -802,86 +1026,140 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         )}
 
         {/* ---------------------------------------------------- */}
-        {/* ภาพที่ 6: รายการที่หมอเซ็ตไว้ + ข้อมูลหมอกายภาพ       */}
+        {/* ภาพที่ 6: หน้ารายการกายภาพวันนี้ ตามแบบร่างใหม่ล่าสุด */}
         {/* ---------------------------------------------------- */}
         {currentStep === 6 && (
           <div className="w-full flex-1 flex flex-col items-center justify-between animate-fadeIn text-left py-1">
-            {/* หัวข้อด้านบน */}
-            <div className="w-full bg-[#E3F5FC] border border-[#BDE3F5] rounded-3xl py-2 px-4 text-center shadow-sm mb-3">
-              <h2 className="text-base sm:text-lg font-bold text-[#0B2B2B] flex items-center justify-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-emerald-600" />
-                <span>รายการฝึกกายภาพบำบัดประจำวันนี้</span>
+            
+            {/* กล่องหัวข้อด้านบน: "รายการกายภาพวันนี้" ตาม Wireframe 6 */}
+            <div className="w-full bg-gradient-to-b from-[#EAEAEA] to-[#D5D5D5] border-2 border-[#BEBEBE] rounded-2xl py-3 px-5 text-center shadow-md mb-4">
+              <h2 className="text-lg sm:text-xl font-black text-[#0B2B2B] tracking-wide">
+                รายการกายภาพวันนี้
               </h2>
-              <span className="text-xs text-emerald-800 font-semibold">
-                นัดหมายฝึกที่: {activePlan?.roomStation || 'ตู้ Kiosk 1'} | คาบเวลา: {activePlan?.timeSlot || '09:30 - 10:30 น.'}
-              </span>
             </div>
 
-            {/* ข้อมูลหมอกายภาพเบื้องต้น */}
-            <div className="w-full bg-emerald-50/90 border border-emerald-200 rounded-2xl p-3 shadow-sm mb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-full bg-[#1E8A4C] text-white flex items-center justify-center font-bold text-sm shadow flex-shrink-0">
-                  <Stethoscope className="w-5 h-5" />
+            {/* ส่วนรายการ 2 แถวตาม Wireframe 6: [1] กายภาพบำบัด [ ] | [1] กายภาพมินิเกม [ ] */}
+            <div className="w-full space-y-3 px-1 mb-4">
+              
+              {/* แถวที่ 1: [ 1 ] [ กายภาพบำบัด ] [ ✓ ] */}
+              <div
+                onClick={() => setSelectedTherapyType('physio')}
+                className={`w-full flex items-center gap-2 sm:gap-3 cursor-pointer group transition ${
+                  selectedTherapyType === 'physio' ? 'scale-[1.02]' : 'opacity-85 hover:opacity-100'
+                }`}
+              >
+                {/* กล่องซ้าย: [ 1 ] */}
+                <div className="w-12 h-14 sm:w-14 sm:h-16 rounded-2xl bg-gradient-to-b from-[#EFEFEF] to-[#D5D5D5] border-2 border-slate-400 flex items-center justify-center text-xl sm:text-2xl font-black text-[#0B2B2B] shadow-md flex-shrink-0">
+                  1
                 </div>
-                <div className="flex-1 min-w-0">
-                  <span className="text-xs font-bold text-emerald-900 block truncate">
-                    {activePlan?.therapistName || 'กภ. ธนากร วงศ์สวัสดิ์'}
-                  </span>
-                  <span className="text-[11px] text-emerald-700 block">
-                    นักกายภาพบำบัดชำนาญการ (วุฒิบัตร ภก.12458)
-                  </span>
-                </div>
-              </div>
-              <div className="mt-2 text-[11px] text-slate-700 bg-white/80 p-2 rounded-xl border border-emerald-100">
-                <b>คำแนะนำจากหมอ:</b> {activePlan?.clinicalNotes || 'เน้นเพิ่มองศาการยกแขนข้างที่บาดเจ็บ หลีกเลี่ยงการยกกระตุกเร็ว สังเกตอาการปวด'}
-              </div>
-            </div>
 
-            {/* รายการท่ากายภาพที่หมอเซ็ตไว้ในระบบ */}
-            <div className="w-full flex-1 overflow-y-auto max-h-[220px] space-y-2 pr-1">
-              <span className="text-xs font-bold text-slate-700 block">
-                📋 ท่าที่ต้องฝึกวันนี้ ({activePlan?.assignedExercises?.length || 3} ท่า):
-              </span>
-
-              {activePlan?.assignedExercises?.map((ex, idx) => (
-                <div
-                  key={idx}
-                  className="bg-white border border-slate-200 hover:border-emerald-300 rounded-xl p-2.5 shadow-sm flex items-center justify-between"
+                {/* กล่องกลาง: [ กายภาพบำบัด ] */}
+                <button
+                  onClick={() => handleProceedToExercise('physio')}
+                  className={`flex-1 h-14 sm:h-16 rounded-2xl border-2 flex items-center justify-center px-4 font-black text-lg sm:text-xl shadow-md transition ${
+                    selectedTherapyType === 'physio'
+                      ? 'bg-gradient-to-b from-[#E8F8EE] via-[#D2F5DC] to-[#B6EFCE] border-[#1E8A4C] text-[#1E8A4C] shadow-emerald-400/30'
+                      : 'bg-gradient-to-b from-[#EFEFEF] to-[#D8D8D8] border-slate-400 text-[#0B2B2B] hover:bg-slate-200'
+                  }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-emerald-100 text-[#1E8A4C] text-xs font-extrabold flex items-center justify-center flex-shrink-0">
-                      {idx + 1}
-                    </span>
-                    <div>
-                      <p className="text-xs font-bold text-[#0B2B2B]">{ex.exerciseName}</p>
-                      <span className="text-[10px] text-slate-500 font-medium">
-                        {ex.sets} เซ็ต × {ex.reps} ครั้ง {ex.holdSeconds ? `(ค้าง ${ex.holdSeconds}s)` : ''}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">
-                    พร้อมฝึก
-                  </span>
+                  กายภาพบำบัด
+                </button>
+
+                {/* กล่องขวา: ช่อง Checkbox [ ✓ ] */}
+                <div
+                  className={`w-12 h-14 sm:w-14 sm:h-16 rounded-2xl border-2 flex items-center justify-center shadow-md flex-shrink-0 transition ${
+                    selectedTherapyType === 'physio'
+                      ? 'bg-[#1E8A4C] border-[#1E8A4C] text-white shadow-emerald-500/30'
+                      : 'bg-white border-slate-400 text-slate-300'
+                  }`}
+                >
+                  <Check className={`w-8 h-8 stroke-[3.5] ${selectedTherapyType === 'physio' ? 'opacity-100' : 'opacity-0'}`} />
                 </div>
-              ))}
+              </div>
+
+              {/* แถวที่ 2: [ 1 ] [ กายภาพมินิเกม ] [ ] */}
+              <div
+                onClick={() => setSelectedTherapyType('minigame')}
+                className={`w-full flex items-center gap-2 sm:gap-3 cursor-pointer group transition ${
+                  selectedTherapyType === 'minigame' ? 'scale-[1.02]' : 'opacity-85 hover:opacity-100'
+                }`}
+              >
+                {/* กล่องซ้าย: [ 1 ] ตามภาพวาดเป๊ะๆ */}
+                <div className="w-12 h-14 sm:w-14 sm:h-16 rounded-2xl bg-gradient-to-b from-[#EFEFEF] to-[#D5D5D5] border-2 border-slate-400 flex items-center justify-center text-xl sm:text-2xl font-black text-[#0B2B2B] shadow-md flex-shrink-0">
+                  1
+                </div>
+
+                {/* กล่องกลาง: [ กายภาพมินิเกม ] */}
+                <button
+                  onClick={() => handleProceedToExercise('minigame')}
+                  className={`flex-1 h-14 sm:h-16 rounded-2xl border-2 flex items-center justify-center px-4 font-black text-lg sm:text-xl shadow-md transition ${
+                    selectedTherapyType === 'minigame'
+                      ? 'bg-gradient-to-b from-[#E8F8EE] via-[#D2F5DC] to-[#B6EFCE] border-[#1E8A4C] text-[#1E8A4C] shadow-emerald-400/30'
+                      : 'bg-gradient-to-b from-[#EFEFEF] to-[#D8D8D8] border-slate-400 text-[#0B2B2B] hover:bg-slate-200'
+                  }`}
+                >
+                  กายภาพมินิเกม
+                </button>
+
+                {/* กล่องขวา: ช่อง Checkbox [   ] */}
+                <div
+                  className={`w-12 h-14 sm:w-14 sm:h-16 rounded-2xl border-2 flex items-center justify-center shadow-md flex-shrink-0 transition ${
+                    selectedTherapyType === 'minigame'
+                      ? 'bg-[#1E8A4C] border-[#1E8A4C] text-white shadow-emerald-500/30'
+                      : 'bg-white border-slate-400 text-slate-300'
+                  }`}
+                >
+                  <Check className={`w-8 h-8 stroke-[3.5] ${selectedTherapyType === 'minigame' ? 'opacity-100' : 'opacity-0'}`} />
+                </div>
+              </div>
+
             </div>
 
-            {/* แถบด้านล่าง: นับถอยหลัง 5 วินาที & ปุ่มเริ่มฝึก */}
-            <div className="w-full mt-3 flex flex-col items-center">
+            {/* กล่องล่างสีเขียว: ข้อมูลหมอกายภาพ ตาม Wireframe 6 */}
+            <div className="w-full bg-[#C8F5D0] border-2 border-black/85 rounded-3xl p-3 sm:p-4 shadow-md flex items-center gap-3 sm:gap-4 my-2">
+              {/* การ์ดสีขาวรูป Avatar หมอด้านซ้าย */}
+              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-white border-2 border-slate-300 shadow-sm flex items-center justify-center flex-shrink-0 p-2">
+                {/* Silhouette Icon matching Wireframe 6 */}
+                <svg viewBox="0 0 100 100" className="w-full h-full text-black fill-current">
+                  <circle cx="50" cy="34" r="22" />
+                  <path d="M12 90 C12 66, 28 56, 50 56 C72 56, 88 66, 88 90 Z" />
+                </svg>
+              </div>
+
+              {/* ข้อความขวา: ชื่อ - นามสกุล (ขีดเส้นใต้) และ ข้อมูลต่างๆของหมอ */}
+              <div className="flex-1 min-w-0 flex flex-col justify-center">
+                <h3 className="text-base sm:text-lg font-black text-[#0B2B2B] underline underline-offset-4 decoration-2 decoration-[#0B2B2B] leading-tight">
+                  <u>{activePlan?.therapistName || 'กภ. ธนากร วงศ์สวัสดิ์'}</u>
+                </h3>
+                <p className="text-xs sm:text-sm font-bold text-[#14532D] mt-1">
+                  ข้อมูลต่างๆของหมอ
+                </p>
+                <div className="mt-1 text-[11px] sm:text-xs text-slate-800 leading-snug">
+                  <span>วุฒิบัตร ภก.12458 • เวชศาสตร์ฟื้นฟู</span>
+                  <p className="text-[10px] text-slate-700 mt-0.5 line-clamp-2">
+                    {activePlan?.clinicalNotes || 'เน้นเพิ่มองศาการยกแขนอย่างนุ่มนวล หลีกเลี่ยงการยกกระตุก'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* แถบล่างสุด: นับถอยหลัง 5 วินาที & ปุ่มเริ่มทันที */}
+            <div className="w-full mt-2 flex flex-col items-center">
               <div className="text-xs text-slate-600 font-semibold mb-2 flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-emerald-600 animate-spin" />
-                <span>จะเริ่มฝึกอัตโนมัติในอีก <b className="font-mono text-emerald-800 text-sm">{step6Countdown}</b> วินาที</span>
+                <span>เริ่ม{selectedTherapyType === 'physio' ? 'กายภาพบำบัด' : 'กายภาพมินิเกม'}อัตโนมัติในอีก <b className="font-mono text-emerald-800 text-sm">{step6Countdown}</b> วินาที</span>
               </div>
 
               <button
-                onClick={handleProceedToExercise}
+                onClick={() => handleProceedToExercise(selectedTherapyType)}
                 className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#6FD67F] via-[#22c55e] to-[#1E8A4C] text-white font-extrabold text-base shadow-lg hover:shadow-xl active:scale-95 transition flex items-center justify-center gap-2 cursor-pointer"
                 id="btnStartWorkoutNow"
               >
                 <Play className="w-5 h-5 fill-white" />
-                <span>🚀 เริ่มฝึกกายภาพทันที</span>
+                <span>🚀 เริ่มต้นโปรแกรม ({selectedTherapyType === 'physio' ? 'กายภาพบำบัด' : 'กายภาพมินิเกม'})</span>
               </button>
             </div>
+
           </div>
         )}
 
