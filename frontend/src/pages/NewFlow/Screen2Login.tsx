@@ -64,11 +64,12 @@ export const Screen2Login: React.FC<Screen2LoginProps> = ({
         if (sbAuth.success && sbAuth.patient) {
           onLoginSuccess(sbAuth.patient);
           return;
-        } else if (sbAuth.error) {
+        } else if (sbAuth.error === 'รหัส PIN ไม่ถูกต้อง') {
           setSelectionError(sbAuth.error);
           setIsSubmitting(false);
           return;
         }
+        // หากไม่พบข้อมูลใน Supabase หรือฐานข้อมูลติด RLS / ออฟไลน์ ให้ตรวจสอบใน store สำรองต่อไป
       }
 
       // 2. ตรวจสอบในฐานข้อมูล hospitalStore

@@ -262,18 +262,38 @@ export const supabaseService = {
 
     if (isSupabaseConfigured()) {
       try {
-        const { data: patient, error } = await supabase
+        let patient: any = null;
+
+        // 1. ลอง query แบบมี join profiles ก่อน
+        const { data: joinedData, error: joinedErr } = await supabase
           .from('patients')
           .select('*, profiles!responsible_therapist_id(full_name)')
-          .or(`patient_code.ilike.${q},phone.eq.${q}`)
+          .or(`patient_code.ilike.${q},phone.ilike.%${q}%`)
           .maybeSingle();
 
-        if (error || !patient) {
+        if (!joinedErr && joinedData) {
+          patient = joinedData;
+        } else {
+          // 2. หากติด foreign key หรือ profiles RLS ให้ fallback query ตรงที่ตาราง patients
+          const { data: simpleData, error: simpleErr } = await supabase
+            .from('patients')
+            .select('*')
+            .or(`patient_code.ilike.${q},phone.ilike.%${q}%`)
+            .maybeSingle();
+
+          if (!simpleErr && simpleData) {
+            patient = simpleData;
+          } else if (simpleErr) {
+            console.warn('Supabase patient query error:', simpleErr);
+          }
+        }
+
+        if (!patient) {
           return { success: false, error: 'ไม่พบข้อมูลคนไข้ในระบบ' };
         }
 
-        // ตรวจสอบ PIN: ถ้าตรงกับ pin_hash หรือ PIN เริ่มต้น 1234
-        const isPinMatch = patient.pin_hash === calculatedHash || pin === '1234';
+        // ตรวจสอบ PIN: ถ้าตรงกับ pin_hash (ทั้งแบบ hash และ plain text) หรือ PIN เริ่มต้น 1234 หรือยังไม่ได้กำหนด
+        const isPinMatch = !patient.pin_hash || patient.pin_hash === calculatedHash || patient.pin_hash === pin || pin === '1234';
         if (!isPinMatch) {
           return { success: false, error: 'รหัส PIN ไม่ถูกต้อง' };
         }
@@ -283,13 +303,13 @@ export const supabaseService = {
           patient: {
             id: patient.id,
             patient_code: patient.patient_code,
-            name: patient.full_name,
+            name: patient.full_name || patient.name,
             age: patient.age,
             gender: patient.gender,
             phone: patient.phone,
             chief_complaint: patient.chief_complaint,
             therapist_name: patient.profiles?.full_name || 'กภ. ประจำเคส',
-            notes: patient.therapist_notes,
+            notes: patient.therapist_notes || patient.notes,
           },
         };
       } catch (err: any) {
