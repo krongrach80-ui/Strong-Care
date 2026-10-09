@@ -23,6 +23,8 @@ import {
   Play,
   Activity,
   ChevronRight,
+  ChevronLeft,
+  Menu,
   Phone,
   FileText,
   HeartPulse,
@@ -204,6 +206,9 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
 
   // Reception Onboarding Modal
   const [isReceptionOpen, setIsReceptionOpen] = useState<boolean>(false);
+
+  // Responsive Collapsible Sidebar state (optimizes screen space on portrait/vertical kiosks)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
   // =========================================================================
   // 1. STATE FOR USER MANAGEMENT (Tab 1: users)
@@ -748,25 +753,44 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
       {/* ==================================================================== */}
       {/* 1. LEFT SIDEBAR (Medical Emerald Theme)                              */}
       {/* ==================================================================== */}
-      <aside className="w-64 sm:w-72 bg-[#0F2F2B] text-white flex flex-col justify-between p-4 sm:p-5 flex-shrink-0 shadow-2xl">
-        <div>
-          {/* Brand Logo & Role Title */}
-          <div className="flex items-center gap-3 px-2 py-3 mb-4">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 text-[#4AE387] flex items-center justify-center shadow-lg">
-              <HeartPulse className="w-6 h-6 text-[#4AE387]" />
-            </div>
-            <div>
-              <div className="font-extrabold text-base tracking-tight leading-tight text-white">
-                STRONG CARE
+      {/* ==================================================================== */}
+      {/* 1. LEFT SIDEBAR (Medical Emerald Theme)                              */}
+      {/* ==================================================================== */}
+      <aside
+        className={`${
+          isSidebarCollapsed ? 'w-16 sm:w-18 p-2.5 items-center' : 'w-56 sm:w-60 p-3.5 sm:p-4'
+        } bg-[#0F2F2B] text-white flex flex-col justify-between flex-shrink-0 shadow-2xl transition-all duration-200 z-30 select-none`}
+      >
+        <div className="w-full">
+          {/* Brand Logo & Collapse Toggle */}
+          <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center flex-col gap-2' : 'justify-between'} py-1.5 mb-3 border-b border-emerald-900/60`}>
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-[#4AE387] flex items-center justify-center shadow-md flex-shrink-0">
+                <HeartPulse className="w-4 h-4 text-[#4AE387]" />
               </div>
-              <div className="text-[11px] text-emerald-300/90 font-medium mt-0.5">
-                {currentRole === 'admin' ? 'แดชบอร์ด แอดมินใหญ่ (Admin)' : 'แดชบอร์ด นักกายภาพ (PT)'}
-              </div>
+              {!isSidebarCollapsed && (
+                <div className="min-w-0">
+                  <div className="font-extrabold text-sm tracking-tight leading-tight text-white truncate">
+                    STRONG CARE
+                  </div>
+                  <div className="text-[10px] text-emerald-300/90 font-medium truncate">
+                    {currentRole === 'admin' ? 'แอดมิน (Admin)' : 'นักกายภาพ (PT)'}
+                  </div>
+                </div>
+              )}
             </div>
+
+            <button
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              className="p-1 rounded-lg text-emerald-300 hover:text-white hover:bg-emerald-900/60 transition cursor-pointer flex-shrink-0"
+              title={isSidebarCollapsed ? 'ขยายเมนู' : 'ย่อเมนูเพื่อเพิ่มพื้นที่'}
+            >
+              {isSidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+            </button>
           </div>
 
           {/* Navigation Menu */}
-          <nav className="space-y-1.5" aria-label="เมนูระบบบริหารจัดการ">
+          <nav className="space-y-1" aria-label="เมนูระบบบริหารจัดการ">
             {visibleSidebarItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -774,14 +798,17 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl font-semibold text-xs sm:text-sm transition-all text-left cursor-pointer ${
+                  title={item.label}
+                  className={`w-full flex items-center ${
+                    isSidebarCollapsed ? 'justify-center p-2.5' : 'gap-2.5 px-3 py-2'
+                  } rounded-xl font-semibold text-xs transition-all text-left cursor-pointer ${
                     isActive
                       ? 'bg-[#10B981] text-[#0F2F2B] font-extrabold shadow-md shadow-emerald-500/30'
                       : 'text-emerald-100/75 hover:bg-emerald-950/60 hover:text-white'
                   }`}
                 >
                   <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-[#0F2F2B]' : 'text-emerald-300'}`} />
-                  <span className="truncate">{item.label}</span>
+                  {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
                 </button>
               );
             })}
@@ -789,27 +816,34 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
         </div>
 
         {/* Bottom Sidebar Info & Logout */}
-        <div className="pt-4 border-t border-emerald-900/60 space-y-2">
-          <div className="px-3 py-2 rounded-2xl bg-emerald-950/40 border border-emerald-800/40 text-[11px] text-emerald-300/80">
-            <div>ฐานข้อมูล: <span className={isSupabaseConnected ? "text-[#4AE387] font-bold" : "text-amber-400 font-bold"}>{isSupabaseConnected ? "Supabase Cloud 🟢" : "Local Fallback 🟡"}</span></div>
-            <div>บทบาท: <span className="text-white font-bold">{currentRole === 'admin' ? 'แอดมินใหญ่ (6 หน้า)' : 'นักกายภาพ (4 หน้า)'}</span></div>
-            <div className="text-[10px] text-emerald-400/80 truncate mt-0.5">ผู้ใช้: {currentUser?.name}</div>
-          </div>
+        <div className="pt-3 border-t border-emerald-900/60 space-y-1.5 w-full">
+          {!isSidebarCollapsed && (
+            <div className="px-2.5 py-1.5 rounded-xl bg-emerald-950/40 border border-emerald-800/40 text-[10px] text-emerald-300/80">
+              <div className="truncate">ฐานข้อมูล: <span className={isSupabaseConnected ? "text-[#4AE387] font-bold" : "text-amber-400 font-bold"}>{isSupabaseConnected ? "Cloud 🟢" : "Local 🟡"}</span></div>
+              <div className="text-[10px] text-emerald-400/80 truncate">ผู้ใช้: {currentUser?.name?.split(' ')[0] || currentUser?.username}</div>
+            </div>
+          )}
 
           <button
             onClick={handleStaffLogout}
-            className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-rose-950/40 border border-rose-800/50 text-rose-200 text-xs sm:text-sm font-semibold hover:bg-rose-900/60 hover:text-white transition active:scale-95 cursor-pointer"
+            title="ออกจากระบบบุคลากร"
+            className={`w-full flex items-center ${
+              isSidebarCollapsed ? 'justify-center p-2' : 'gap-2 px-3 py-2'
+            } rounded-xl bg-rose-950/40 border border-rose-800/50 text-rose-200 text-xs font-semibold hover:bg-rose-900/60 hover:text-white transition active:scale-95 cursor-pointer`}
           >
-            <LogOut className="w-4 h-4 text-rose-400" />
-            <span>ออกจากระบบบุคลากร</span>
+            <LogOut className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />
+            {!isSidebarCollapsed && <span>ออกจากระบบ</span>}
           </button>
 
           <button
             onClick={onClose}
-            className="w-full flex items-center gap-2.5 px-4 py-2 rounded-2xl border border-emerald-800/60 text-emerald-300/80 text-xs font-medium hover:bg-emerald-900/50 hover:text-white transition active:scale-95 cursor-pointer"
+            title="กลับหน้าหลักตู้คนไข้"
+            className={`w-full flex items-center ${
+              isSidebarCollapsed ? 'justify-center p-2' : 'gap-2 px-3 py-1.5'
+            } rounded-xl border border-emerald-800/60 text-emerald-300/80 text-[11px] font-medium hover:bg-emerald-900/50 hover:text-white transition active:scale-95 cursor-pointer`}
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>กลับหน้าหลักตู้คนไข้</span>
+            <ArrowLeft className="w-3.5 h-3.5 flex-shrink-0" />
+            {!isSidebarCollapsed && <span>กลับหน้าตู้ Kiosk</span>}
           </button>
         </div>
       </aside>
@@ -819,61 +853,71 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
       {/* ==================================================================== */}
       <main className="flex-1 flex flex-col h-full overflow-hidden bg-[#F4FBF7]">
         {/* Top Header Bar */}
-        <header className="h-20 px-6 sm:px-8 border-b border-emerald-100 bg-white/80 backdrop-blur-md flex items-center justify-between flex-shrink-0">
-          {/* Header Title with Green Bar */}
-          <div>
-            <h1 className="text-xl sm:text-2xl font-extrabold text-[#0F2F2B] tracking-tight">
-              {activeTab === 'users' && 'จัดการผู้ใช้งาน (User Management)'}
-              {activeTab === 'patients' && 'ข้อมูลคนไข้ (Patient Data)'}
-              {activeTab === 'therapists' && 'ข้อมูลนักกายภาพ (Physiotherapist Data)'}
-              {activeTab === 'exercises' && 'ท่าทางกายภาพ (Exercise Library)'}
-              {activeTab === 'logs' && 'ประวัติการใช้งาน (Usage / Activity Log)'}
-              {activeTab === 'settings' && 'ตั้งค่าระบบ (System Settings)'}
-            </h1>
-            <div className="w-20 sm:w-28 h-1 rounded-full bg-[#10B981] mt-1" />
+        <header className="h-16 px-3.5 sm:px-6 border-b border-emerald-100 bg-white/90 backdrop-blur-md flex items-center justify-between flex-shrink-0 gap-2">
+          {/* Header Title with Mobile Collapse Toggle */}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <button
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              className="p-1.5 rounded-xl bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/80 transition cursor-pointer flex-shrink-0"
+              title={isSidebarCollapsed ? 'ขยายเมนู' : 'ย่อเมนู'}
+            >
+              <Menu className="w-4 h-4" />
+            </button>
+            <div className="min-w-0">
+              <h1 className="text-sm sm:text-base lg:text-lg font-extrabold text-[#0F2F2B] tracking-tight truncate flex items-center gap-1.5">
+                <span>
+                  {activeTab === 'users' && 'จัดการผู้ใช้งาน'}
+                  {activeTab === 'patients' && 'ข้อมูลคนไข้'}
+                  {activeTab === 'therapists' && 'ข้อมูลนักกายภาพ'}
+                  {activeTab === 'exercises' && 'ท่าทางกายภาพ'}
+                  {activeTab === 'logs' && 'ประวัติการใช้งาน'}
+                  {activeTab === 'settings' && 'ตั้งค่าระบบ'}
+                </span>
+                <span className="hidden xl:inline text-xs font-semibold text-slate-400">
+                  {activeTab === 'users' && '(User Management)'}
+                  {activeTab === 'patients' && '(Patient Data)'}
+                  {activeTab === 'therapists' && '(Physiotherapist Data)'}
+                  {activeTab === 'exercises' && '(Exercise Library)'}
+                  {activeTab === 'logs' && '(Audit Log)'}
+                  {activeTab === 'settings' && '(Settings)'}
+                </span>
+              </h1>
+              <div className="w-10 sm:w-16 h-1 rounded-full bg-[#10B981] mt-0.5" />
+            </div>
           </div>
 
           {/* Right Header Controls */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {/* Supabase Connection Status Indicator */}
-            <div className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${isSupabaseConnected ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-amber-50 text-amber-800 border-amber-300'}`}>
+            <div className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${isSupabaseConnected ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-amber-50 text-amber-800 border-amber-300'}`}>
               <span className={`w-2 h-2 rounded-full ${isSupabaseConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-              <span>{isSupabaseConnected ? 'Supabase DB เชื่อมต่อแล้ว 🟢' : 'Supabase Local Fallback 🟡'}</span>
+              <span>{isSupabaseConnected ? 'Supabase 🟢' : 'Offline 🟡'}</span>
             </div>
 
             {/* Quick Reception Action button */}
             <button
               onClick={() => setIsReceptionOpen(true)}
-              className="hidden md:inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-[#10B981] to-[#059669] text-white text-xs font-bold shadow-md shadow-emerald-600/20 hover:opacity-95 transition cursor-pointer"
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-[#10B981] to-[#059669] text-white text-xs font-bold shadow-xs hover:opacity-95 transition cursor-pointer"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>+ ต้อนรับ & สแกนหน้าคนไข้</span>
+              <span>+ ต้อนรับ & สแกนหน้า</span>
             </button>
 
             {/* User Profile Badge (Real user + role) */}
-            <div className="flex items-center gap-2.5 pl-2 border-l border-emerald-200">
+            <div className="flex items-center gap-2 pl-2 border-l border-emerald-200">
               <div
-                className={`w-9 h-9 rounded-full font-extrabold flex items-center justify-center text-sm shadow-sm ${
+                className={`w-8 h-8 rounded-full font-extrabold flex items-center justify-center text-xs shadow-xs flex-shrink-0 ${
                   currentRole === 'admin' ? 'bg-[#0F2F2B] text-amber-300' : 'bg-[#10B981] text-white'
                 }`}
               >
                 {currentUser?.name?.charAt(0) || (currentRole === 'admin' ? 'ผ' : 'ธ')}
               </div>
-              <div className="hidden sm:block text-left">
-                <div className="text-xs font-bold text-[#0F2F2B] leading-tight flex items-center gap-1.5">
-                  <span>{currentUser?.name || (currentRole === 'admin' ? 'นพ. วรชัย อมรเวช' : 'กภ. ธนากร วงศ์สวัสดิ์')}</span>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                      currentRole === 'admin'
-                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                        : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                    }`}
-                  >
-                    {currentRole === 'admin' ? 'Admin' : 'นักกายภาพ'}
-                  </span>
+              <div className="hidden sm:block text-left max-w-[110px] lg:max-w-[160px]">
+                <div className="text-xs font-bold text-[#0F2F2B] leading-tight truncate">
+                  {currentUser?.name || (currentRole === 'admin' ? 'นพ. วรชัย' : 'กภ. ธนากร')}
                 </div>
-                <div className="text-[10px] text-slate-500 font-mono">
-                  {currentUser?.code || (currentRole === 'admin' ? 'ADM-01' : 'T-003')} • {currentUser?.username}
+                <div className="text-[10px] text-slate-500 font-mono truncate">
+                  {currentUser?.code || (currentRole === 'admin' ? 'ADM-01' : 'T-003')}
                 </div>
               </div>
             </div>
@@ -881,35 +925,35 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
             {/* Logout Button */}
             <button
               onClick={handleStaffLogout}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition cursor-pointer"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition cursor-pointer"
               title="ออกจากระบบบุคลากร"
             >
               <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">ออกจากระบบ</span>
+              <span className="hidden sm:inline">ออก</span>
             </button>
           </div>
         </header>
 
         {/* In-app Toast Banner */}
         {toast && (
-          <div className="mx-6 sm:mx-8 mt-3 p-3 rounded-2xl bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center gap-2 animate-fadeIn shadow-sm">
+          <div className="mx-3.5 sm:mx-6 mt-2.5 p-2.5 rounded-xl bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center gap-2 animate-fadeIn shadow-2xs">
             <CheckCircle2 className="w-4 h-4 text-emerald-700 flex-shrink-0" />
             <span>{toast}</span>
           </div>
         )}
 
         {/* Content Viewport */}
-        <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6">
+        <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 lg:p-6 space-y-4 sm:space-y-5">
           {/* ================================================================== */}
           {/* PAGE 1: จัดการผู้ใช้งาน (User Management)                            */}
           {/* ================================================================== */}
           {activeTab === 'users' && (
-            <div className="space-y-6 animate-fadeIn">
+            <div className="space-y-4 sm:space-y-5 animate-fadeIn">
               {/* Permission Banner */}
-              <div className="p-3.5 rounded-2xl bg-white border border-emerald-200 shadow-sm flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
+              <div className="p-3 rounded-2xl bg-white border border-emerald-200 shadow-2xs flex items-center justify-between text-xs gap-2 flex-wrap">
+                <div className="flex items-center gap-2 min-w-0">
                   <Shield className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                  <span>
+                  <span className="leading-snug">
                     สิทธิ์ปัจจุบัน ({currentRole === 'admin' ? 'แอดมินใหญ่' : 'นักกายภาพ'}):{' '}
                     <strong>
                       {currentRole === 'admin'
@@ -918,66 +962,66 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                     </strong>
                   </span>
                 </div>
-                <span className="font-mono text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">
-                  {users.length} บัญชีในระบบ
+                <span className="font-mono text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full font-bold flex-shrink-0 border border-emerald-200">
+                  {users.length} บัญชี
                 </span>
               </div>
 
               {/* Top Stats Cards */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white rounded-3xl p-5 border border-emerald-100 shadow-sm flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
-                    <Users className="w-6 h-6" />
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
+                <div className="bg-white rounded-2xl p-3 sm:p-3.5 border border-emerald-100 shadow-2xs flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                    <Users className="w-5 h-5" />
                   </div>
-                  <div>
-                    <div className="text-2xl sm:text-3xl font-extrabold text-[#0F2F2B] leading-none">
+                  <div className="min-w-0">
+                    <div className="text-xl sm:text-2xl font-black text-[#0F2F2B] leading-none">
                       {users.length}
                     </div>
-                    <div className="text-xs text-slate-500 font-semibold mt-1">ผู้ใช้งานทั้งหมด</div>
+                    <div className="text-[11px] text-slate-500 font-semibold mt-1 truncate">ผู้ใช้งานทั้งหมด</div>
                   </div>
                 </div>
 
-                <div className="bg-white rounded-3xl p-5 border border-emerald-100 shadow-sm flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
-                    <User className="w-6 h-6" />
+                <div className="bg-white rounded-2xl p-3 sm:p-3.5 border border-emerald-100 shadow-2xs flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                    <User className="w-5 h-5" />
                   </div>
-                  <div>
-                    <div className="text-2xl sm:text-3xl font-extrabold text-[#0F2F2B] leading-none">
+                  <div className="min-w-0">
+                    <div className="text-xl sm:text-2xl font-black text-[#0F2F2B] leading-none">
                       {users.filter((u) => u.role === 'patient').length}
                     </div>
-                    <div className="text-xs text-slate-500 font-semibold mt-1">คนไข้</div>
+                    <div className="text-[11px] text-slate-500 font-semibold mt-1 truncate">คนไข้</div>
                   </div>
                 </div>
 
-                <div className="bg-white rounded-3xl p-5 border border-emerald-100 shadow-sm flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
-                    <Stethoscope className="w-6 h-6" />
+                <div className="bg-white rounded-2xl p-3 sm:p-3.5 border border-emerald-100 shadow-2xs flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                    <Stethoscope className="w-5 h-5" />
                   </div>
-                  <div>
-                    <div className="text-2xl sm:text-3xl font-extrabold text-[#0F2F2B] leading-none">
+                  <div className="min-w-0">
+                    <div className="text-xl sm:text-2xl font-black text-[#0F2F2B] leading-none">
                       {users.filter((u) => u.role === 'therapist').length}
                     </div>
-                    <div className="text-xs text-slate-500 font-semibold mt-1">นักกายภาพบำบัด</div>
+                    <div className="text-[11px] text-slate-500 font-semibold mt-1 truncate">นักกายภาพ</div>
                   </div>
                 </div>
 
-                <div className="bg-white rounded-3xl p-5 border border-emerald-100 shadow-sm flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
-                    <Shield className="w-6 h-6" />
+                <div className="bg-white rounded-2xl p-3 sm:p-3.5 border border-emerald-100 shadow-2xs flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                    <Shield className="w-5 h-5" />
                   </div>
-                  <div>
-                    <div className="text-2xl sm:text-3xl font-extrabold text-[#0F2F2B] leading-none">
+                  <div className="min-w-0">
+                    <div className="text-xl sm:text-2xl font-black text-[#0F2F2B] leading-none">
                       {users.filter((u) => u.role === 'admin').length}
                     </div>
-                    <div className="text-xs text-slate-500 font-semibold mt-1">ผู้ดูแลระบบ (Admin)</div>
+                    <div className="text-[11px] text-slate-500 font-semibold mt-1 truncate">แอดมิน (Admin)</div>
                   </div>
                 </div>
               </div>
 
               {/* Search, Filter & Add Button */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="w-full sm:w-80 relative">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 transform -translate-y-1/2" />
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                <div className="w-full sm:w-64 lg:w-72 relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3.5 top-1/2 transform -translate-y-1/2" />
                   <input
                     type="text"
                     value={userSearch}
@@ -985,20 +1029,20 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                       setUserSearch(e.target.value);
                       setUserPage(1);
                     }}
-                    placeholder="ค้นหาชื่อ, username, รหัส"
-                    className="w-full pl-11 pr-4 py-2.5 rounded-full bg-white border border-emerald-200/90 text-xs sm:text-sm font-semibold text-[#0F2F2B] placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#10B981]"
+                    placeholder="ค้นหาชื่อ, username, รหัส..."
+                    className="w-full pl-9 pr-3.5 py-1.5 sm:py-2 rounded-full bg-white border border-emerald-200/90 text-xs font-semibold text-[#0F2F2B] placeholder:text-slate-400 shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#10B981]"
                   />
                 </div>
 
-                <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-                  <div className="flex items-center gap-1.5 p-1 rounded-full bg-emerald-50 border border-emerald-200/80">
+                <div className="flex items-center gap-2 justify-between sm:justify-end flex-wrap">
+                  <div className="flex items-center gap-1 p-1 rounded-full bg-emerald-50/80 border border-emerald-200/80">
                     <button
                       onClick={() => {
                         setUserRoleFilter('all');
                         setUserPage(1);
                       }}
-                      className={`text-xs font-bold px-3 py-1.5 rounded-full transition cursor-pointer ${
-                        userRoleFilter === 'all' ? 'bg-[#10B981] text-white shadow-sm' : 'text-slate-600 hover:text-emerald-800'
+                      className={`text-xs font-bold px-2.5 sm:px-3 py-1 rounded-full transition cursor-pointer ${
+                        userRoleFilter === 'all' ? 'bg-[#10B981] text-white shadow-xs' : 'text-slate-600 hover:text-emerald-800'
                       }`}
                     >
                       ทั้งหมด
@@ -1008,8 +1052,8 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                         setUserRoleFilter('patient');
                         setUserPage(1);
                       }}
-                      className={`text-xs font-bold px-3 py-1.5 rounded-full transition cursor-pointer ${
-                        userRoleFilter === 'patient' ? 'bg-[#10B981] text-white shadow-sm' : 'text-slate-600 hover:text-emerald-800'
+                      className={`text-xs font-bold px-2.5 sm:px-3 py-1 rounded-full transition cursor-pointer ${
+                        userRoleFilter === 'patient' ? 'bg-[#10B981] text-white shadow-xs' : 'text-slate-600 hover:text-emerald-800'
                       }`}
                     >
                       คนไข้
@@ -1019,8 +1063,8 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                         setUserRoleFilter('therapist');
                         setUserPage(1);
                       }}
-                      className={`text-xs font-bold px-3 py-1.5 rounded-full transition cursor-pointer ${
-                        userRoleFilter === 'therapist' ? 'bg-[#10B981] text-white shadow-sm' : 'text-slate-600 hover:text-emerald-800'
+                      className={`text-xs font-bold px-2.5 sm:px-3 py-1 rounded-full transition cursor-pointer ${
+                        userRoleFilter === 'therapist' ? 'bg-[#10B981] text-white shadow-xs' : 'text-slate-600 hover:text-emerald-800'
                       }`}
                     >
                       นักกายภาพ
@@ -1029,60 +1073,42 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
 
                   <button
                     onClick={() => setIsAddUserModalOpen(true)}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#10B981] text-white text-xs sm:text-sm font-bold shadow-md shadow-emerald-500/20 hover:bg-emerald-600 transition active:scale-95 cursor-pointer"
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 sm:py-2 rounded-full bg-[#10B981] text-white text-xs font-bold shadow-xs hover:bg-emerald-600 transition active:scale-95 cursor-pointer whitespace-nowrap"
                   >
-                    <Plus className="w-4 h-4" />
-                    <span>{currentRole === 'admin' ? 'เพิ่มบัญชีใหม่' : 'เพิ่มบัญชีคนไข้'}</span>
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{currentRole === 'admin' ? 'เพิ่มบัญชีใหม่' : 'เพิ่มคนไข้'}</span>
                   </button>
                 </div>
               </div>
 
               {/* Table of Users */}
-              <div className="bg-white rounded-3xl border border-emerald-100 shadow-sm overflow-hidden">
+              <div className="bg-white rounded-2xl border border-emerald-100 shadow-xs overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs sm:text-sm">
+                  <table className="w-full text-left text-xs sm:text-sm border-collapse">
                     <thead>
-                      <tr className="border-b border-emerald-100 text-slate-500 text-[11px] font-bold uppercase tracking-wider bg-emerald-50/40">
-                        <th className="py-4 px-6">บัญชี / ชื่อผู้ใช้งาน</th>
-                        <th className="py-4 px-6">รหัสผ่าน (Password)</th>
-                        <th className="py-4 px-6">สถานะ / บทบาท</th>
-                        <th className="py-4 px-6">หมอที่รับผิดชอบ</th>
-                        <th className="py-4 px-6 text-right">การจัดการ (Actions)</th>
+                      <tr className="border-b border-emerald-100 text-slate-600 text-[11px] font-bold uppercase tracking-wider bg-emerald-50/70">
+                        <th className="py-2.5 px-3 sm:px-4 sticky left-0 bg-emerald-50 z-20 shadow-xs border-r border-emerald-100/70 min-w-[160px] sm:min-w-[190px]">
+                          บัญชี / ชื่อผู้ใช้งาน
+                        </th>
+                        <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap min-w-[125px]">รหัสผ่าน (Password)</th>
+                        <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap min-w-[105px]">สถานะ / บทบาท</th>
+                        <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap min-w-[130px]">หมอที่รับผิดชอบ</th>
+                        <th className="py-2.5 px-3 sm:px-4 text-right whitespace-nowrap min-w-[95px]">การจัดการ (Actions)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-emerald-50">
                       {paginatedUsers.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="py-12 text-center">
+                          <td colSpan={5} className="py-10 text-center">
                             <div className="flex flex-col items-center justify-center space-y-2">
-                              <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
-                                <Search className="w-6 h-6" />
+                              <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
+                                <Search className="w-5 h-5" />
                               </div>
-                              <div className="font-bold text-sm text-slate-600">
+                              <div className="font-bold text-xs sm:text-sm text-slate-600">
                                 ไม่พบข้อมูลผู้ใช้งานที่ตรงตามเงื่อนไข
                               </div>
-                              <div className="text-xs text-slate-400">
+                              <div className="text-[11px] text-slate-400">
                                 ลองเปลี่ยนคำค้นหา หรือรีเซ็ตตัวกรองเพื่อดูรายชื่อทั้งหมด
-                              </div>
-                              <div className="flex items-center gap-2 pt-2">
-                                {(userSearch || userRoleFilter !== 'all') && (
-                                  <button
-                                    onClick={() => {
-                                      setUserSearch('');
-                                      setUserRoleFilter('all');
-                                      setUserPage(1);
-                                    }}
-                                    className="px-4 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer"
-                                  >
-                                    ล้างการค้นหา
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => setIsAddUserModalOpen(true)}
-                                  className="px-4 py-1.5 rounded-full bg-[#10B981] hover:bg-emerald-600 text-white text-xs font-bold shadow-sm transition cursor-pointer"
-                                >
-                                  {currentRole === 'admin' ? '+ เพิ่มบัญชีใหม่' : '+ เพิ่มบัญชีคนไข้'}
-                                </button>
                               </div>
                             </div>
                           </td>
@@ -1093,12 +1119,12 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                           const canEdit = canEditUser(user);
                           const canDelete = canDeleteUser(user);
                           return (
-                            <tr key={user.id} className="hover:bg-emerald-50/40 transition">
-                              {/* 1. Account name & username */}
-                              <td className="py-4 px-6">
-                                <div className="flex items-center gap-3">
+                            <tr key={user.id} className="hover:bg-emerald-50/40 transition group">
+                              {/* 1. Account name & username (STICKY FIRST COLUMN) */}
+                              <td className="py-2.5 px-3 sm:px-4 sticky left-0 bg-white group-hover:bg-emerald-50/60 z-10 shadow-xs border-r border-emerald-100/60 min-w-[160px] sm:min-w-[190px]">
+                                <div className="flex items-center gap-2.5">
                                   <div
-                                    className={`w-9 h-9 rounded-full font-bold flex items-center justify-center text-sm shadow-sm ${
+                                    className={`w-8 h-8 rounded-full font-bold flex items-center justify-center text-xs shadow-2xs flex-shrink-0 ${
                                       user.role === 'patient'
                                         ? 'bg-[#10B981] text-white'
                                         : user.role === 'therapist'
@@ -1108,32 +1134,32 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                                   >
                                     {user.name.charAt(user.name.startsWith('นาย') || user.name.startsWith('นาง') ? 3 : 0) || 'ผ'}
                                   </div>
-                                  <div>
-                                    <div className="font-bold text-[#0F2F2B] leading-tight">{user.name}</div>
-                                    <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                                      username: <strong className="text-emerald-800">{user.username}</strong> ({user.code})
+                                  <div className="min-w-0">
+                                    <div className="font-bold text-[#0F2F2B] leading-tight text-xs sm:text-sm truncate max-w-[130px] sm:max-w-[170px]">{user.name}</div>
+                                    <div className="text-[10px] text-slate-500 font-mono truncate max-w-[130px] sm:max-w-[170px] mt-0.5">
+                                      <strong className="text-emerald-800">{user.username}</strong> ({user.code})
                                     </div>
                                   </div>
                                 </div>
                               </td>
 
                               {/* 2. Password with eye toggle & edit PIN */}
-                              <td className="py-4 px-6">
-                                <div className="inline-flex items-center gap-2 bg-stone-50 px-3 py-1.5 rounded-2xl border border-stone-200">
-                                  <span className="font-mono font-bold text-xs text-slate-700">
+                              <td className="py-2.5 px-3 sm:px-4 whitespace-nowrap">
+                                <div className="inline-flex items-center gap-1.5 bg-stone-50 px-2.5 py-1 rounded-xl border border-stone-200">
+                                  <span className="font-mono font-bold text-xs text-slate-700 tracking-wider">
                                     {isPwRevealed ? user.password || '1234' : '••••••••'}
                                   </span>
                                   <button
                                     onClick={() => togglePasswordVisibility(user.id)}
                                     title={isPwRevealed ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
-                                    className="text-slate-400 hover:text-emerald-700 transition cursor-pointer"
+                                    className="text-slate-400 hover:text-emerald-700 transition cursor-pointer p-0.5"
                                   >
                                     {isPwRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                                   </button>
                                   <button
                                     onClick={() => setEditingPasswordUser(user)}
                                     title="เปลี่ยนรหัสผ่าน / PIN"
-                                    className="text-[11px] font-bold text-emerald-700 hover:underline pl-1 cursor-pointer"
+                                    className="text-[11px] font-bold text-emerald-700 hover:underline pl-0.5 cursor-pointer"
                                   >
                                     เปลี่ยน
                                   </button>
@@ -1141,38 +1167,37 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                               </td>
 
                               {/* 3. Role & Status */}
-                              <td className="py-4 px-6">
-                                <div className="flex items-center gap-2">
+                              <td className="py-2.5 px-3 sm:px-4 whitespace-nowrap">
+                                <div className="inline-flex items-center gap-1.5">
                                   {user.role === 'patient' && (
-                                    <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs">
+                                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs whitespace-nowrap">
                                       คนไข้
                                     </span>
                                   )}
                                   {user.role === 'therapist' && (
-                                    <span className="px-3 py-1 rounded-full bg-[#0F2F2B] text-white font-bold text-xs">
+                                    <span className="px-2.5 py-0.5 rounded-full bg-[#0F2F2B] text-white font-bold text-xs whitespace-nowrap">
                                       นักกายภาพ
                                     </span>
                                   )}
                                   {user.role === 'admin' && (
-                                    <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs">
+                                    <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs whitespace-nowrap">
                                       แอดมินใหญ่
                                     </span>
                                   )}
-                                  <span className="w-2 h-2 rounded-full bg-[#10B981]" />
+                                  <span className="w-2 h-2 rounded-full bg-[#10B981] flex-shrink-0" />
                                 </div>
                               </td>
 
                               {/* 4. Responsible Therapist */}
-                              <td className="py-4 px-6">
-                                <span className="text-xs font-semibold text-slate-700">
+                              <td className="py-2.5 px-3 sm:px-4 whitespace-nowrap">
+                                <span className="text-xs font-semibold text-slate-700 block truncate max-w-[140px] whitespace-nowrap">
                                   {user.assignedTherapistName || (user.role === 'patient' ? 'กภ. ธนากร วงศ์สวัสดิ์' : '—')}
                                 </span>
                               </td>
 
                               {/* 5. Actions: Edit Name, Edit Password, Delete Account */}
-                              <td className="py-4 px-6 text-right">
-                                <div className="inline-flex items-center gap-1.5">
-                                  {/* Edit user account */}
+                              <td className="py-2.5 px-3 sm:px-4 text-right whitespace-nowrap">
+                                <div className="inline-flex items-center gap-1 justify-end">
                                   <button
                                     onClick={() => {
                                       if (canEdit) {
@@ -1183,7 +1208,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                                     }}
                                     disabled={!canEdit}
                                     title={canEdit ? 'แก้ไขบัญชี' : 'แก้ไขได้เฉพาะคนไข้ที่ตนเองดูแลเท่านั้น'}
-                                    className={`p-1.5 rounded-full border transition ${
+                                    className={`p-1.5 rounded-lg border transition ${
                                       canEdit
                                         ? 'border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 cursor-pointer'
                                         : 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50'
@@ -1192,7 +1217,6 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                                     <Pencil className="w-3.5 h-3.5" />
                                   </button>
 
-                                  {/* Change password */}
                                   <button
                                     onClick={() => {
                                       if (canEdit) {
@@ -1203,7 +1227,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                                     }}
                                     disabled={!canEdit}
                                     title={canEdit ? 'เปลี่ยนรหัสผ่าน' : 'เปลี่ยนรหัสผ่านได้เฉพาะคนไข้ที่ตนเองดูแลเท่านั้น'}
-                                    className={`p-1.5 rounded-full border transition ${
+                                    className={`p-1.5 rounded-lg border transition ${
                                       canEdit
                                         ? 'border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 cursor-pointer'
                                         : 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50'
@@ -1212,18 +1236,21 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                                     <KeyRound className="w-3.5 h-3.5" />
                                   </button>
 
-                                  {/* Delete user button (Role guarded) */}
                                   <button
                                     onClick={() => {
                                       if (canDelete) {
                                         setDeletingUser(user);
                                       } else {
-                                        showToast('สิทธิ์ไม่เพียงพอ: นักกายภาพสามารถลบได้เฉพาะคนไข้ที่ตนเองดูแลเท่านั้น');
+                                        showToast(
+                                          user.role === 'admin'
+                                            ? 'ไม่สามารถลบบัญชีแอดมินใหญ่ได้'
+                                            : 'คุณสามารถลบได้เฉพาะคนไข้ที่ตนเองดูแล'
+                                        );
                                       }
                                     }}
                                     disabled={!canDelete}
                                     title={canDelete ? 'ลบบัญชีผู้ใช้งาน' : 'ลบได้เฉพาะคนไข้ที่ตนเองดูแลเท่านั้น'}
-                                    className={`p-1.5 rounded-full border transition ${
+                                    className={`p-1.5 rounded-lg border transition ${
                                       canDelete
                                         ? 'border-slate-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 cursor-pointer'
                                         : 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50'
@@ -1892,16 +1919,16 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
               </div>
 
               {/* Activity Log Table */}
-              <div className="bg-white rounded-3xl border border-emerald-100 shadow-sm overflow-hidden">
+              <div className="bg-white rounded-2xl border border-emerald-100 shadow-xs overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
+                  <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="border-b border-emerald-100 text-slate-500 text-[11px] font-bold uppercase tracking-wider bg-emerald-50/40">
-                        <th className="py-3 px-5">วัน-เวลา</th>
-                        <th className="py-3 px-5">ผู้ดำเนินการ</th>
-                        <th className="py-3 px-5">การกระทำ & รายละเอียด</th>
-                        <th className="py-3 px-5">อุปกรณ์ & IP Address</th>
-                        <th className="py-3 px-5 text-right">สิทธิ์แอดมินจัดการ</th>
+                      <tr className="border-b border-emerald-100 text-slate-600 text-[11px] font-bold uppercase tracking-wider bg-emerald-50/70">
+                        <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap">วัน-เวลา</th>
+                        <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap">ผู้ดำเนินการ</th>
+                        <th className="py-2.5 px-3 sm:px-4 min-w-[200px]">การกระทำ & รายละเอียด</th>
+                        <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap">อุปกรณ์ & IP Address</th>
+                        <th className="py-2.5 px-3 sm:px-4 text-right whitespace-nowrap">สิทธิ์แอดมินจัดการ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-emerald-50">
@@ -1912,15 +1939,15 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
 
                         return (
                           <tr key={log.id} className="hover:bg-emerald-50/30 transition">
-                            <td className="py-3 px-5 font-mono text-slate-500 whitespace-nowrap">
+                            <td className="py-2.5 px-3 sm:px-4 font-mono text-slate-500 whitespace-nowrap text-[11px]">
                               {log.timestamp}
                             </td>
-                            <td className="py-3 px-5 whitespace-nowrap">
-                              <div className="font-bold text-[#0F2F2B] flex items-center gap-2">
+                            <td className="py-2.5 px-3 sm:px-4 whitespace-nowrap">
+                              <div className="font-bold text-[#0F2F2B] flex items-center gap-1.5">
                                 <span>{log.userName}</span>
                                 {isKicked && (
-                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold border border-amber-300">
-                                    ถูกเตะออก
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 font-bold border border-amber-300">
+                                    เตะออก
                                   </span>
                                 )}
                               </div>
@@ -1928,7 +1955,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                                 {log.role}
                               </span>
                             </td>
-                            <td className="py-3 px-5">
+                            <td className="py-2.5 px-3 sm:px-4">
                               <div className="font-bold text-emerald-950 flex items-center gap-1.5">
                                 <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-700">
                                   {log.category}
