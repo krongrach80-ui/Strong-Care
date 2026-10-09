@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   LogIn,
   ArrowLeft,
@@ -156,6 +156,56 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [staffAuthError, setStaffAuthError] = useState<string | null>(null);
 
+  // Staff Rate Limit & Lockout (ผิด 5 ครั้ง -> ล็อก 60 วินาที)
+  const [failedAttempts, setFailedAttempts] = useState<number>(0);
+  const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
+  const [lockoutSecondsLeft, setLockoutSecondsLeft] = useState<number>(0);
+
+  // Lockout Countdown Timer
+  useEffect(() => {
+    if (!lockoutUntil) return;
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((lockoutUntil - Date.now()) / 1000));
+      setLockoutSecondsLeft(remaining);
+      if (remaining <= 0) {
+        setLockoutUntil(null);
+        setFailedAttempts(0);
+        setStaffAuthError(null);
+        clearInterval(interval);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lockoutUntil]);
+
+  // Session Idle Timeout (15 นาที = 900,000 ms)
+  const lastActivityRef = useRef<number>(Date.now());
+  useEffect(() => {
+    if (!isStaffAuthenticated) return;
+
+    const handleUserActivity = () => {
+      lastActivityRef.current = Date.now();
+    };
+
+    window.addEventListener('mousemove', handleUserActivity);
+    window.addEventListener('keydown', handleUserActivity);
+    window.addEventListener('click', handleUserActivity);
+
+    const idleChecker = setInterval(() => {
+      const elapsed = Date.now() - lastActivityRef.current;
+      if (elapsed >= 15 * 60 * 1000) {
+        handleStaffLogout();
+        setStaffAuthError('🔒 เซสชันหมดอายุเนื่องจากไม่มีการใช้งานเกิน 15 นาที เพื่อความปลอดภัยของข้อมูลโรงพยาบาล');
+      }
+    }, 30000);
+
+    return () => {
+      window.removeEventListener('mousemove', handleUserActivity);
+      window.removeEventListener('keydown', handleUserActivity);
+      window.removeEventListener('click', handleUserActivity);
+      clearInterval(idleChecker);
+    };
+  }, [isStaffAuthenticated]);
+
   // Toast notification
   const [toast, setToast] = useState<string | null>(null);
   const showToast = (msg: string) => {
@@ -173,9 +223,15 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
     showToast('ออกจากระบบบุคลากรเรียบร้อยแล้ว');
   };
 
-  // Staff Login Submission (Checks real username + password)
+  // Staff Login Submission (Checks real username + password + Rate Limit)
   const handleStaffLogin = async (e?: React.FormEvent, overrideUsername?: string, overridePassword?: string) => {
     if (e) e.preventDefault();
+
+    if (lockoutUntil && Date.now() < lockoutUntil) {
+      setStaffAuthError(`⚠️ ระบบถูกล็อกชั่วคราวเนื่องจากใส่รหัสผิดเกินกำหนด กรุณารออีก ${lockoutSecondsLeft} วินาที`);
+      return;
+    }
+
     const u = (overrideUsername !== undefined ? overrideUsername : staffUsernameInput).trim();
     const p = (overridePassword !== undefined ? overridePassword : staffPasswordInput).trim();
 
@@ -198,12 +254,24 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
         setStaffAuthError(null);
         setStaffUsernameInput('');
         setStaffPasswordInput('');
+        setFailedAttempts(0);
+        setLockoutUntil(null);
+        lastActivityRef.current = Date.now();
         if (result.user.role === 'therapist' && (activeTab === 'logs' || activeTab === 'settings')) {
           setActiveTab('users');
         }
         showToast(`เข้าสู่ระบบสำเร็จ: ยินดีต้อนรับ ${result.user.name} (${result.user.role === 'admin' ? 'แอดมินใหญ่' : 'นักกายภาพบำบัด'})`);
       } else {
-        setStaffAuthError(result.error || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+        const newFails = failedAttempts + 1;
+        setFailedAttempts(newFails);
+        if (newFails >= 5) {
+          const lockTime = Date.now() + 60000;
+          setLockoutUntil(lockTime);
+          setLockoutSecondsLeft(60);
+          setStaffAuthError('⚠️ ป้อนรหัสผิดครบ 5 ครั้ง! ระบบถูกล็อกชั่วคราวเพื่อความปลอดภัย กรุณารอ 60 วินาที');
+        } else {
+          setStaffAuthError(`${result.error || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'} (ใส่ผิดครั้งที่ ${newFails}/5)`);
+        }
       }
     } finally {
       setIsLoggingIn(false);
