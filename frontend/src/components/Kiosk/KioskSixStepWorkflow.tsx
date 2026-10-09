@@ -1174,60 +1174,62 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
           <span className="font-mono font-bold text-[#1E8A4C]">{thaiTimeStr || '00:00:00 น.'}</span>
         </p>
 
-        {/* แถบควบคุมโหมด */}
-        <div className="flex flex-wrap items-center justify-center gap-2 mt-2 z-20">
-          <div className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-900 border border-emerald-300 shadow-sm flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>🟢 ออฟไลน์พร้อมใช้งาน (IndexedDB)</span>
-          </div>
+        {/* แถบควบคุมโหมด: แสดงในทุก Step ยกเว้น Step 4 เพื่อให้หน้าสแกนใบหน้าคลีนและกล้องขยายเต็มที่ */}
+        {currentStep !== 4 && (
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-2 z-20">
+            <div className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-900 border border-emerald-300 shadow-sm flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>🟢 ออฟไลน์พร้อมใช้งาน (IndexedDB)</span>
+            </div>
 
-          {isExplicitDemo && (
+            {isExplicitDemo && (
+              <button
+                onClick={() => {
+                  setIsDemoMode(!isDemoMode);
+                  audioFeedback.playHoldTick();
+                }}
+                className={`px-3 py-1.5 rounded-full text-xs font-black transition shadow flex items-center gap-1.5 cursor-pointer min-h-[38px] ${
+                  isDemoMode
+                    ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200'
+                    : 'bg-emerald-700 text-white border border-emerald-800 shadow-emerald-700/40'
+                }`}
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                <span>โหมดสาธิต (Demo Mode)</span>
+                <span className="text-[10px] bg-amber-200/90 text-amber-950 px-1.5 py-0.5 rounded-md font-bold">อนุญาตข้าม</span>
+              </button>
+            )}
+
             <button
               onClick={() => {
-                setIsDemoMode(!isDemoMode);
+                setSeniorSimpleMode(!seniorSimpleMode);
                 audioFeedback.playHoldTick();
               }}
-              className={`px-3 py-1.5 rounded-full text-xs font-black transition shadow flex items-center gap-1.5 cursor-pointer min-h-[38px] ${
-                isDemoMode
-                  ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200'
-                  : 'bg-emerald-700 text-white border border-emerald-800 shadow-emerald-700/40'
+              className={`px-4 py-2 rounded-full text-xs sm:text-sm font-black transition shadow-sm flex items-center gap-2 cursor-pointer min-h-[44px] ${
+                seniorSimpleMode
+                  ? 'bg-blue-600 text-white border border-blue-700 shadow-blue-500/30'
+                  : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50'
               }`}
             >
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
-              <span>โหมดสาธิต (Demo Mode)</span>
-              <span className="text-[10px] bg-amber-200/90 text-amber-950 px-1.5 py-0.5 rounded-md font-bold">อนุญาตข้าม</span>
+              <span>👴 โหมดผู้สูงอายุ</span>
+              <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${seniorSimpleMode ? 'bg-blue-800 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                {seniorSimpleMode ? 'เปิดใช้งาน' : 'ปิด'}
+              </span>
             </button>
-          )}
 
-          <button
-            onClick={() => {
-              setSeniorSimpleMode(!seniorSimpleMode);
-              audioFeedback.playHoldTick();
-            }}
-            className={`px-4 py-2 rounded-full text-xs sm:text-sm font-black transition shadow-sm flex items-center gap-2 cursor-pointer min-h-[44px] ${
-              seniorSimpleMode
-                ? 'bg-blue-600 text-white border border-blue-700 shadow-blue-500/30'
-                : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50'
-            }`}
-          >
-            <span>👴 โหมดผู้สูงอายุ</span>
-            <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${seniorSimpleMode ? 'bg-blue-800 text-white' : 'bg-slate-100 text-slate-600'}`}>
-              {seniorSimpleMode ? 'เปิดใช้งาน' : 'ปิด'}
-            </span>
-          </button>
-
-          <button
-            onClick={() => {
-              setShowPinModal(true);
-              audioFeedback.playHoldTick();
-            }}
-            className="px-4 py-2 rounded-full text-xs sm:text-sm font-black bg-white hover:bg-emerald-50 text-emerald-800 border-2 border-emerald-400 shadow-sm transition flex items-center gap-1.5 cursor-pointer min-h-[44px]"
-            id="btnKioskPinFallbackHeader"
-          >
-            <Key className="w-4 h-4 text-emerald-600" />
-            <span>เข้าด้วยรหัส PIN</span>
-          </button>
-        </div>
+            <button
+              onClick={() => {
+                setShowPinModal(true);
+                audioFeedback.playHoldTick();
+              }}
+              className="px-4 py-2 rounded-full text-xs sm:text-sm font-black bg-white hover:bg-emerald-50 text-emerald-800 border-2 border-emerald-400 shadow-sm transition flex items-center gap-1.5 cursor-pointer min-h-[44px]"
+              id="btnKioskPinFallbackHeader"
+            >
+              <Key className="w-4 h-4 text-emerald-600" />
+              <span>เข้าด้วยรหัส PIN</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* กรอบ Card หลักสีขาว */}
@@ -1265,7 +1267,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               : currentStep === 2 || currentStep === 3
               ? 'w-full flex-1 min-h-[280px] max-h-[340px] rounded-[32px] overflow-hidden border-2 border-emerald-400/80 bg-slate-900 flex items-center justify-center shadow-2xl my-2.5 z-10'
               : currentStep === 4
-              ? 'w-56 h-68 sm:w-60 sm:h-74 border-[3px] border-dashed border-gray-800 rounded-[50%] overflow-hidden flex items-center justify-center bg-black/5 shadow-inner mx-auto my-2 z-10'
+              ? 'w-full flex-1 min-h-[350px] max-h-[440px] rounded-[32px] overflow-hidden border-2 border-emerald-400/80 bg-slate-900 flex items-center justify-center shadow-2xl my-2.5 z-10'
               : 'fixed top-0 left-0 w-2 h-2 opacity-0 pointer-events-none -z-50 overflow-hidden'
           }`}
         >
@@ -1328,9 +1330,29 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
             </>
           )}
 
-          {/* Overlays สำหรับ Step 4 บนกรอบวงรี */}
+          {/* Overlays สำหรับ Step 4 บนกล้องสี่เหลี่ยม: กรอบไกด์เล็งใบหน้า & แถบ HUD สถานะบนตัวกล้อง */}
           {currentStep === 4 && (
-            <div className="absolute inset-0 pointer-events-none border-4 border-dashed border-emerald-400/60 rounded-[50%]" />
+            <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-3.5 z-20">
+              {/* แถบหัวด้านบนบนภาพกล้อง */}
+              <div className="bg-black/70 backdrop-blur-md px-3.5 py-1 rounded-full border border-emerald-400/40 flex items-center gap-1.5 shadow-md">
+                <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                <span className="text-xs font-bold text-white tracking-wide">
+                  Face Verification {isDemoMode ? '(โหมดสาธิต)' : ''}
+                </span>
+              </div>
+
+              {/* กรอบไกด์เล็งใบหน้ารูปวงรีตรงกลางกล้องสี่เหลี่ยม */}
+              <div className="w-48 h-60 border-2 border-dashed border-emerald-400/80 rounded-[50%] bg-emerald-500/5 flex items-center justify-center shadow-inner">
+                <User className="w-20 h-20 text-emerald-400/25" />
+              </div>
+
+              {/* แถบแสดงสถานะการสแกน HUD ด้านล่างกล้อง */}
+              <div className="w-full bg-black/85 backdrop-blur-md rounded-2xl py-2 px-3 text-center border border-emerald-400/40 shadow-lg">
+                <p className="text-xs sm:text-sm text-emerald-300 font-bold" data-kiosk-target="step4-status-msg">
+                  {scanStatusMessage}
+                </p>
+              </div>
+            </div>
           )}
         </div>
 
@@ -1501,24 +1523,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         {/* Step 4: สแกนใบหน้าและอัตลักษณ์ชีวมิติ                */}
         {/* ---------------------------------------------------- */}
         {currentStep === 4 && (
-          <div className="w-full flex-1 flex flex-col items-center justify-between animate-fadeIn">
-            <div className="w-full bg-[#E3F5FC] border border-[#BDE3F5] rounded-3xl py-2.5 px-4 text-center shadow-sm">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                  <span>Face Verification{isDemoMode ? ' (โหมดสาธิต)' : ''}</span>
-                </span>
-                <span className="text-[10px] font-bold text-slate-500">
-                  ทำภารกิจตามลำดับ (ค้างไว้ 1.5s/ท่า)
-                </span>
-              </div>
-              <h2 className="text-base sm:text-lg font-black text-[#0B2B2B]">
-                สแกนใบหน้าเพื่อเข้าสู่ระบบ
-              </h2>
-              <p className="text-xs text-[#0B2B2B]/75 font-semibold mt-0.5">
-                {scanStatusMessage}
-              </p>
-            </div>
+          <div className="w-full flex flex-col items-center justify-between animate-fadeIn space-y-2 mt-1">
 
             {/* แถบภารกิจ 4 ท่า: แสดงเฉพาะเมื่อเปิดโหมดสาธิตหรือ debug flag (ค่าเริ่มต้นปิดในโหมดจริง) */}
             {(isDemoMode || isExplicitDemo) && (
