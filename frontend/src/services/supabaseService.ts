@@ -425,18 +425,28 @@ export const supabaseService = {
     const patientCode = patientData.patient_code || patientData.code || `P-${Math.floor(1000 + Math.random() * 9000)}`;
     const fullName = patientData.name || patientData.full_name || 'ผู้ป่วยใหม่';
     
+    // ตรวจสอบ UUID ให้ถูกต้อง ถ้าเป็นตัวเลข integer (เช่น 1, 2 จาก local mock) หรือไม่ใช่ UUID ให้แปลงเป็น null ป้องกัน error 22P02
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const respTherapist = typeof patientData.responsible_therapist_id === 'string' && uuidRegex.test(patientData.responsible_therapist_id)
+      ? patientData.responsible_therapist_id
+      : null;
+
+    let genderStr = patientData.gender || 'ชาย';
+    if (genderStr === 'male') genderStr = 'ชาย';
+    if (genderStr === 'female') genderStr = 'หญิง';
+
     const { data, error } = await supabase.from('patients').upsert([
       {
         patient_code: patientCode,
         full_name: fullName,
         age: Number(patientData.age) || 60,
-        gender: patientData.gender || 'ชาย',
+        gender: genderStr,
         phone: patientData.phone || null,
         chief_complaint: patientData.chiefComplaint || patientData.chief_complaint || patientData.notes || '',
         medical_history: patientData.medicalHistory || patientData.patientBackground || '',
         treatment_outcome: patientData.treatmentOutcome || '',
         therapist_notes: patientData.therapistNotes || '',
-        responsible_therapist_id: patientData.responsible_therapist_id || null,
+        responsible_therapist_id: respTherapist,
         status: patientData.status || 'active',
         pin_hash: pinH,
       },
@@ -738,12 +748,13 @@ export const supabaseService = {
   ): Promise<void> {
     if (!isSupabaseConfigured()) return;
     try {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const validActorId = typeof actorId === 'string' && uuidRegex.test(actorId) ? actorId : null;
+
       await supabase.from('activity_logs').insert([
         {
-          actor_id: actorId || null,
+          actor_id: validActorId,
           actor_name: actorName || 'เจ้าหน้าที่ระบบ',
-          role: role,
-          category: category,
           action: action,
           detail: detail,
           device_info: typeof navigator !== 'undefined' ? `${navigator.userAgent.substring(0, 60)}` : 'Browser',
