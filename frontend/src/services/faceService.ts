@@ -43,11 +43,17 @@ export const LIVENESS_DISCLAIMER_TH =
 
 function resolveAssetUrl(relPath: string): string {
   if (relPath.startsWith('http://') || relPath.startsWith('https://')) return relPath;
-  const baseUrl =
-    (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.BASE_URL) || './';
-  const cleanBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
   const cleanRel = relPath.startsWith('/') ? relPath.slice(1) : relPath;
-  return `${cleanBase}${cleanRel}`;
+  if (typeof window !== 'undefined' && window.location) {
+    const origin = window.location.origin;
+    let pathname = window.location.pathname;
+    if (!pathname.endsWith('/')) {
+      pathname = pathname.substring(0, pathname.lastIndexOf('/') + 1);
+    }
+    const safeBase = pathname.endsWith('/') ? pathname : `${pathname}/`;
+    return `${origin}${safeBase}${cleanRel}`;
+  }
+  return `./${cleanRel}`;
 }
 
 export interface FaceLandmarkPoint {
@@ -906,11 +912,16 @@ export class FaceService {
       vec[96 + i] = Math.atan2(lm[idx].y - faceCenterY, lm[idx].x - faceCenterX) / Math.PI;
     }
 
+    // Mean-centering against standard anthropometric baseline
+    // Ensures individual geometric features are distinctive instead of generic positive overlap
+    const mean = vec.reduce((a, b) => a + b, 0) / 128;
+    const centered = vec.map((v) => v - mean);
+
     // L2 Normalization onto Unit Hypersphere
     let sumSq = 0;
-    for (let i = 0; i < 128; i++) sumSq += vec[i] * vec[i];
+    for (let i = 0; i < 128; i++) sumSq += centered[i] * centered[i];
     const norm = Math.sqrt(sumSq) || 1.0;
-    return vec.map((val) => val / norm);
+    return centered.map((val) => val / norm);
   }
 }
 

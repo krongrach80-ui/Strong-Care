@@ -350,7 +350,12 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
         }, 1500);
       } else {
         setVerifySuccess(false);
-        setVerifyMessage(res.message || 'ไม่พบข้อมูลใบหน้าที่ตรงกัน');
+        setVerifyMessage(res.message || 'ไม่พบข้อมูลใบหน้าที่ตรงกับระบบ');
+        audioFeedback.playSafetyAlert();
+        voiceAssistant.speakSystem('ไม่พบใบหน้าที่ลงทะเบียนในระบบครับ กรุณาสมัครสมาชิกก่อน หรือใช้รหัส PIN ครับ', {
+          priority: 'warning',
+          force: true,
+        });
       }
     } catch (err) {
       console.warn('Verify error:', err);

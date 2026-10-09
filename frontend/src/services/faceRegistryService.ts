@@ -32,10 +32,10 @@ export interface MatchResult {
 
 const STORAGE_KEY = 'strongcare_enrolled_faces';
 // เกณฑ์ความปลอดภัยชีวมิติระดับสูง (ResNet-34)
-// สำหรับคนเดียวกัน: Cosine >= 0.88 (มักได้ 0.92-0.98), Distance <= 0.48 (มักได้ 0.20-0.38)
-// สำหรับคนละคน: Cosine <= 0.82 (มักได้ 0.70-0.80), Distance >= 0.60
-export const STRICT_COSINE_THRESHOLD = 0.88;
-export const STRICT_DISTANCE_THRESHOLD = 0.48;
+// สำหรับคนเดียวกัน: Cosine >= 0.90 (มักได้ 0.94-0.98), Distance <= 0.42 (มักได้ 0.20-0.35)
+// สำหรับคนละคน: Cosine <= 0.82 (มักได้ 0.65-0.80), Distance >= 0.60
+export const STRICT_COSINE_THRESHOLD = 0.90;
+export const STRICT_DISTANCE_THRESHOLD = 0.42;
 
 export class FaceRegistryService {
   private static instance: FaceRegistryService;
