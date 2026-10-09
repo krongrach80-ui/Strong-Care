@@ -352,24 +352,33 @@ export const supabaseService = {
 
   async createProfile(account: Partial<UserAccount>): Promise<any> {
     if (!isSupabaseConfigured()) return null;
-    const { data, error } = await supabase.from('profiles').insert([
-      {
-        username: account.username,
-        full_name: account.name,
-        role: account.role || 'patient',
-        phone: account.phone || null,
-        email: account.email || null,
-        is_active: account.status !== 'suspended',
-      },
-    ]).select().single();
+    const usernameClean = (account.username || `user_${Date.now()}`).trim();
+    try {
+      const { data, error } = await supabase.from('profiles').upsert([
+        {
+          username: usernameClean,
+          full_name: account.name || 'ผู้ใช้งานใหม่',
+          role: account.role || 'patient',
+          phone: account.phone || null,
+          email: account.email || null,
+          is_active: account.status !== 'suspended',
+        },
+      ], { onConflict: 'username' }).select().single();
 
-    if (error) throw error;
-    await this.logActivity(
-      'CREATE_USER',
-      `เพิ่มผู้ใช้งานใหม่: ${account.name} (@${account.username}) บทบาท: ${account.role}`,
-      'AUTH'
-    );
-    return data;
+      if (error) {
+        console.warn('createProfile error:', error);
+        return null;
+      }
+      await this.logActivity(
+        'CREATE_USER',
+        `เพิ่มผู้ใช้งานใหม่: ${account.name} (@${usernameClean}) บทบาท: ${account.role}`,
+        'AUTH'
+      );
+      return data;
+    } catch (e) {
+      console.warn('createProfile exception:', e);
+      return null;
+    }
   },
 
   async updateProfile(id: any, updates: Partial<UserAccount>): Promise<any> {
@@ -456,6 +465,23 @@ export const supabaseService = {
       console.error('Supabase createPatient error:', error);
       throw error;
     }
+
+    // ซิงค์ข้อมูลลงตาราง profiles ให้ด้วยเพื่อให้ปรากฏในตาราง profiles ของ Supabase
+    try {
+      const usernameClean = `p_${data.patient_code.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+      await supabase.from('profiles').upsert([
+        {
+          username: usernameClean,
+          full_name: data.full_name,
+          role: 'patient',
+          phone: data.phone || null,
+          is_active: true,
+        },
+      ], { onConflict: 'username' });
+    } catch (profErr) {
+      console.warn('Sync patient to profiles warning:', profErr);
+    }
+
     await this.logActivity(
       'CREATE_PATIENT',
       `ลงทะเบียนคนไข้ใหม่: ${data.full_name} (${data.patient_code})`,
