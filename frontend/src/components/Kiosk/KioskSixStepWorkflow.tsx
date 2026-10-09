@@ -22,7 +22,11 @@ import {
   Gamepad2,
   Activity,
   Hand,
+  Trophy,
+  Zap,
+  Star,
 } from 'lucide-react';
+import confetti from 'canvas-confetti';
 import { Patient } from '../../types/patient';
 import { useHospitalStore } from '../../store/hospitalStore';
 import { usePatientStore } from '../../store/patientStore';
@@ -65,10 +69,16 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
   const [isPersonDetected, setIsPersonDetected] = useState<boolean>(false);
   const [isSlideUpAnimating, setIsSlideUpAnimating] = useState<boolean>(false);
 
-  // Arm Pose Detection State (ยกแขนขวา = ใช่ | ยกแขนซ้าย = ไม่)
+  // Gamified Arm Pose Detection State (ยกแขนขวา = ใช่ | ยกแขนซ้าย = ไม่)
   const [detectedArmPose, setDetectedArmPose] = useState<'none' | 'right_yes' | 'left_no'>('none');
   const [armHoldProgress, setArmHoldProgress] = useState<number>(0); // 0 to 100%
-  const armHoldTimerRef = useRef<any>(null);
+  const [gameXp, setGameXp] = useState<number>(100);
+  const [comboCount, setComboCount] = useState<number>(1);
+  const [handWristCoords, setHandWristCoords] = useState<{
+    right: { x: number; y: number } | null;
+    left: { x: number; y: number } | null;
+  }>({ right: null, left: null });
+
   const detectionFrameRef = useRef<number | null>(null);
   const lastPoseDetectedRef = useRef<'none' | 'right_yes' | 'left_no'>('none');
 
@@ -203,12 +213,26 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     }, 600);
   };
 
-  // 4. Arm Detection Logic for Steps 2 & 3:
-  // "ถ้าใช่ ให้ยกแขนขวา | ถ้าไม่ ให้ยกแขนซ้าย"
+  // 4. Gamified Arm Gesture Confirmation (ขวา = ใช่, ซ้าย = ไม่)
+  const triggerMiniGameConfetti = (originX = 0.5) => {
+    try {
+      confetti({
+        particleCount: 40,
+        spread: 60,
+        origin: { x: originX, y: 0.6 },
+        colors: ['#22c55e', '#10b981', '#34d399', '#6ee7b7', '#fbbf24'],
+      });
+    } catch {}
+  };
+
   const handleConfirmYes = useCallback(() => {
     audioFeedback.playRepSuccess();
+    triggerMiniGameConfetti(0.25);
+    setGameXp((prev) => prev + 50);
+    setComboCount((prev) => prev + 1);
     setArmHoldProgress(0);
     setDetectedArmPose('none');
+
     if (currentStep === 2) {
       setCurrentStep(3);
     } else if (currentStep === 3) {
@@ -221,6 +245,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     audioFeedback.playHoldTick();
     setArmHoldProgress(0);
     setDetectedArmPose('none');
+
     if (currentStep === 2) {
       alert('พักผ่อนให้สบายนะคะ เมื่อพร้อมสามารถมานั่งหน้ากล้องใหม่ได้ทุกเมื่อค่ะ');
       setCurrentStep(1);
@@ -229,7 +254,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     }
   }, [currentStep]);
 
-  // Pose Detection Loop in Steps 2 & 3
+  // Real-time Mini-Game Pose Detection Loop in Steps 2 & 3
   useEffect(() => {
     if (currentStep !== 2 && currentStep !== 3) {
       if (detectionFrameRef.current) {
@@ -238,12 +263,13 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
       }
       setDetectedArmPose('none');
       setArmHoldProgress(0);
+      setHandWristCoords({ right: null, left: null });
       return;
     }
 
     let isRunning = true;
     let holdCounter = 0;
-    const REQUIRED_HOLD_FRAMES = 18; // ~600ms hold to confirm
+    const REQUIRED_HOLD_FRAMES = 16; // ~500ms smooth charge-up
 
     const runPoseLoop = () => {
       if (!isRunning) return;
@@ -254,21 +280,28 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
           const res = poseService.detectHolistic(video, performance.now());
           if (res && res.poseLandmarks && res.poseLandmarks.length >= 17) {
             const lm = res.poseLandmarks;
-            // 11: left shoulder, 13: left elbow, 15: left wrist
-            // 12: right shoulder, 14: right elbow, 16: right wrist
+            // 11: left shoulder, 15: left wrist
+            // 12: right shoulder, 16: right wrist
             const leftShoulder = lm[11];
             const leftWrist = lm[15];
             const rightShoulder = lm[12];
             const rightWrist = lm[16];
 
-            // In user's body:
-            // Right arm raised = right wrist y < right shoulder y (wrist above shoulder)
-            // Left arm raised = left wrist y < left shoulder y (wrist above shoulder)
+            if (rightWrist && leftWrist) {
+              setHandWristCoords({
+                right: { x: rightWrist.x * 100, y: rightWrist.y * 100 },
+                left: { x: leftWrist.x * 100, y: leftWrist.y * 100 },
+              });
+            }
+
+            // In user's anatomy:
+            // Right arm raised = right wrist y < right shoulder y
+            // Left arm raised = left wrist y < left shoulder y
             const isRightRaised = rightWrist && rightShoulder && rightWrist.y < (rightShoulder.y - 0.05);
             const isLeftRaised = leftWrist && leftShoulder && leftWrist.y < (leftShoulder.y - 0.05);
 
             if (isRightRaised && !isLeftRaised) {
-              // Right arm = YES
+              // Right arm = YES (ลูกแก้วพลังสีเขียว)
               if (lastPoseDetectedRef.current === 'right_yes') {
                 holdCounter++;
               } else {
@@ -287,7 +320,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                 return;
               }
             } else if (isLeftRaised && !isRightRaised) {
-              // Left arm = NO
+              // Left arm = NO (ลูกแก้วพลังสีแดง)
               if (lastPoseDetectedRef.current === 'left_no') {
                 holdCounter++;
               } else {
@@ -306,7 +339,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                 return;
               }
             } else {
-              // Neither or both
               holdCounter = 0;
               lastPoseDetectedRef.current = 'none';
               setDetectedArmPose('none');
@@ -314,7 +346,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
             }
           }
         } catch (e) {
-          // ignore frame errors
+          // ignore detection glitch
         }
       }
 
@@ -332,11 +364,21 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     };
   }, [currentStep, handleConfirmYes, handleConfirmNo]);
 
-  // 5. Step 5 Countdown (ค้างไว้ 5 วินาที)
+  // 5. Step 5 Countdown (ค้างไว้ 5 วินาที) & Victory Fanfare
   useEffect(() => {
     let timer: any;
     if (currentStep === 5) {
       setStep5Countdown(5);
+      // Trigger big celebration fanfare confetti!
+      try {
+        confetti({
+          particleCount: 75,
+          spread: 80,
+          origin: { y: 0.55 },
+          colors: ['#22c55e', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6'],
+        });
+      } catch {}
+
       timer = setInterval(() => {
         setStep5Countdown((prev) => {
           if (prev <= 1) {
@@ -416,10 +458,10 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     onStartExerciseDirectly(activePatient, activePlan || undefined, mode);
   };
 
-  // Step 4: Execute Scan & Match Check
+  // Step 4: Gamified Face Scan
   const handlePerformFaceScan = () => {
     setIsScanning(true);
-    setScanStatusMessage('ระบบกำลังวิเคราะห์ใบหน้าและตรวจสอบฐานข้อมูล...');
+    setScanStatusMessage('🎮 ระบบกำลังสแกนใบหน้าและตรวจสอบฐานข้อมูล...');
     audioFeedback.playHoldTick();
 
     setTimeout(() => {
@@ -449,7 +491,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
       setMatchedProfile(targetPatient);
       setIsScanning(false);
       setScanStep('done');
-      setScanStatusMessage(`ตรวจสอบเรียบร้อย พบข้อมูล: ${targetPatient.name} (${targetPatient.patient_code})`);
+      setScanStatusMessage(`⭐ สแกนผ่าน 100%! พบข้อมูล: ${targetPatient.name} (${targetPatient.patient_code})`);
 
       audioFeedback.playRepSuccess();
       try {
@@ -529,7 +571,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               isSlideUpAnimating ? '-translate-y-full opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'
             }`}
           >
-            {/* โลโก้ทรงกลม (วิวธรรมชาติ ท้องฟ้า ก้อนเมฆ และภูเขาเขียว) ตาม Mockup ภาพที่ 1 */}
+            {/* โลโก้ทรงกลม ตาม Mockup ภาพที่ 1 */}
             <div className="relative group cursor-pointer" onClick={triggerSlideUp}>
               <div className="w-56 h-56 sm:w-64 sm:h-64 rounded-full border-2 border-emerald-300 shadow-xl overflow-hidden flex items-center justify-center bg-gradient-to-b from-[#BEE5F9] via-[#D5F0FD] to-[#86C232] relative transform group-hover:scale-105 transition duration-300">
                 <svg className="w-full h-full" viewBox="0 0 200 200" fill="none">
@@ -595,258 +637,362 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         )}
 
         {/* ---------------------------------------------------- */}
-        {/* ภาพที่ 2: ถามความพร้อมกายภาพ (คุณพร้อมแล้วใช่หรือไม่) */}
+        {/* ภาพที่ 2: ถามความพร้อมกายภาพ (ดีเทคแบบมินิเกม)         */}
         {/* ---------------------------------------------------- */}
         {currentStep === 2 && (
           <div className="w-full flex-1 flex flex-col items-center justify-between animate-fadeIn">
-            {/* กล่องข้อความฟ้าด้านบนตาม Wireframe 2 */}
-            <div className="w-full bg-[#E3F5FC] border border-[#BDE3F5] rounded-3xl py-3 px-5 text-center shadow-sm">
-              <h2 className="text-lg sm:text-xl font-bold text-[#0B2B2B]">
+            {/* กล่องข้อความฟ้าด้านบน + Mini-game HUD */}
+            <div className="w-full bg-[#E3F5FC] border border-[#BDE3F5] rounded-3xl py-2.5 px-4 text-center shadow-sm relative">
+              <div className="flex items-center justify-between mb-1">
+                <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-800 bg-emerald-200/80 px-2 py-0.5 rounded-full">
+                  <Gamepad2 className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>มินิเกมตรวจจับท่าทาง</span>
+                </span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                  <Zap className="w-3 h-3 text-amber-600 fill-amber-500" />
+                  <span>{gameXp} XP</span>
+                </span>
+              </div>
+
+              <h2 className="text-base sm:text-lg font-black text-[#0B2B2B]">
                 คุณพร้อมแล้วใช่หรือไม่
               </h2>
-              {/* คำแนะนำระบบ Detection: ยกแขนขวา = ใช่ | ยกแขนซ้าย = ไม่ */}
-              <div className="mt-1 flex items-center justify-center gap-3 text-xs font-extrabold">
-                <span className="text-[#1E8A4C] bg-emerald-100/90 px-2 py-0.5 rounded-md flex items-center gap-1">
-                  🙋‍♂️ ยกแขนขวา = <b>ใช่</b>
-                </span>
-                <span className="text-[#E03131] bg-rose-100/90 px-2 py-0.5 rounded-md flex items-center gap-1">
-                  🙋‍♀️ ยกแขนซ้าย = <b>ไม่</b>
-                </span>
-              </div>
+              <p className="text-xs font-bold text-emerald-900 mt-0.5">
+                🙋‍♂️ ยกแขนขวาชาร์จลูกแก้วสีเขียว (ใช่) | 🙋‍♀️ ยกแขนซ้ายชาร์จสีแดง (ไม่)
+              </p>
             </div>
 
-            {/* ปุ่ม 2 ข้าง: ซ้าย = ใช่ (เขียว) | ขวา = ไม่ (แดง) ตาม Wireframe 2 */}
-            <div className="w-full flex items-center justify-between px-2 sm:px-4 my-3">
-              {/* ปุ่ม ใช่ (ยกแขนขวา) */}
-              <div className="relative">
-                <button
-                  onClick={handleConfirmYes}
-                  className={`w-28 h-20 sm:w-32 sm:h-24 rounded-3xl border-2 flex flex-col items-center justify-center shadow-md active:scale-95 transition cursor-pointer relative overflow-hidden ${
-                    detectedArmPose === 'right_yes'
-                      ? 'bg-emerald-200 border-emerald-600 text-emerald-950 scale-105 shadow-emerald-400/50 shadow-lg'
-                      : 'bg-[#E8F8EE] border-[#A8E6BA] text-[#1E8A4C] hover:bg-[#d5f5df]'
-                  }`}
-                  id="btnReadyYes"
-                >
-                  <span className="text-2xl sm:text-3xl font-extrabold">ใช่</span>
-                  <span className="text-[10px] font-bold text-emerald-800">ยกแขนขวา 🙋‍♂️</span>
-
-                  {/* Progress bar inside button when holding arm */}
-                  {detectedArmPose === 'right_yes' && (
-                    <div
-                      className="absolute bottom-0 left-0 h-2 bg-emerald-500 transition-all duration-75"
-                      style={{ width: `${armHoldProgress}%` }}
-                    />
-                  )}
-                </button>
-              </div>
-
-              {/* ปุ่ม ไม่ (ยกแขนซ้าย) */}
-              <div className="relative">
-                <button
-                  onClick={handleConfirmNo}
-                  className={`w-28 h-20 sm:w-32 sm:h-24 rounded-3xl border-2 flex flex-col items-center justify-center shadow-md active:scale-95 transition cursor-pointer relative overflow-hidden ${
-                    detectedArmPose === 'left_no'
-                      ? 'bg-rose-200 border-rose-600 text-rose-950 scale-105 shadow-rose-400/50 shadow-lg'
-                      : 'bg-[#FEECEC] border-[#F9B7B7] text-[#E03131] hover:bg-[#fedcdc]'
-                  }`}
-                  id="btnReadyNo"
-                >
-                  <span className="text-2xl sm:text-3xl font-extrabold">ไม่</span>
-                  <span className="text-[10px] font-bold text-rose-800">ยกแขนซ้าย 🙋‍♀️</span>
-
-                  {/* Progress bar inside button when holding arm */}
-                  {detectedArmPose === 'left_no' && (
-                    <div
-                      className="absolute bottom-0 left-0 h-2 bg-rose-500 transition-all duration-75"
-                      style={{ width: `${armHoldProgress}%` }}
-                    />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* หน้าเราที่กล้องจับอยู่ (Live Camera Feed Silhouette) ตรงกลาง-ล่าง */}
-            <div className="w-full flex-1 max-h-[300px] sm:max-h-[340px] rounded-[32px] overflow-hidden border-2 border-slate-300 relative bg-slate-100 flex items-center justify-center shadow-inner">
+            {/* กล้องสดสไตล์มินิเกม พร้อมลูกแก้วพลังเรืองแสง 2 ฝั่ง */}
+            <div className="w-full flex-1 max-h-[340px] rounded-[32px] overflow-hidden border-2 border-emerald-400/80 relative bg-slate-900 flex items-center justify-center shadow-2xl my-2.5">
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-full object-cover transform -scale-x-100"
+                className="w-full h-full object-cover transform -scale-x-100 opacity-90"
               />
 
-              {/* Silhouette Overlay */}
+              {/* Grid / HUD Overlay เส้นไกด์มินิเกม */}
+              <div className="absolute inset-0 pointer-events-none border border-emerald-500/20 bg-gradient-to-t from-black/60 via-transparent to-black/30" />
+
+              {/* Silhouette Body Center Guide */}
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                <div className="w-32 h-32 rounded-full border-2 border-emerald-400/60 bg-emerald-500/10 backdrop-blur-[1px] animate-pulse flex items-center justify-center">
-                  <User className="w-20 h-20 text-emerald-700/40" />
+                <div className="w-32 h-32 rounded-full border-2 border-dashed border-emerald-300/40 bg-emerald-500/5 backdrop-blur-[0.5px] animate-pulse flex items-center justify-center">
+                  <User className="w-20 h-20 text-emerald-400/25" />
                 </div>
               </div>
 
-              {/* Live Detection Status Banner */}
-              {detectedArmPose !== 'none' && (
-                <div className="absolute top-2 inset-x-3 bg-black/80 backdrop-blur-md text-white text-xs py-1.5 px-3 rounded-xl flex items-center justify-between border border-emerald-400 animate-fadeIn">
-                  <span className="font-bold flex items-center gap-1.5">
-                    {detectedArmPose === 'right_yes' ? (
-                      <span className="text-emerald-400">🟢 ตรวจพบ: ยกแขนขวา (ใช่)</span>
-                    ) : (
-                      <span className="text-rose-400">🔴 ตรวจพบ: ยกแขนซ้าย (ไม่)</span>
-                    )}
-                  </span>
-                  <span className="font-mono text-yellow-300 font-bold">{armHoldProgress}%</span>
-                </div>
-              )}
-
-              {/* Hand Touch Prompt Guide */}
-              <div className="absolute bottom-2 inset-x-2 bg-black/75 backdrop-blur-md rounded-2xl py-1.5 px-3 text-center text-white text-[11px] font-medium">
-                ยกแขน <span className="text-emerald-300 font-bold">ขวา = ใช่</span> | ยกแขน <span className="text-rose-300 font-bold">ซ้าย = ไม่</span> (หรือเอามือแตะที่จอ)
-              </div>
-            </div>
-
-            {/* Quick Test Simulation Row (for testing without camera) */}
-            <div className="w-full flex items-center justify-center gap-2 mt-2">
-              <button
+              {/* ============================================== */}
+              {/* ลูกแก้วพลังมินิเกมฝั่งขวา: ใช่ (ยกแขนขวา)        */}
+              {/* ============================================== */}
+              <div
                 onClick={handleConfirmYes}
-                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200"
+                className="absolute top-4 left-3 sm:left-4 z-20 cursor-pointer group select-none flex flex-col items-center"
               >
-                🙋‍♂️ จำลองยกแขนขวา (ใช่)
-              </button>
-              <button
-                onClick={handleConfirmNo}
-                className="text-[11px] font-bold text-rose-700 hover:text-rose-900 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200"
-              >
-                🙋‍♀️ จำลองยกแขนซ้าย (ไม่)
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ---------------------------------------------------- */}
-        {/* ภาพที่ 3: ถามความพร้อมเข้าสู่ระบบ                  */}
-        {/* ---------------------------------------------------- */}
-        {currentStep === 3 && (
-          <div className="w-full flex-1 flex flex-col items-center justify-between animate-fadeIn">
-            {/* กล่องข้อความฟ้าด้านบนตาม Wireframe 3 */}
-            <div className="w-full bg-[#E3F5FC] border border-[#BDE3F5] rounded-3xl py-3 px-5 text-center shadow-sm">
-              <h2 className="text-lg sm:text-xl font-bold text-[#0B2B2B]">
-                คุณพร้อมเข้าสู่ระบบใช่หรือไม่
-              </h2>
-              {/* คำแนะนำระบบ Detection: ยกแขนขวา = ใช่ | ยกแขนซ้าย = ไม่ */}
-              <div className="mt-1 flex items-center justify-center gap-3 text-xs font-extrabold">
-                <span className="text-[#1E8A4C] bg-emerald-100/90 px-2 py-0.5 rounded-md flex items-center gap-1">
-                  🙋‍♂️ ยกแขนขวา = <b>ใช่</b>
-                </span>
-                <span className="text-[#E03131] bg-rose-100/90 px-2 py-0.5 rounded-md flex items-center gap-1">
-                  🙋‍♀️ ยกแขนซ้าย = <b>ไม่</b>
-                </span>
-              </div>
-            </div>
-
-            {/* ปุ่ม 2 ข้าง: ใช่ (เขียว) | ไม่ (แดง) ตาม Wireframe 3 */}
-            <div className="w-full flex items-center justify-between px-2 sm:px-4 my-3">
-              {/* ปุ่ม ใช่ (ยกแขนขวา) */}
-              <div className="relative">
-                <button
-                  onClick={handleConfirmYes}
-                  className={`w-28 h-20 sm:w-32 sm:h-24 rounded-3xl border-2 flex flex-col items-center justify-center shadow-md active:scale-95 transition cursor-pointer relative overflow-hidden ${
+                <div
+                  className={`w-20 h-20 sm:w-22 sm:h-22 rounded-full border-3 flex flex-col items-center justify-center shadow-xl transition-all duration-200 relative overflow-hidden backdrop-blur-md ${
                     detectedArmPose === 'right_yes'
-                      ? 'bg-emerald-200 border-emerald-600 text-emerald-950 scale-105 shadow-emerald-400/50 shadow-lg'
-                      : 'bg-[#E8F8EE] border-[#A8E6BA] text-[#1E8A4C] hover:bg-[#d5f5df]'
+                      ? 'scale-115 border-emerald-300 bg-gradient-to-br from-emerald-400 via-green-500 to-emerald-700 shadow-emerald-400/80'
+                      : 'border-emerald-400 bg-emerald-950/70 text-emerald-200 hover:scale-105'
                   }`}
-                  id="btnLoginYes"
                 >
-                  <span className="text-2xl sm:text-3xl font-extrabold">ใช่</span>
-                  <span className="text-[10px] font-bold text-emerald-800">ยกแขนขวา 🙋‍♂️</span>
-
-                  {detectedArmPose === 'right_yes' && (
-                    <div
-                      className="absolute bottom-0 left-0 h-2 bg-emerald-500 transition-all duration-75"
-                      style={{ width: `${armHoldProgress}%` }}
-                    />
-                  )}
-                </button>
-              </div>
-
-              {/* ปุ่ม ไม่ (ยกแขนซ้าย) */}
-              <div className="relative">
-                <button
-                  onClick={handleConfirmNo}
-                  className={`w-28 h-20 sm:w-32 sm:h-24 rounded-3xl border-2 flex flex-col items-center justify-center shadow-md active:scale-95 transition cursor-pointer relative overflow-hidden ${
-                    detectedArmPose === 'left_no'
-                      ? 'bg-rose-200 border-rose-600 text-rose-950 scale-105 shadow-rose-400/50 shadow-lg'
-                      : 'bg-[#FEECEC] border-[#F9B7B7] text-[#E03131] hover:bg-[#fedcdc]'
-                  }`}
-                  id="btnLoginNo"
-                >
-                  <span className="text-2xl sm:text-3xl font-extrabold">ไม่</span>
-                  <span className="text-[10px] font-bold text-rose-800">ยกแขนซ้าย 🙋‍♀️</span>
-
-                  {detectedArmPose === 'left_no' && (
-                    <div
-                      className="absolute bottom-0 left-0 h-2 bg-rose-500 transition-all duration-75"
-                      style={{ width: `${armHoldProgress}%` }}
-                    />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* หน้าเราที่กล้องจับอยู่ ตรงกลาง-ล่าง */}
-            <div className="w-full flex-1 max-h-[300px] sm:max-h-[340px] rounded-[32px] overflow-hidden border-2 border-slate-300 relative bg-slate-100 flex items-center justify-center shadow-inner">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover transform -scale-x-100"
-              />
-
-              {/* Live Detection Status Banner */}
-              {detectedArmPose !== 'none' && (
-                <div className="absolute top-2 inset-x-3 bg-black/80 backdrop-blur-md text-white text-xs py-1.5 px-3 rounded-xl flex items-center justify-between border border-emerald-400 animate-fadeIn">
-                  <span className="font-bold flex items-center gap-1.5">
-                    {detectedArmPose === 'right_yes' ? (
-                      <span className="text-emerald-400">🟢 ตรวจพบ: ยกแขนขวา (ใช่)</span>
-                    ) : (
-                      <span className="text-rose-400">🔴 ตรวจพบ: ยกแขนซ้าย (ไม่)</span>
-                    )}
+                  <span className="text-xl sm:text-2xl font-black text-white drop-shadow">ใช่</span>
+                  <span className="text-[10px] font-bold text-emerald-100 flex items-center gap-0.5">
+                    <span>แขนขวา</span>
+                    <Sparkles className="w-2.5 h-2.5 fill-yellow-300 text-yellow-300" />
                   </span>
-                  <span className="font-mono text-yellow-300 font-bold">{armHoldProgress}%</span>
+
+                  {/* Charging SVG Ring Indicator */}
+                  {detectedArmPose === 'right_yes' && (
+                    <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none">
+                      <circle
+                        cx="50%"
+                        cy="50%"
+                        r="34"
+                        fill="none"
+                        stroke="#fbbf24"
+                        strokeWidth="5"
+                        strokeDasharray="213"
+                        strokeDashoffset={213 - (213 * armHoldProgress) / 100}
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  )}
+                </div>
+                <span className="text-[11px] font-extrabold text-emerald-300 bg-black/60 px-2 py-0.5 rounded-full mt-1">
+                  แตะ / ยกขวา
+                </span>
+              </div>
+
+              {/* ============================================== */}
+              {/* ลูกแก้วพลังมินิเกมฝั่งซ้าย: ไม่ (ยกแขนซ้าย)       */}
+              {/* ============================================== */}
+              <div
+                onClick={handleConfirmNo}
+                className="absolute top-4 right-3 sm:right-4 z-20 cursor-pointer group select-none flex flex-col items-center"
+              >
+                <div
+                  className={`w-20 h-20 sm:w-22 sm:h-22 rounded-full border-3 flex flex-col items-center justify-center shadow-xl transition-all duration-200 relative overflow-hidden backdrop-blur-md ${
+                    detectedArmPose === 'left_no'
+                      ? 'scale-115 border-rose-300 bg-gradient-to-br from-rose-500 via-red-600 to-rose-800 shadow-rose-400/80'
+                      : 'border-rose-400 bg-rose-950/70 text-rose-200 hover:scale-105'
+                  }`}
+                >
+                  <span className="text-xl sm:text-2xl font-black text-white drop-shadow">ไม่</span>
+                  <span className="text-[10px] font-bold text-rose-100 flex items-center gap-0.5">
+                    <span>แขนซ้าย</span>
+                  </span>
+
+                  {/* Charging SVG Ring Indicator */}
+                  {detectedArmPose === 'left_no' && (
+                    <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none">
+                      <circle
+                        cx="50%"
+                        cy="50%"
+                        r="34"
+                        fill="none"
+                        stroke="#f87171"
+                        strokeWidth="5"
+                        strokeDasharray="213"
+                        strokeDashoffset={213 - (213 * armHoldProgress) / 100}
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  )}
+                </div>
+                <span className="text-[11px] font-extrabold text-rose-300 bg-black/60 px-2 py-0.5 rounded-full mt-1">
+                  แตะ / ยกซ้าย
+                </span>
+              </div>
+
+              {/* Live Charging Power Bar */}
+              {detectedArmPose !== 'none' && (
+                <div className="absolute bottom-10 inset-x-6 bg-black/85 backdrop-blur-md rounded-2xl p-2 border border-emerald-400 flex flex-col items-center z-20 animate-fadeIn">
+                  <div className="flex items-center justify-between w-full text-xs font-black text-white px-1 mb-1">
+                    <span className="flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400 animate-bounce" />
+                      <span>{detectedArmPose === 'right_yes' ? '⚡ กำลังชาร์จ: ใช่ (ยกแขนขวา)' : '⚡ กำลังชาร์จ: ไม่ (ยกแขนซ้าย)'}</span>
+                    </span>
+                    <span className="text-yellow-300 font-mono text-sm">{armHoldProgress}%</span>
+                  </div>
+                  <div className="w-full h-2.5 bg-slate-700 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-75 rounded-full ${
+                        detectedArmPose === 'right_yes' ? 'bg-gradient-to-r from-emerald-400 to-yellow-400' : 'bg-gradient-to-r from-rose-500 to-red-400'
+                      }`}
+                      style={{ width: `${armHoldProgress}%` }}
+                    />
+                  </div>
                 </div>
               )}
 
-              {/* Hand Touch Prompt Guide */}
-              <div className="absolute bottom-2 inset-x-2 bg-black/75 backdrop-blur-md rounded-2xl py-1.5 px-3 text-center text-white text-[11px] font-medium">
-                ยกแขน <span className="text-emerald-300 font-bold">ขวา = สแกนหน้า</span> | ยกแขน <span className="text-rose-300 font-bold">ซ้าย = ย้อนกลับ</span>
+              {/* Interactive Bottom Prompt */}
+              <div className="absolute bottom-2 inset-x-2 bg-black/75 backdrop-blur-md rounded-xl py-1 px-3 text-center text-white text-[11px] font-bold z-10">
+                🎮 มินิเกม: นำมือไปสัมผัสลูกแก้วพลังบนจอ หรือยกแขนค้างไว้ 1 วินาที
               </div>
             </div>
 
             {/* Quick Test Simulation Row */}
-            <div className="w-full flex items-center justify-center gap-2 mt-2">
+            <div className="w-full flex items-center justify-center gap-2 mt-1">
               <button
                 onClick={handleConfirmYes}
-                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200"
+                className="text-[11px] font-bold text-emerald-800 hover:text-emerald-950 bg-emerald-100/90 px-3 py-1 rounded-full border border-emerald-300 shadow-sm flex items-center gap-1 active:scale-95 transition"
               >
-                🙋‍♂️ จำลองยกแขนขวา (ใช่)
+                <span>⚡ แตะลูกแก้ว ใช่ (ยกขวา)</span>
               </button>
               <button
                 onClick={handleConfirmNo}
-                className="text-[11px] font-bold text-rose-700 hover:text-rose-900 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200"
+                className="text-[11px] font-bold text-rose-800 hover:text-rose-950 bg-rose-100/90 px-3 py-1 rounded-full border border-rose-300 shadow-sm flex items-center gap-1 active:scale-95 transition"
               >
-                🙋‍♀️ จำลองยกแขนซ้าย (ไม่)
+                <span>⚡ แตะลูกแก้ว ไม่ (ยกซ้าย)</span>
               </button>
             </div>
           </div>
         )}
 
         {/* ---------------------------------------------------- */}
-        {/* ภาพที่ 4: หน้าต่างสแกนใบหน้า (ให้ทำตามที่ระบบบอก)   */}
+        {/* ภาพที่ 3: ถามความพร้อมเข้าสู่ระบบ (ดีเทคแบบมินิเกม)   */}
+        {/* ---------------------------------------------------- */}
+        {currentStep === 3 && (
+          <div className="w-full flex-1 flex flex-col items-center justify-between animate-fadeIn">
+            {/* กล่องข้อความฟ้าด้านบน + Mini-game HUD */}
+            <div className="w-full bg-[#E3F5FC] border border-[#BDE3F5] rounded-3xl py-2.5 px-4 text-center shadow-sm relative">
+              <div className="flex items-center justify-between mb-1">
+                <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-800 bg-emerald-200/80 px-2 py-0.5 rounded-full">
+                  <Gamepad2 className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>ด่านที่ 2: ยืนยันเข้าสู่ระบบ</span>
+                </span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                  <Zap className="w-3 h-3 text-amber-600 fill-amber-500" />
+                  <span>{gameXp} XP</span>
+                </span>
+              </div>
+
+              <h2 className="text-base sm:text-lg font-black text-[#0B2B2B]">
+                คุณพร้อมเข้าสู่ระบบใช่หรือไม่
+              </h2>
+              <p className="text-xs font-bold text-emerald-900 mt-0.5">
+                🙋‍♂️ ยกแขนขวาชาร์จลูกแก้ว (เข้าสู่ระบบ) | 🙋‍♀️ ยกแขนซ้าย (ย้อนกลับ)
+              </p>
+            </div>
+
+            {/* กล้องสดสไตล์มินิเกม */}
+            <div className="w-full flex-1 max-h-[340px] rounded-[32px] overflow-hidden border-2 border-emerald-400/80 relative bg-slate-900 flex items-center justify-center shadow-2xl my-2.5">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover transform -scale-x-100 opacity-90"
+              />
+
+              <div className="absolute inset-0 pointer-events-none border border-emerald-500/20 bg-gradient-to-t from-black/60 via-transparent to-black/30" />
+
+              {/* Silhouette Body Center Guide */}
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                <div className="w-32 h-32 rounded-full border-2 border-dashed border-emerald-300/40 bg-emerald-500/5 backdrop-blur-[0.5px] animate-pulse flex items-center justify-center">
+                  <User className="w-20 h-20 text-emerald-400/25" />
+                </div>
+              </div>
+
+              {/* ลูกแก้วพลังฝั่งขวา: ใช่ (เข้าสู่ระบบ) */}
+              <div
+                onClick={handleConfirmYes}
+                className="absolute top-4 left-3 sm:left-4 z-20 cursor-pointer group select-none flex flex-col items-center"
+              >
+                <div
+                  className={`w-20 h-20 sm:w-22 sm:h-22 rounded-full border-3 flex flex-col items-center justify-center shadow-xl transition-all duration-200 relative overflow-hidden backdrop-blur-md ${
+                    detectedArmPose === 'right_yes'
+                      ? 'scale-115 border-emerald-300 bg-gradient-to-br from-emerald-400 via-green-500 to-emerald-700 shadow-emerald-400/80'
+                      : 'border-emerald-400 bg-emerald-950/70 text-emerald-200 hover:scale-105'
+                  }`}
+                >
+                  <span className="text-xl sm:text-2xl font-black text-white drop-shadow">ใช่</span>
+                  <span className="text-[10px] font-bold text-emerald-100 flex items-center gap-0.5">
+                    <span>แขนขวา</span>
+                    <Sparkles className="w-2.5 h-2.5 fill-yellow-300 text-yellow-300" />
+                  </span>
+
+                  {detectedArmPose === 'right_yes' && (
+                    <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none">
+                      <circle
+                        cx="50%"
+                        cy="50%"
+                        r="34"
+                        fill="none"
+                        stroke="#fbbf24"
+                        strokeWidth="5"
+                        strokeDasharray="213"
+                        strokeDashoffset={213 - (213 * armHoldProgress) / 100}
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  )}
+                </div>
+                <span className="text-[11px] font-extrabold text-emerald-300 bg-black/60 px-2 py-0.5 rounded-full mt-1">
+                  แตะ / ยกขวา
+                </span>
+              </div>
+
+              {/* ลูกแก้วพลังฝั่งซ้าย: ไม่ (ย้อนกลับ) */}
+              <div
+                onClick={handleConfirmNo}
+                className="absolute top-4 right-3 sm:right-4 z-20 cursor-pointer group select-none flex flex-col items-center"
+              >
+                <div
+                  className={`w-20 h-20 sm:w-22 sm:h-22 rounded-full border-3 flex flex-col items-center justify-center shadow-xl transition-all duration-200 relative overflow-hidden backdrop-blur-md ${
+                    detectedArmPose === 'left_no'
+                      ? 'scale-115 border-rose-300 bg-gradient-to-br from-rose-500 via-red-600 to-rose-800 shadow-rose-400/80'
+                      : 'border-rose-400 bg-rose-950/70 text-rose-200 hover:scale-105'
+                  }`}
+                >
+                  <span className="text-xl sm:text-2xl font-black text-white drop-shadow">ไม่</span>
+                  <span className="text-[10px] font-bold text-rose-100 flex items-center gap-0.5">
+                    <span>แขนซ้าย</span>
+                  </span>
+
+                  {detectedArmPose === 'left_no' && (
+                    <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none">
+                      <circle
+                        cx="50%"
+                        cy="50%"
+                        r="34"
+                        fill="none"
+                        stroke="#f87171"
+                        strokeWidth="5"
+                        strokeDasharray="213"
+                        strokeDashoffset={213 - (213 * armHoldProgress) / 100}
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  )}
+                </div>
+                <span className="text-[11px] font-extrabold text-rose-300 bg-black/60 px-2 py-0.5 rounded-full mt-1">
+                  แตะ / ยกซ้าย
+                </span>
+              </div>
+
+              {/* Live Charging Power Bar */}
+              {detectedArmPose !== 'none' && (
+                <div className="absolute bottom-10 inset-x-6 bg-black/85 backdrop-blur-md rounded-2xl p-2 border border-emerald-400 flex flex-col items-center z-20 animate-fadeIn">
+                  <div className="flex items-center justify-between w-full text-xs font-black text-white px-1 mb-1">
+                    <span className="flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400 animate-bounce" />
+                      <span>{detectedArmPose === 'right_yes' ? '⚡ กำลังชาร์จ: ใช่ (เข้าสู่ระบบ)' : '⚡ กำลังชาร์จ: ไม่ (ย้อนกลับ)'}</span>
+                    </span>
+                    <span className="text-yellow-300 font-mono text-sm">{armHoldProgress}%</span>
+                  </div>
+                  <div className="w-full h-2.5 bg-slate-700 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-75 rounded-full ${
+                        detectedArmPose === 'right_yes' ? 'bg-gradient-to-r from-emerald-400 to-yellow-400' : 'bg-gradient-to-r from-rose-500 to-red-400'
+                      }`}
+                      style={{ width: `${armHoldProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="absolute bottom-2 inset-x-2 bg-black/75 backdrop-blur-md rounded-xl py-1 px-3 text-center text-white text-[11px] font-bold z-10">
+                🎮 มินิเกม: สัมผัสลูกแก้วพลังเพื่อยืนยันคำตอบ
+              </div>
+            </div>
+
+            {/* Quick Test Simulation Row */}
+            <div className="w-full flex items-center justify-center gap-2 mt-1">
+              <button
+                onClick={handleConfirmYes}
+                className="text-[11px] font-bold text-emerald-800 hover:text-emerald-950 bg-emerald-100/90 px-3 py-1 rounded-full border border-emerald-300 shadow-sm flex items-center gap-1 active:scale-95 transition"
+              >
+                <span>⚡ แตะลูกแก้ว ใช่ (เข้าสู่ระบบ)</span>
+              </button>
+              <button
+                onClick={handleConfirmNo}
+                className="text-[11px] font-bold text-rose-800 hover:text-rose-950 bg-rose-100/90 px-3 py-1 rounded-full border border-rose-300 shadow-sm flex items-center gap-1 active:scale-95 transition"
+              >
+                <span>⚡ แตะลูกแก้ว ไม่ (ย้อนกลับ)</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ---------------------------------------------------- */}
+        {/* ภาพที่ 4: หน้าต่างสแกนใบหน้า (Face Quest มินิเกม)    */}
         {/* ---------------------------------------------------- */}
         {currentStep === 4 && (
           <div className="w-full flex-1 flex flex-col items-center justify-between animate-fadeIn">
             {/* กล่องฟ้าด้านบนตาม Wireframe 4: เอาบอกให้คนไข้ขยับตาม */}
-            <div className="w-full bg-[#E3F5FC] border border-[#BDE3F5] rounded-3xl py-2.5 px-4 text-center shadow-sm">
-              <h2 className="text-base sm:text-lg font-bold text-[#0B2B2B]">
+            <div className="w-full bg-[#E3F5FC] border border-[#BDE3F5] rounded-3xl py-2 px-4 text-center shadow-sm">
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-[10px] font-black text-emerald-800 bg-emerald-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <Star className="w-3 h-3 text-amber-500 fill-amber-400" />
+                  <span>Face Quest มินิเกม</span>
+                </span>
+                <span className="text-[10px] font-bold text-slate-600">
+                  {scanStep === 'done' ? '⭐⭐⭐ 3 ดาว' : 'ทำภารกิจตามลำดับ'}
+                </span>
+              </div>
+              <h2 className="text-base sm:text-lg font-black text-[#0B2B2B]">
                 เอาบอกให้คนไข้ขยับตาม
               </h2>
               <p className="text-xs text-emerald-800 font-semibold mt-0.5">
@@ -882,7 +1028,8 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               <button
                 onClick={() => {
                   setScanStep('front');
-                  setScanStatusMessage('1. จัดใบหน้ามองตรงไปที่กล้อง');
+                  setScanStatusMessage('1. จัดใบหน้ามองตรงไปที่กล้อง (+25 XP)');
+                  audioFeedback.playHoldTick();
                 }}
                 className={`py-2 px-1 rounded-2xl text-xs sm:text-sm font-extrabold border-2 transition ${
                   scanStep === 'front'
@@ -896,7 +1043,8 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               <button
                 onClick={() => {
                   setScanStep('left');
-                  setScanStatusMessage('2. ค่อยๆ เอียงหรือหันศีรษะไปทางซ้าย');
+                  setScanStatusMessage('2. ค่อยๆ เอียงหรือหันศีรษะไปทางซ้าย (+25 XP)');
+                  audioFeedback.playHoldTick();
                 }}
                 className={`py-2 px-1 rounded-2xl text-xs sm:text-sm font-extrabold border-2 transition ${
                   scanStep === 'left'
@@ -910,7 +1058,8 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               <button
                 onClick={() => {
                   setScanStep('right');
-                  setScanStatusMessage('3. ค่อยๆ เอียงหรือหันศีรษะไปทางขวา');
+                  setScanStatusMessage('3. ค่อยๆ เอียงหรือหันศีรษะไปทางขวา (+25 XP)');
+                  audioFeedback.playHoldTick();
                 }}
                 className={`py-2 px-1 rounded-2xl text-xs sm:text-sm font-extrabold border-2 transition ${
                   scanStep === 'right'
@@ -986,8 +1135,15 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         {/* ---------------------------------------------------- */}
         {currentStep === 5 && (
           <div className="w-full flex-1 flex flex-col items-center justify-center animate-fadeIn text-center py-6">
-            <div className="w-full max-w-[320px] bg-[#F8F9FA] border border-gray-200 rounded-3xl py-8 px-6 text-center shadow-lg flex flex-col items-center transform hover:scale-105 transition duration-300">
-              <div className="w-20 h-20 rounded-full bg-emerald-100 border-2 border-emerald-400 text-[#1E8A4C] flex items-center justify-center mb-4 shadow-sm animate-bounce">
+            <div className="w-full max-w-[320px] bg-[#F8F9FA] border border-gray-200 rounded-3xl py-8 px-6 text-center shadow-lg flex flex-col items-center transform hover:scale-105 transition duration-300 relative">
+              
+              {/* Gamified Level Up Badge */}
+              <div className="absolute -top-3.5 bg-gradient-to-r from-amber-500 to-yellow-400 text-white font-black text-xs px-3 py-1 rounded-full shadow flex items-center gap-1">
+                <Trophy className="w-3.5 h-3.5 fill-white" />
+                <span>ปลดล็อคสำเร็จ! +100 XP</span>
+              </div>
+
+              <div className="w-20 h-20 rounded-full bg-emerald-100 border-2 border-emerald-400 text-[#1E8A4C] flex items-center justify-center mb-4 mt-2 shadow-sm animate-bounce">
                 <Check className="w-12 h-12 stroke-[3]" />
               </div>
 
@@ -1026,19 +1182,19 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         )}
 
         {/* ---------------------------------------------------- */}
-        {/* ภาพที่ 6: หน้ารายการกายภาพวันนี้ ตามแบบร่างใหม่ล่าสุด */}
+        {/* ภาพที่ 6: หน้ารายการกายภาพวันนี้ ตามแบบร่าง Wireframe 6 */}
         {/* ---------------------------------------------------- */}
         {currentStep === 6 && (
           <div className="w-full flex-1 flex flex-col items-center justify-between animate-fadeIn text-left py-1">
             
-            {/* กล่องหัวข้อด้านบน: "รายการกายภาพวันนี้" ตาม Wireframe 6 */}
+            {/* กล่องหัวข้อด้านบน: "รายการกายภาพวันนี้" */}
             <div className="w-full bg-gradient-to-b from-[#EAEAEA] to-[#D5D5D5] border-2 border-[#BEBEBE] rounded-2xl py-3 px-5 text-center shadow-md mb-4">
               <h2 className="text-lg sm:text-xl font-black text-[#0B2B2B] tracking-wide">
                 รายการกายภาพวันนี้
               </h2>
             </div>
 
-            {/* ส่วนรายการ 2 แถวตาม Wireframe 6: [1] กายภาพบำบัด [ ] | [1] กายภาพมินิเกม [ ] */}
+            {/* ส่วนรายการ 2 แถวตาม Wireframe 6 */}
             <div className="w-full space-y-3 px-1 mb-4">
               
               {/* แถวที่ 1: [ 1 ] [ กายภาพบำบัด ] [ ✓ ] */}
@@ -1048,12 +1204,10 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                   selectedTherapyType === 'physio' ? 'scale-[1.02]' : 'opacity-85 hover:opacity-100'
                 }`}
               >
-                {/* กล่องซ้าย: [ 1 ] */}
                 <div className="w-12 h-14 sm:w-14 sm:h-16 rounded-2xl bg-gradient-to-b from-[#EFEFEF] to-[#D5D5D5] border-2 border-slate-400 flex items-center justify-center text-xl sm:text-2xl font-black text-[#0B2B2B] shadow-md flex-shrink-0">
                   1
                 </div>
 
-                {/* กล่องกลาง: [ กายภาพบำบัด ] */}
                 <button
                   onClick={() => handleProceedToExercise('physio')}
                   className={`flex-1 h-14 sm:h-16 rounded-2xl border-2 flex items-center justify-center px-4 font-black text-lg sm:text-xl shadow-md transition ${
@@ -1065,7 +1219,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                   กายภาพบำบัด
                 </button>
 
-                {/* กล่องขวา: ช่อง Checkbox [ ✓ ] */}
                 <div
                   className={`w-12 h-14 sm:w-14 sm:h-16 rounded-2xl border-2 flex items-center justify-center shadow-md flex-shrink-0 transition ${
                     selectedTherapyType === 'physio'
@@ -1084,12 +1237,10 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                   selectedTherapyType === 'minigame' ? 'scale-[1.02]' : 'opacity-85 hover:opacity-100'
                 }`}
               >
-                {/* กล่องซ้าย: [ 1 ] ตามภาพวาดเป๊ะๆ */}
                 <div className="w-12 h-14 sm:w-14 sm:h-16 rounded-2xl bg-gradient-to-b from-[#EFEFEF] to-[#D5D5D5] border-2 border-slate-400 flex items-center justify-center text-xl sm:text-2xl font-black text-[#0B2B2B] shadow-md flex-shrink-0">
                   1
                 </div>
 
-                {/* กล่องกลาง: [ กายภาพมินิเกม ] */}
                 <button
                   onClick={() => handleProceedToExercise('minigame')}
                   className={`flex-1 h-14 sm:h-16 rounded-2xl border-2 flex items-center justify-center px-4 font-black text-lg sm:text-xl shadow-md transition ${
@@ -1101,7 +1252,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                   กายภาพมินิเกม
                 </button>
 
-                {/* กล่องขวา: ช่อง Checkbox [   ] */}
                 <div
                   className={`w-12 h-14 sm:w-14 sm:h-16 rounded-2xl border-2 flex items-center justify-center shadow-md flex-shrink-0 transition ${
                     selectedTherapyType === 'minigame'
@@ -1115,18 +1265,15 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
 
             </div>
 
-            {/* กล่องล่างสีเขียว: ข้อมูลหมอกายภาพ ตาม Wireframe 6 */}
+            {/* กล่องล่างสีเขียว: ข้อมูลหมอกายภาพ */}
             <div className="w-full bg-[#C8F5D0] border-2 border-black/85 rounded-3xl p-3 sm:p-4 shadow-md flex items-center gap-3 sm:gap-4 my-2">
-              {/* การ์ดสีขาวรูป Avatar หมอด้านซ้าย */}
               <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-white border-2 border-slate-300 shadow-sm flex items-center justify-center flex-shrink-0 p-2">
-                {/* Silhouette Icon matching Wireframe 6 */}
                 <svg viewBox="0 0 100 100" className="w-full h-full text-black fill-current">
                   <circle cx="50" cy="34" r="22" />
                   <path d="M12 90 C12 66, 28 56, 50 56 C72 56, 88 66, 88 90 Z" />
                 </svg>
               </div>
 
-              {/* ข้อความขวา: ชื่อ - นามสกุล (ขีดเส้นใต้) และ ข้อมูลต่างๆของหมอ */}
               <div className="flex-1 min-w-0 flex flex-col justify-center">
                 <h3 className="text-base sm:text-lg font-black text-[#0B2B2B] underline underline-offset-4 decoration-2 decoration-[#0B2B2B] leading-tight">
                   <u>{activePlan?.therapistName || 'กภ. ธนากร วงศ์สวัสดิ์'}</u>
@@ -1171,7 +1318,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
       <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 max-w-md w-full">
         {[
           { step: 1, title: 'ภาพ 1: พักหน้าจอ' },
-          { step: 2, title: 'ภาพ 2: พร้อมกายภาพ' },
+          { step: 2, title: 'ภาพ 2: พร้อมกายภาพ (มินิเกม)' },
           { step: 3, title: 'ภาพ 3: พร้อมเข้าสู่ระบบ' },
           { step: 4, title: 'ภาพ 4: สแกนใบหน้า' },
           { step: 5, title: 'ภาพ 5: ล็อกอินสำเร็จ' },
@@ -1191,7 +1338,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         ))}
       </div>
 
-      {/* ปุ่มทางลัดมุมล่าง: เข้าสู่ระบบบุคลากร และเกี่ยวกับระบบ */}
+      {/* ปุ่มทางลัดมุมล่าง */}
       <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 flex items-center gap-2 z-30">
         {onOpenAbout && (
           <button
