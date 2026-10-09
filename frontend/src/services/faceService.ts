@@ -26,6 +26,7 @@
 
 import { FaceLandmarker, FaceLandmarkerResult } from '@mediapipe/tasks-vision';
 import { poseService } from './poseService';
+import { asset } from '../utils/asset';
 
 let faceapiInstance: any = null;
 async function getFaceApi(): Promise<any> {
@@ -42,18 +43,7 @@ export const LIVENESS_DISCLAIMER_TH =
   'หมายเหตุ: ระบบตรวจสอบความมีชีวิตเบื้องต้น (Basic Liveness Detection) สำหรับคัดกรองรูปภาพถ่ายนิ่ง ไม่ใช่ระบบ Anti-spoofing ระดับสถาบันการเงิน';
 
 function resolveAssetUrl(relPath: string): string {
-  if (relPath.startsWith('http://') || relPath.startsWith('https://')) return relPath;
-  const cleanRel = relPath.startsWith('/') ? relPath.slice(1) : relPath;
-  if (typeof window !== 'undefined' && window.location) {
-    const origin = window.location.origin;
-    let pathname = window.location.pathname;
-    if (!pathname.endsWith('/')) {
-      pathname = pathname.substring(0, pathname.lastIndexOf('/') + 1);
-    }
-    const safeBase = pathname.endsWith('/') ? pathname : `${pathname}/`;
-    return `${origin}${safeBase}${cleanRel}`;
-  }
-  return `./${cleanRel}`;
+  return asset(relPath);
 }
 
 export interface FaceLandmarkPoint {

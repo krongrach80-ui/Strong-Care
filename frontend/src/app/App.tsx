@@ -35,9 +35,38 @@ import { TreatmentPlan } from '../types/hospital';
 import { KioskSixStepWorkflow } from '../components/Kiosk/KioskSixStepWorkflow';
 import { CheckCircle2, Shield } from 'lucide-react';
 
+// Helper to parse route from URL hash and search params (for GitHub Pages SPA reload fallback)
+const parseRouteFromUrl = (): { screen: number; modal?: 'hospital' | 'reception' | 'about' | 'profile' } => {
+  if (typeof window === 'undefined') return { screen: 1 };
+  const rawHash = (window.location.hash || '').replace(/^#\/?/, '').toLowerCase().trim();
+  const searchParams = new URLSearchParams(window.location.search);
+  const routePath = rawHash || (searchParams.get('p') || '').replace(/^\//, '').toLowerCase().trim();
+
+  if (routePath === 'exercise' || routePath === 'workout' || routePath === 'screen4') {
+    return { screen: 4 };
+  }
+  if (routePath === 'minigame' || routePath === 'game' || routePath === 'screen5') {
+    return { screen: 5 };
+  }
+  if (routePath === 'hospital' || routePath === 'portal') {
+    return { screen: 1, modal: 'hospital' };
+  }
+  if (routePath === 'reception') {
+    return { screen: 1, modal: 'reception' };
+  }
+  if (routePath === 'about') {
+    return { screen: 1, modal: 'about' };
+  }
+  if (routePath === 'profile') {
+    return { screen: 1, modal: 'profile' };
+  }
+  return { screen: 1 };
+};
+
 export const App: React.FC = () => {
-  // Navigation Flow State: 1 -> 2 -> 3 -> 4
-  const [currentScreen, setCurrentScreen] = useState<number>(1);
+  // Navigation Flow State initialized from Hash URL
+  const initialRoute = parseRouteFromUrl();
+  const [currentScreen, setCurrentScreen] = useState<number>(initialRoute.screen);
   const [currentUserName, setCurrentUserName] = useState<string>('คุณสมชาย ใจดี');
   const [activeStretchQueue, setActiveStretchQueue] = useState<StretchExerciseItem[]>([]);
   const [activeCustomHoldTimes, setActiveCustomHoldTimes] = useState<Record<string, number>>({});
@@ -54,12 +83,12 @@ export const App: React.FC = () => {
 
   // Modal States
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
-  const [isHospitalPortalOpen, setIsHospitalPortalOpen] = useState<boolean>(false);
-  const [isReceptionOpen, setIsReceptionOpen] = useState<boolean>(false);
+  const [isHospitalPortalOpen, setIsHospitalPortalOpen] = useState<boolean>(initialRoute.modal === 'hospital');
+  const [isReceptionOpen, setIsReceptionOpen] = useState<boolean>(initialRoute.modal === 'reception');
   const [isTherapySettingsOpen, setIsTherapySettingsOpen] = useState<boolean>(false);
   const [isMiniGameSettingsOpen, setIsMiniGameSettingsOpen] = useState<boolean>(false);
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
-  const [isAboutOpen, setIsAboutOpen] = useState<boolean>(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(initialRoute.modal === 'profile');
+  const [isAboutOpen, setIsAboutOpen] = useState<boolean>(initialRoute.modal === 'about');
   const [isTherapistReportOpen, setIsTherapistReportOpen] = useState<boolean>(false);
   const [therapistReportData, setTherapistReportData] = useState<{
     score: number | null;
@@ -127,12 +156,44 @@ export const App: React.FC = () => {
     };
   }, []);
 
+  // Synchronize URL hash for browser history & reload resilience on GitHub Pages
+  const syncHash = (screen: number, modal?: string | null) => {
+    if (typeof window === 'undefined') return;
+    let target = '#/kiosk';
+    if (modal === 'hospital') target = '#/hospital';
+    else if (modal === 'reception') target = '#/reception';
+    else if (modal === 'about') target = '#/about';
+    else if (modal === 'profile') target = '#/profile';
+    else if (screen === 4) target = '#/exercise';
+    else if (screen === 5) target = '#/minigame';
+    else target = '#/kiosk';
+
+    if (window.location.hash !== target) {
+      window.history.replaceState(null, '', target);
+    }
+  };
+
+  // Sync state when URL hash changes (e.g. Browser Back / Forward buttons)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const route = parseRouteFromUrl();
+      setCurrentScreen(route.screen);
+      setIsHospitalPortalOpen(route.modal === 'hospital');
+      setIsReceptionOpen(route.modal === 'reception');
+      setIsAboutOpen(route.modal === 'about');
+      setIsProfileModalOpen(route.modal === 'profile');
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
   // Navigate & scroll to top smoothly (หน้า 2 และ 3 ถูกนำออกไป - วิ่งเข้าหน้า 1 ตู้ Kiosk เสมอ)
   const handleNavigate = (screenNumber: number) => {
     if (screenNumber === 2 || screenNumber === 3) {
       screenNumber = 1;
     }
     setCurrentScreen(screenNumber);
+    syncHash(screenNumber, null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -477,7 +538,10 @@ export const App: React.FC = () => {
       {/* User Profile Modal */}
       <UserProfileModal
         isOpen={isProfileModalOpen}
-        onClose={() => setIsProfileModalOpen(false)}
+        onClose={() => {
+          setIsProfileModalOpen(false);
+          syncHash(currentScreen, null);
+        }}
         patient={selectedPatient}
         onPatientPurged={() => {
           showToast('ลบข้อมูลผู้ป่วยและข้อมูลชีวมิติเรียบร้อยตาม PDPA');
@@ -499,7 +563,10 @@ export const App: React.FC = () => {
       {/* Hospital Director & Clinical RBAC Portal (ผอรพ / นักกายภาพ / คนไข้) */}
       {isHospitalPortalOpen && (
         <HospitalPortal
-          onClose={() => setIsHospitalPortalOpen(false)}
+          onClose={() => {
+            setIsHospitalPortalOpen(false);
+            syncHash(currentScreen, null);
+          }}
           onLaunchKioskExercise={(exerciseId) => {
             setIsHospitalPortalOpen(false);
             handleNavigate(4);
@@ -508,7 +575,7 @@ export const App: React.FC = () => {
             selectPatient(patient);
             setCurrentUserName(patient.name);
             setIsHospitalPortalOpen(false);
-            handleNavigate(3);
+            handleNavigate(1);
           }}
         />
       )}
@@ -516,12 +583,15 @@ export const App: React.FC = () => {
       {/* Reception Onboarding Modal (กรอกข้อมูลคนไข้ก่อนแล้วค่อยสแกนหน้า) */}
       <ReceptionOnboardingModal
         isOpen={isReceptionOpen}
-        onClose={() => setIsReceptionOpen(false)}
+        onClose={() => {
+          setIsReceptionOpen(false);
+          syncHash(currentScreen, null);
+        }}
         onSuccessNavigateToKiosk={(patient) => {
           selectPatient(patient);
           setCurrentUserName(patient.name);
           showToast(`ยินดีต้อนรับ ${patient.name} เข้าสู่ระบบตู้กายภาพบำบัด`);
-          handleNavigate(3);
+          handleNavigate(1);
         }}
       />
 
@@ -536,7 +606,10 @@ export const App: React.FC = () => {
       {/* About Modal */}
       <AboutModal
         isOpen={isAboutOpen}
-        onClose={() => setIsAboutOpen(false)}
+        onClose={() => {
+          setIsAboutOpen(false);
+          syncHash(currentScreen, null);
+        }}
       />
 
     </div>

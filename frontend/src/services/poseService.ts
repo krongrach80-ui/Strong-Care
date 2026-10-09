@@ -9,13 +9,10 @@ import {
 } from '@mediapipe/tasks-vision';
 import { PoseLandmarks, HolisticDetectionResult } from '../types/pose';
 import { LandmarkSmoother } from '../algorithms/smoothing';
+import { asset } from '../utils/asset';
 
 function resolveAssetUrl(relPath: string): string {
-  if (relPath.startsWith('http://') || relPath.startsWith('https://')) return relPath;
-  const baseUrl = (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.BASE_URL) || './';
-  const cleanBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-  const cleanRel = relPath.startsWith('/') ? relPath.slice(1) : relPath;
-  return `${cleanBase}${cleanRel}`;
+  return asset(relPath);
 }
 
 export class PoseService {

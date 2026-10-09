@@ -11,7 +11,7 @@ const apiProxy = {
 };
 
 export default defineConfig({
-  base: './',
+  base: '/Strong-Care/',
   plugins: [react()],
   resolve: {
     alias: {
