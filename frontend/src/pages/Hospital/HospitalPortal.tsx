@@ -859,7 +859,16 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                   }`}
                 >
                   <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-[#0F2F2B]' : 'text-emerald-300'}`} />
-                  {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
+                  {!isSidebarCollapsed && <span className="flex-1 truncate">{item.label}</span>}
+                  {!isSidebarCollapsed && item.id === 'schedules' && (
+                    <span
+                      className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${
+                        isActive ? 'bg-[#0F2F2B] text-[#4AE387]' : 'bg-emerald-500/30 text-emerald-200'
+                      }`}
+                    >
+                      {treatmentPlans.length}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -1152,9 +1161,9 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                           บัญชี / ชื่อผู้ใช้งาน
                         </th>
                         <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap min-w-[125px]">รหัสผ่าน (Password)</th>
+                        <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap min-w-[160px]">3. ตารางกายภาพ (Schedule)</th>
                         <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap min-w-[105px]">สถานะ / บทบาท</th>
                         <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap min-w-[130px]">หมอที่รับผิดชอบ</th>
-                        <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap min-w-[155px]">ตารางกายภาพ (Schedule)</th>
                         <th className="py-2.5 px-3 sm:px-4 text-right whitespace-nowrap min-w-[120px]">การจัดการ (Actions)</th>
                       </tr>
                     </thead>
@@ -1228,36 +1237,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                                 </div>
                               </td>
 
-                              {/* 3. Role & Status */}
-                              <td className="py-2.5 px-3 sm:px-4 whitespace-nowrap">
-                                <div className="inline-flex items-center gap-1.5">
-                                  {user.role === 'patient' && (
-                                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs whitespace-nowrap">
-                                      คนไข้
-                                    </span>
-                                  )}
-                                  {user.role === 'therapist' && (
-                                    <span className="px-2.5 py-0.5 rounded-full bg-[#0F2F2B] text-white font-bold text-xs whitespace-nowrap">
-                                      นักกายภาพ
-                                    </span>
-                                  )}
-                                  {user.role === 'admin' && (
-                                    <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs whitespace-nowrap">
-                                      แอดมินใหญ่
-                                    </span>
-                                  )}
-                                  <span className="w-2 h-2 rounded-full bg-[#10B981] flex-shrink-0" />
-                                </div>
-                              </td>
-
-                              {/* 4. Responsible Therapist */}
-                              <td className="py-2.5 px-3 sm:px-4 whitespace-nowrap">
-                                <span className="text-xs font-semibold text-slate-700 block truncate max-w-[140px] whitespace-nowrap">
-                                  {user.assignedTherapistName || (user.role === 'patient' ? 'กภ. ธนากร วงศ์สวัสดิ์' : '—')}
-                                </span>
-                              </td>
-
-                              {/* 5. Physical Therapy Schedule */}
+                              {/* 3. Physical Therapy Schedule (Column 3) */}
                               <td className="py-2.5 px-3 sm:px-4 whitespace-nowrap">
                                 {user.role === 'patient' ? (
                                   (() => {
@@ -1348,6 +1328,35 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                                 ) : (
                                   <span className="text-slate-300 font-mono text-xs">—</span>
                                 )}
+                              </td>
+
+                              {/* 4. Role & Status */}
+                              <td className="py-2.5 px-3 sm:px-4 whitespace-nowrap">
+                                <div className="inline-flex items-center gap-1.5">
+                                  {user.role === 'patient' && (
+                                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs whitespace-nowrap">
+                                      คนไข้
+                                    </span>
+                                  )}
+                                  {user.role === 'therapist' && (
+                                    <span className="px-2.5 py-0.5 rounded-full bg-[#0F2F2B] text-white font-bold text-xs whitespace-nowrap">
+                                      นักกายภาพ
+                                    </span>
+                                  )}
+                                  {user.role === 'admin' && (
+                                    <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs whitespace-nowrap">
+                                      แอดมินใหญ่
+                                    </span>
+                                  )}
+                                  <span className="w-2 h-2 rounded-full bg-[#10B981] flex-shrink-0" />
+                                </div>
+                              </td>
+
+                              {/* 5. Responsible Therapist */}
+                              <td className="py-2.5 px-3 sm:px-4 whitespace-nowrap">
+                                <span className="text-xs font-semibold text-slate-700 block truncate max-w-[140px] whitespace-nowrap">
+                                  {user.assignedTherapistName || (user.role === 'patient' ? 'กภ. ธนากร วงศ์สวัสดิ์' : '—')}
+                                </span>
                               </td>
 
                               {/* 6. Actions: Edit Name, Edit Password, Delete Account, Edit Schedule */}
