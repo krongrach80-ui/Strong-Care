@@ -8,7 +8,7 @@ Remove-Item -Force $gitIndex
 Remove-Item Env:\GIT_INDEX_FILE
 
 $parent = (git rev-parse origin/gh-pages).Trim()
-$commit = (git commit-tree $tree -p $parent -m "deploy: 3-tier auth & isolated flows (Admin 6 pages, PT 4 pages, decoupled Kiosk Pose vs Mini-Game), 16 exercises, 99 questions").Trim()
+$commit = (git commit-tree $tree -p $parent -m "deploy: smooth UX, unified mirror gestures, camera retry, and biometric verification").Trim()
 git update-ref refs/heads/gh-pages $commit
 Write-Host "gh-pages branch successfully updated to commit: $commit"
 git push origin gh-pages
