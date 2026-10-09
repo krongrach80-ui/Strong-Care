@@ -171,14 +171,9 @@ function useHandTracker({
     let lastFrameTime = 0;
     const FPS_INTERVAL = 1000 / 15; // ~15 FPS (66.6ms) เพื่อลดภาระ CPU/GPU
 
-    // โหลด HandLandmarker พร้อม flag กัน race condition
-    poseService.ensureHandLandmarker().then((landmarker) => {
-      if (cancelled) {
-        poseService.closeHandLandmarker();
-        return;
-      }
-    }).catch((err) => {
-      console.warn('⚠️ Hand Landmarker init warning:', err);
+    // ตรวจสอบความพร้อมของ HandLandmarker (พรีโหลดไว้แล้วจาก Step 1)
+    poseService.ensureHandLandmarker().catch((err) => {
+      console.warn('⚠️ Hand Landmarker check warning:', err);
     });
 
     const loop = () => {
@@ -345,8 +340,6 @@ function useHandTracker({
     return () => {
       cancelled = true;
       if (rafId) cancelAnimationFrame(rafId);
-      // Close HandLandmarker Instance เมื่อออกจาก Step 3
-      poseService.closeHandLandmarker();
       if (cursorElementRef.current) cursorElementRef.current.style.opacity = '0';
       if (cursorProgressCircleRef.current) cursorProgressCircleRef.current.style.strokeDashoffset = '150.8';
       if (cursorLabelRef.current) cursorLabelRef.current.style.opacity = '0';
@@ -378,10 +371,13 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
   onOpenAbout,
   kioskStationName = 'STRONG CARE (ตู้ Kiosk ประจำสถานี 1)',
 }) => {
-  // Query param flags
-  const isExplicitDemo = typeof window !== 'undefined' && (
-    new URLSearchParams(window.location.search).get('demo') === '1' ||
-    new URLSearchParams(window.location.search).get('dev') === '1'
+  // Query param flags: อนุญาต Demo Mode เฉพาะขณะรัน Local Development Server เท่านั้น (ใน Production Build จะเป็น false เสมอ)
+  const isExplicitDemo = Boolean(
+    import.meta.env.DEV &&
+    typeof window !== 'undefined' && (
+      new URLSearchParams(window.location.search).get('demo') === '1' ||
+      new URLSearchParams(window.location.search).get('dev') === '1'
+    )
   );
 
   const initialStepParam = typeof window !== 'undefined'
@@ -555,16 +551,18 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
       }
     } catch (err: any) {
       console.warn('Kiosk Camera start warning:', err);
-      setCameraError('ไม่สามารถเปิดกล้องจริงได้ (เปิดโหมดจำลองภาพ)');
+      setCameraError('ไม่สามารถใช้งานกล้องได้ กรุณาอนุญาตการใช้กล้องในการตั้งค่าเบราว์เซอร์ หรือเข้าสู่ระบบด้วยรหัส PIN');
       setIsCameraActive(false);
     }
   }, []);
 
-  // เริ่มต้นกล้องครั้งเดียวเมื่อตู้ Kiosk โหลด
+  // เริ่มต้นกล้องครั้งเดียวเมื่อตู้ Kiosk โหลด และทำความสะอาดทรัพยากรเมื่อ Unmount จาก Kiosk ทั้งหมด
   useEffect(() => {
     startCamera();
     return () => {
       stopMediaStream();
+      poseService.closeHandLandmarker();
+      poseService.closeFaceLandmarker();
       biometricTimersRef.current.forEach((t) => clearTimeout(t));
       biometricTimersRef.current = [];
     };
@@ -580,21 +578,20 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     }
   }, [isCameraActive]);
 
-  // หยุดกล้องเมื่อเข้า Step 5 หรือ Step 6 หรือเมื่อเปิด PIN
-  useEffect(() => {
-    if (currentStep === 5 || currentStep === 6) {
-      stopMediaStream();
-    }
-  }, [currentStep, stopMediaStream]);
-
-  // Preload Pose & Hand Landmarker ล่วงหน้าตอนอยู่ Step 1
+  // Preload Pose, Hand Tracker และ Face Liveness ล่วงหน้าใน Background ตอนอยู่ Step 1
   useEffect(() => {
     if (currentStep === 1) {
+      let cancelled = false;
       const timer = setTimeout(() => {
+        if (cancelled) return;
         poseService.initialize().catch(() => {});
         poseService.ensureHandLandmarker().catch(() => {});
+        poseService.ensureFaceLandmarker().catch(() => {});
       }, 400);
-      return () => clearTimeout(timer);
+      return () => {
+        cancelled = true;
+        clearTimeout(timer);
+      };
     }
   }, [currentStep]);
 
@@ -748,7 +745,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         break;
       case 'step1-pin':
       case 'step4-pin':
-        stopMediaStream();
         setShowPinModal(true);
         break;
       case 'step2-yes':
@@ -771,7 +767,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
       default:
         break;
     }
-  }, [triggerSlideUp, handleStep2Yes, handleStep2No, handleStep3Yes, handleStep3No, stopMediaStream]);
+  }, [triggerSlideUp, handleStep2Yes, handleStep2No, handleStep3Yes, handleStep3No]);
 
   // เชื่อมต่อ useHandTracker สำหรับ Step 2 และ Step 3
   useHandTracker({
@@ -807,12 +803,8 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     const REQUIRED_FACE_HOLD_FRAMES = 24; // ~1.5 วินาทีที่ 15 FPS
     let lastTime = 0;
 
-    poseService.ensureFaceLandmarker().then((landmarker) => {
-      if (cancelled) {
-        poseService.closeFaceLandmarker();
-        return;
-      }
-    }).catch(() => {});
+    // ใช้ FaceLandmarker ที่โหลดไว้แล้วจาก Background ใน Step 1 (ไม่สร้างใหม่)
+    poseService.ensureFaceLandmarker().catch(() => {});
 
     const loop = () => {
       if (cancelled) return;
@@ -906,8 +898,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     return () => {
       cancelled = true;
       if (rafId) cancelAnimationFrame(rafId);
-      // Close FaceLandmarker Instance เมื่อออกจาก Step 4
-      poseService.closeFaceLandmarker();
     };
   }, [currentStep, scanStep, isScanning]);
 
@@ -947,61 +937,33 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     }, 1600);
 
     const t3 = setTimeout(() => {
-      const profiles = faceRegistryService.getAllProfiles();
-      let targetPatient: Patient;
+      // ตรวจสอบโหมดสาธิต (Demo Bypass): อนุญาตเฉพาะเมื่อเปิดโหมดสาธิตเพื่อการทดสอบ Flow
+      if (bypass && (isDemoMode || isExplicitDemo)) {
+        setBiometricPhase(4);
+        setBiometricProgress(100);
+        setScanStep('done');
+        setScanStatusMessage(`⭐ โหมดสาธิต: ผ่านการตรวจสอบ ยินดีต้อนรับ: ${activePatient.name}`);
+        audioFeedback.playRepSuccess();
 
-      if (profiles && profiles.length > 0) {
-        const found = profiles[0];
-        targetPatient = {
-          id: Number(found.patientId) || activePatient.id || 12,
-          patient_code: found.patientCode || activePatient.patient_code || 'P-0012',
-          name: found.name || activePatient.name || 'นายสมชาย ใจดี',
-          age: found.age || activePatient.age || 68,
-          gender: (found.gender as any) || activePatient.gender || 'male',
-          notes: activePatient.notes || 'ข้อมูลชีวมิติใบหน้าลงทะเบียนแล้ว (Cosine Match: 0.94)',
-        };
-      } else {
-        const autoCode = regHn.trim() || `P-${Math.floor(1000 + Math.random() * 9000)}`;
-        const autoName = regName.trim() || 'ผู้รับบริการใหม่';
-        const newProfile = {
-          patientId: Date.now(),
-          patientCode: autoCode,
-          name: autoName,
-          age: 65,
-          gender: 'male',
-          embeddings: [new Array(128).fill(0.08)],
-          enrolledAt: new Date().toISOString(),
-        };
-        faceRegistryService.saveProfile(newProfile);
-        targetPatient = {
-          id: newProfile.patientId,
-          patient_code: newProfile.patientCode,
-          name: newProfile.name,
-          age: 65,
-          gender: 'male',
-          notes: 'ลงทะเบียนชีวมิติใบหน้าอัตโนมัติ ณ ตู้ Kiosk',
-        };
+        try {
+          voiceAssistant.speak(`ยินดีต้อนรับ ${activePatient.name} เข้าสู่ระบบสำเร็จ`, { level: 'system' });
+        } catch {}
+
+        const t4 = setTimeout(() => {
+          setIsScanning(false);
+          setBiometricPhase(0);
+          changeStep(5);
+        }, 1000);
+
+        biometricTimersRef.current.push(t4);
+        return;
       }
 
-      setBiometricPhase(4);
-      setBiometricProgress(100);
-      setActivePatient(targetPatient);
-      setScanStep('done');
-      setScanStatusMessage(`⭐ ผ่านการตรวจสอบ 100%! ยินดีต้อนรับ: ${targetPatient.name}`);
-      audioFeedback.playRepSuccess();
-
-      try {
-        voiceAssistant.speak(`ยินดีต้อนรับ ${targetPatient.name} เข้าสู่ระบบสำเร็จ`, { level: 'system' });
-      } catch {}
-
-      const t4 = setTimeout(() => {
-        setIsScanning(false);
-        setBiometricPhase(0);
-        stopMediaStream(); // หยุดกล้องเมื่อจบขั้นตอนที่ 4
-        changeStep(5);
-      }, 1000);
-
-      biometricTimersRef.current.push(t4);
+      // ในโหมดจริง: ตัด mock vector [new Array(128).fill(0.08)] และตัด profiles[0] ออก ไม่สร้างบัญชีปลอม
+      setIsScanning(false);
+      setBiometricPhase(0);
+      setScanStatusMessage('ยังไม่เชื่อมต่อการจดจำใบหน้าจริง');
+      audioFeedback.playHoldTick();
     }, 2400);
 
     biometricTimersRef.current.push(t1, t2, t3);
@@ -1024,6 +986,17 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
       setTimeout(() => handlePerformFaceScan(true), 300);
     }
   };
+
+  // Event listener สำหรับการทดสอบความปลอดภัยและ E2E Testing ในสภาพแวดล้อม Headless/CI
+  useEffect(() => {
+    const handleTriggerScan = () => {
+      handlePerformFaceScan(true);
+    };
+    window.addEventListener('kiosk:trigger-face-scan', handleTriggerScan);
+    return () => {
+      window.removeEventListener('kiosk:trigger-face-scan', handleTriggerScan);
+    };
+  }, []);
 
   // 4. Synchronized Countdowns for Step 5 & Step 6
   const step5Countdown = useKioskCountdown({
@@ -1126,53 +1099,62 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
       return;
     }
 
-    if (cleanPin === '1234' || cleanPin === '123456' || cleanPin.toUpperCase() === 'P-0012') {
-      const somchai: Patient = {
-        id: 12,
-        patient_code: 'P-0012',
-        name: 'นายสมชาย ใจดี',
-        age: 68,
-        gender: 'male',
-        notes: 'ข้อไหล่ติดระยะฟื้นฟู (Frozen Shoulder)',
-      };
-      setActivePatient(somchai);
-      setShowPinModal(false);
-      stopMediaStream();
-      audioFeedback.playRepSuccess();
-      changeStep(5);
+    // ในโหมด Development: อนุญาต Mock PIN สำหรับการทดสอบ Flow และ UI
+    if (import.meta.env.DEV) {
+      if (cleanPin === '1234' || cleanPin === '123456' || cleanPin.toUpperCase() === 'P-0012') {
+        const somchai: Patient = {
+          id: 12,
+          patient_code: 'P-0012',
+          name: 'นายสมชาย ใจดี',
+          age: 68,
+          gender: 'male',
+          notes: 'ข้อไหล่ติดระยะฟื้นฟู (Frozen Shoulder)',
+        };
+        setActivePatient(somchai);
+        setShowPinModal(false);
+        stopMediaStream();
+        audioFeedback.playRepSuccess();
+        changeStep(5);
+        return;
+      }
+
+      if (cleanPin === '5678' || cleanPin.toUpperCase() === 'P-0013') {
+        const phensri: Patient = {
+          id: 13,
+          patient_code: 'P-0013',
+          name: 'นางเพ็ญศรี สุขเกษม',
+          age: 72,
+          gender: 'female',
+          notes: 'กล้ามเนื้อขาอ่อนแรง ทรงตัวลำบาก',
+        };
+        setActivePatient(phensri);
+        setShowPinModal(false);
+        stopMediaStream();
+        audioFeedback.playRepSuccess();
+        changeStep(5);
+        return;
+      }
+
+      const foundInStore = patients.find(
+        (p) => p.patient_code.toLowerCase() === cleanPin.toLowerCase()
+      );
+      if (foundInStore) {
+        setActivePatient(foundInStore);
+        setShowPinModal(false);
+        stopMediaStream();
+        audioFeedback.playRepSuccess();
+        changeStep(5);
+        return;
+      }
+
+      setPinError('❌ รหัส PIN ไม่ถูกต้อง (ทดสอบ: 1234, 5678 หรือ P-0012)');
+      audioFeedback.playHoldTick();
       return;
     }
 
-    if (cleanPin === '5678' || cleanPin.toUpperCase() === 'P-0013') {
-      const phensri: Patient = {
-        id: 13,
-        patient_code: 'P-0013',
-        name: 'นางเพ็ญศรี สุขเกษม',
-        age: 72,
-        gender: 'female',
-        notes: 'กล้ามเนื้อขาอ่อนแรง ทรงตัวลำบาก',
-      };
-      setActivePatient(phensri);
-      setShowPinModal(false);
-      stopMediaStream();
-      audioFeedback.playRepSuccess();
-      changeStep(5);
-      return;
-    }
-
-    const foundInStore = patients.find(
-      (p) => p.patient_code.toLowerCase() === cleanPin.toLowerCase()
-    );
-    if (foundInStore) {
-      setActivePatient(foundInStore);
-      setShowPinModal(false);
-      stopMediaStream();
-      audioFeedback.playRepSuccess();
-      changeStep(5);
-      return;
-    }
-
-    setPinError('❌ รหัส PIN ไม่ถูกต้อง (ทดสอบ: 1234, 5678 หรือ P-0012)');
+    // ในโหมด Production: ต้องตรวจสอบผ่าน Backend API (POST /api/auth/pin) เท่านั้น
+    // ป้องกันการบายพาสทางฝั่ง Client โดยเด็ดขาด
+    setPinError('ระบบยังไม่เปิดให้ใช้ PIN กรุณาติดต่อเจ้าหน้าที่ (รอสร้าง POST /api/auth/pin)');
     audioFeedback.playHoldTick();
   };
 
@@ -1236,7 +1218,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
 
           <button
             onClick={() => {
-              stopMediaStream();
               setShowPinModal(true);
               audioFeedback.playHoldTick();
             }}
@@ -1252,6 +1233,26 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
       {/* กรอบ Card หลักสีขาว */}
       <div className="w-full max-w-[440px] sm:max-w-[480px] bg-white rounded-[36px] sm:rounded-[44px] border-2 sm:border-[2.5px] border-black/85 shadow-2xl relative overflow-hidden flex flex-col items-center p-5 sm:p-7 min-h-[580px] sm:min-h-[640px] justify-between transition-all duration-300">
         
+        {/* กล่องแจ้งเตือนเมื่อขอสิทธิ์กล้องไม่สำเร็จ พร้อมปุ่มสัมผัสสำรอง PIN ทันที */}
+        {cameraError && currentStep <= 4 && (
+          <div className="w-full bg-amber-50 border-2 border-amber-400 rounded-2xl p-3 mb-2 text-amber-950 text-xs shadow-md animate-fadeIn flex flex-col gap-2 z-30">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="flex-1 font-bold leading-relaxed">
+                {cameraError}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPinModal(true)}
+              className="w-full py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-sm transition active:scale-95 cursor-pointer"
+            >
+              <Key className="w-4 h-4" />
+              <span>แตะที่นี่เพื่อเข้าสู่ระบบด้วยรหัส PIN สำรองทันที</span>
+            </button>
+          </div>
+        )}
+        
         {/* ================================================================= */}
         {/* Permanent Video Element at Parent Level: มีอยู่ตลอดใน Step 1-4   */}
         {/* ไม่ unmount หรือขอสิทธิ์กล้องใหม่ระหว่างสลับ Step                */}
@@ -1260,12 +1261,12 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
           ref={cameraContainerRef}
           className={`transition-all duration-300 ease-in-out relative ${
             currentStep === 1
-              ? 'w-0 h-0 overflow-hidden opacity-0 pointer-events-none absolute'
+              ? 'fixed top-0 left-0 w-2 h-2 opacity-0 pointer-events-none -z-50 overflow-hidden'
               : currentStep === 2 || currentStep === 3
               ? 'w-full flex-1 min-h-[280px] max-h-[340px] rounded-[32px] overflow-hidden border-2 border-emerald-400/80 bg-slate-900 flex items-center justify-center shadow-2xl my-2.5 z-10'
               : currentStep === 4
               ? 'w-56 h-68 sm:w-60 sm:h-74 border-[3px] border-dashed border-gray-800 rounded-[50%] overflow-hidden flex items-center justify-center bg-black/5 shadow-inner mx-auto my-2 z-10'
-              : 'hidden'
+              : 'fixed top-0 left-0 w-2 h-2 opacity-0 pointer-events-none -z-50 overflow-hidden'
           }`}
         >
           <video
@@ -1392,7 +1393,6 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               <button
                 data-kiosk-target="step1-pin"
                 onClick={() => {
-                  stopMediaStream();
                   setShowPinModal(true);
                 }}
                 className="w-full py-3 px-4 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs sm:text-sm transition flex items-center justify-center gap-1.5 cursor-pointer min-h-[46px]"
@@ -1506,7 +1506,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1">
                   <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                  <span>Face Verification (โหมดสาธิต)</span>
+                  <span>Face Verification{isDemoMode ? ' (โหมดสาธิต)' : ''}</span>
                 </span>
                 <span className="text-[10px] font-bold text-slate-500">
                   ทำภารกิจตามลำดับ (ค้างไว้ 1.5s/ท่า)
@@ -1520,40 +1520,41 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               </p>
             </div>
 
-            {/* แถบภารกิจ 4 ท่า */}
-            <div className="w-full grid grid-cols-4 gap-1.5 my-2">
-              {[
-                { key: 'front', label: 'หน้าตรง' },
-                { key: 'left', label: 'หันซ้าย' },
-                { key: 'right', label: 'หันขวา' },
-                { key: 'done', label: 'เสร็จสิ้น' },
-              ].map((task) => (
-                <button
-                  key={task.key}
-                  data-kiosk-target={`step4-${task.key}`}
-                  onClick={() => {
-                    if (task.key !== 'done') handleManualChallenge(task.key as any);
-                    else handlePerformFaceScan(true);
-                  }}
-                  className={`py-2 px-1 rounded-xl text-xs font-black transition border flex flex-col items-center justify-center cursor-pointer min-h-[44px] ${
-                    challengeProgressRef.current[task.key as 'front' | 'left' | 'right'] || scanStep === 'done'
-                      ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
-                      : scanStep === task.key
-                      ? 'bg-white text-emerald-800 border-2 border-emerald-500 animate-pulse'
-                      : 'bg-slate-50 text-slate-600 border-slate-200'
-                  }`}
-                >
-                  <span>{task.label}</span>
-                </button>
-              ))}
-            </div>
+            {/* แถบภารกิจ 4 ท่า: แสดงเฉพาะเมื่อเปิดโหมดสาธิตหรือ debug flag (ค่าเริ่มต้นปิดในโหมดจริง) */}
+            {(isDemoMode || isExplicitDemo) && (
+              <div className="w-full grid grid-cols-4 gap-1.5 my-2">
+                {[
+                  { key: 'front', label: 'หน้าตรง' },
+                  { key: 'left', label: 'หันซ้าย' },
+                  { key: 'right', label: 'หันขวา' },
+                  { key: 'done', label: 'เสร็จสิ้น' },
+                ].map((task) => (
+                  <button
+                    key={task.key}
+                    data-kiosk-target={`step4-${task.key}`}
+                    onClick={() => {
+                      if (task.key !== 'done') handleManualChallenge(task.key as any);
+                      else handlePerformFaceScan(true);
+                    }}
+                    className={`py-2 px-1 rounded-xl text-xs font-black transition border flex flex-col items-center justify-center cursor-pointer min-h-[44px] ${
+                      challengeProgressRef.current[task.key as 'front' | 'left' | 'right'] || scanStep === 'done'
+                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
+                        : scanStep === task.key
+                        ? 'bg-white text-emerald-800 border-2 border-emerald-500 animate-pulse'
+                        : 'bg-slate-50 text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    <span>{task.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* PIN Keypad Fallback Bar */}
             <div className="w-full space-y-2">
               <button
                 data-kiosk-target="step4-pin"
                 onClick={() => {
-                  stopMediaStream();
                   setShowPinModal(true);
                 }}
                 className="w-full py-2.5 px-4 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-extrabold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
@@ -1961,6 +1962,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 animate-fadeIn">
           <div className="w-full max-w-sm bg-white rounded-[32px] p-5 shadow-2xl border-2 border-emerald-500 relative flex flex-col items-center">
             <button
+              data-kiosk-target="pin-modal-close"
               onClick={() => {
                 setShowPinModal(false);
                 setPinError(null);
@@ -1993,49 +1995,51 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               </p>
             )}
 
-            <div className="w-full mb-3">
-              <span className="text-[11px] font-bold text-slate-500 block mb-1">
-                บัญชีคนไข้ตัวอย่าง (แตะเพื่อเข้าทันที):
-              </span>
-              <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                <button
-                  onClick={() =>
-                    handleSelectQuickPatient(
-                      {
-                        id: 12,
-                        patient_code: 'P-0012',
-                        name: 'นายสมชาย ใจดี',
-                        age: 68,
-                        gender: 'male',
-                        notes: 'ข้อไหล่ติดระยะฟื้นฟู',
-                      },
-                      '1234'
-                    )
-                  }
-                  className="p-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold border border-emerald-200 text-left truncate cursor-pointer"
-                >
-                  🟢 นายสมชาย (1234)
-                </button>
-                <button
-                  onClick={() =>
-                    handleSelectQuickPatient(
-                      {
-                        id: 13,
-                        patient_code: 'P-0013',
-                        name: 'นางเพ็ญศรี สุขเกษม',
-                        age: 72,
-                        gender: 'female',
-                        notes: 'กล้ามเนื้อขาอ่อนแรง',
-                      },
-                      '5678'
-                    )
-                  }
-                  className="p-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold border border-emerald-200 text-left truncate cursor-pointer"
-                >
-                  🟢 นางเพ็ญศรี (5678)
-                </button>
+            {import.meta.env.DEV && (
+              <div className="w-full mb-3">
+                <span className="text-[11px] font-bold text-slate-500 block mb-1">
+                  บัญชีคนไข้ตัวอย่าง (แตะเพื่อเข้าทันที):
+                </span>
+                <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                  <button
+                    onClick={() =>
+                      handleSelectQuickPatient(
+                        {
+                          id: 12,
+                          patient_code: 'P-0012',
+                          name: 'นายสมชาย ใจดี',
+                          age: 68,
+                          gender: 'male',
+                          notes: 'ข้อไหล่ติดระยะฟื้นฟู',
+                        },
+                        '1234'
+                      )
+                    }
+                    className="p-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold border border-emerald-200 text-left truncate cursor-pointer"
+                  >
+                    🟢 นายสมชาย (1234)
+                  </button>
+                  <button
+                    onClick={() =>
+                      handleSelectQuickPatient(
+                        {
+                          id: 13,
+                          patient_code: 'P-0013',
+                          name: 'นางเพ็ญศรี สุขเกษม',
+                          age: 72,
+                          gender: 'female',
+                          notes: 'กล้ามเนื้อขาอ่อนแรง',
+                        },
+                        '5678'
+                      )
+                    }
+                    className="p-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold border border-emerald-200 text-left truncate cursor-pointer"
+                  >
+                    🟢 นางเพ็ญศรี (5678)
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="w-full grid grid-cols-3 gap-2">
               {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (

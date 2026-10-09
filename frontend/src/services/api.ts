@@ -447,7 +447,6 @@ export const api = {
         name: enrolledPatient.name,
         age: enrolledPatient.age,
         gender: enrolledPatient.gender,
-        photo: payload.photo,
         embeddings: rawVectors,
         enrolledAt: new Date().toISOString(),
       });
@@ -477,7 +476,6 @@ export const api = {
               name: item.name,
               age: item.age,
               gender: item.gender,
-              photo: item.photo,
               embeddings: item.embeddings,
               enrolledAt: new Date().toISOString(),
             });
@@ -506,9 +504,8 @@ export const api = {
           name: p.name,
           age: p.age,
           gender: p.gender,
-          photo: p.photo,
         },
-        matchedPhoto: p.photo,
+        matchedPhoto: undefined,
         message: `ยืนยันตัวตนสำเร็จ: ยินดีต้อนรับคุณ ${p.name} (ความแม่นยำ ${matchRes.similarityPercent}%)`,
       };
     }

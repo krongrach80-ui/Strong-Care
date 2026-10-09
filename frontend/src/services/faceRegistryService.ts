@@ -4,8 +4,8 @@
  * Provides:
  * 1. Persistent client-side face vector storage (Indexed/localStorage)
  * 2. High-precision Dual-Metric Verification:
- *    - Cosine Similarity >= 0.88 (88%+)
- *    - Euclidean Distance <= 0.48
+ *    - Cosine Similarity >= 0.90 (90%+)
+ *    - Euclidean Distance <= 0.42
  * 3. Multi-frame angle tolerance (Center, Left, Right)
  * 4. Dual cloud-synchronization with Supabase (public.face_embeddings & public.patients)
  * 5. Rejects imposters / strangers with clear safety feedback
@@ -17,7 +17,6 @@ export interface EnrolledFaceProfile {
   name: string;
   age?: number;
   gender?: string;
-  photo?: string; // Captured photo (Data URL JPEG)
   embeddings: number[][]; // 128-D L2-normalized float vectors
   enrolledAt: string;
 }
@@ -107,7 +106,6 @@ export class FaceRegistryService {
       name: profile.name,
       age: profile.age,
       gender: profile.gender,
-      photo: profile.photo || (existingIdx >= 0 ? list[existingIdx].photo : undefined),
       embeddings: cleanEmbeddings,
       enrolledAt: profile.enrolledAt || new Date().toISOString(),
     };
@@ -181,7 +179,7 @@ export class FaceRegistryService {
 
   /**
    * ค้นหาโปรไฟล์ที่ตรงกับเวกเตอร์จากกล้องมากที่สุดด้วยระบบ Dual-Metric
-   * ต้องผ่านทั้งเกณฑ์ Cosine Similarity (>= 0.88) และ Euclidean Distance (<= 0.48)
+   * ต้องผ่านทั้งเกณฑ์ Cosine Similarity (>= 0.90) และ Euclidean Distance (<= 0.42)
    */
   public findBestMatch(
     queryEmbedding: number[],
@@ -299,12 +297,6 @@ export class FaceRegistryService {
         } catch {}
       }
 
-      let photo: string | undefined = p.photo || p.avatar_url;
-      if (!photo && typeof p.medical_history === 'string' && p.medical_history.includes('FACE_PHOTO:')) {
-        const match = p.medical_history.match(/FACE_PHOTO:(data:image\/[^\s\n]+)/);
-        if (match) photo = match[1];
-      }
-
       if (embeddings.length > 0) {
         this.saveProfile({
           patientId: p.id,
@@ -312,7 +304,6 @@ export class FaceRegistryService {
           name: p.full_name || p.name,
           age: p.age,
           gender: p.gender,
-          photo,
           embeddings,
           enrolledAt: p.created_at || new Date().toISOString(),
         });
