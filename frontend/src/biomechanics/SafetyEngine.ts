@@ -294,6 +294,24 @@ export class SafetyEngine {
   }
 
   /**
+   * Manually trigger emergency stop (e.g. from UI Emergency Stop button)
+   */
+  public triggerManualEmergencyStop(reason: string = 'ผู้ป่วยหรือผู้ดูแลกดปุ่มหยุดฉุกเฉิน'): SafetyViolation {
+    const violation: SafetyViolation = {
+      code: 'ERRATIC_VELOCITY',
+      severity: 'CRITICAL_STOP',
+      title: '🛑 หยุดฉุกเฉิน (Manual Emergency Stop)',
+      message: reason,
+      voiceMessage: 'หยุดฉุกเฉิน พักการฝึกชั่วคราวครับ',
+      timestamp: Date.now(),
+    };
+    this.isEmergencyStopActive = true;
+    this.emergencyStopTimestamp = Date.now();
+    this.violationHistory.push(violation);
+    return violation;
+  }
+
+  /**
    * Reset / dismiss emergency stop (e.g. user acknowledged warning)
    */
   public acknowledgeAndResume(): void {

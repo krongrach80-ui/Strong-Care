@@ -46,6 +46,7 @@ import {
   LayoutGrid,
   List,
   MapPin,
+  ShieldCheck,
 } from 'lucide-react';
 import { useHospitalStore } from '../../store/hospitalStore';
 import { UserAccount, UserRole, PhysicalTherapist, HospitalExercise, ActivityLog, TreatmentPlan } from '../../types/hospital';
@@ -466,11 +467,124 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
   const [planStatusFilter, setPlanStatusFilter] = useState<'all' | 'active' | 'paused' | 'completed'>('all');
   const [planCareFilter, setPlanCareFilter] = useState<'all' | 'assigned'>('all');
 
-  // Timetable scheduling states (ตารางเรียนกายภาพ)
-  const [scheduleViewMode, setScheduleViewMode] = useState<'timetable' | 'list'>('timetable');
+  // Timetable scheduling states (ตารางเรียนกายภาพ) & Approval Gate (P2-10)
+  const [scheduleViewMode, setScheduleViewMode] = useState<'timetable' | 'list' | 'approvals'>('timetable');
   const [scheduleSelectedMonth, setScheduleSelectedMonth] = useState<number>(9); // 0-indexed, 9 = ตุลาคม (October)
   const [scheduleSelectedYear, setScheduleSelectedYear] = useState<number>(2026);
   const [scheduleDayFilter, setScheduleDayFilter] = useState<string>('all');
+
+  // AI Clinical Approval Gate States (Human-in-the-Loop Protocol)
+  interface AiRecommendationProposal {
+    id: number | string;
+    patientId: number | string;
+    patientName: string;
+    patientCode: string;
+    proposedAdjustment: string;
+    clinicalRationale: string;
+    status: 'PENDING_CLINICAL_APPROVAL' | 'APPROVED' | 'REJECTED';
+    createdAt: string;
+    therapistNotes?: string;
+  }
+
+  const [aiProposals, setAiProposals] = useState<AiRecommendationProposal[]>([
+    {
+      id: 101,
+      patientId: 12,
+      patientName: 'นายสมชาย ใจดี',
+      patientCode: 'P-0012',
+      proposedAdjustment: 'ปรับเพิ่มเวลาค้างท่าเป็น 25 วินาที (+5s) พร้อมท่ายืดอกเปิดไหล่',
+      clinicalRationale: 'คะแนนความแม่นยำเฉลี่ย 88% ติดต่อกัน 3 ครั้ง • ไม่มี Safety Violations • ROM ข้อไหล่เพิ่มขึ้น 12°',
+      status: 'PENDING_CLINICAL_APPROVAL',
+      createdAt: new Date(Date.now() - 3600000).toISOString(),
+    },
+    {
+      id: 102,
+      patientId: 13,
+      patientName: 'นางเพ็ญศรี สุขเกษม',
+      patientCode: 'P-0013',
+      proposedAdjustment: 'คงเวลาค้างท่า 15 วินาที และเน้นการทรงตัวพร้อมเก้าอี้พยุง',
+      clinicalRationale: 'ตรวจพบ compensation ลำตัวเอียง 12° ระหว่างทำท่ายกเข่าสลับ',
+      status: 'PENDING_CLINICAL_APPROVAL',
+      createdAt: new Date(Date.now() - 7200000).toISOString(),
+    },
+  ]);
+
+  // Load pending approvals from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('strongcare_pending_approvals');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setAiProposals((prev) => {
+            const combined = [...parsed, ...prev.filter((p) => !parsed.some((x: any) => x.id === p.id))];
+            return combined;
+          });
+        }
+      }
+    } catch {}
+  }, []);
+
+  const handleApproveProposal = (proposal: AiRecommendationProposal) => {
+    setAiProposals((prev) =>
+      prev.map((p) => (p.id === proposal.id ? { ...p, status: 'APPROVED' } : p))
+    );
+    const targetPlan = treatmentPlans.find(
+      (tp) => String(tp.patientId) === String(proposal.patientId) || tp.patientCode === proposal.patientCode
+    );
+    if (targetPlan) {
+      saveTreatmentPlan({
+        ...targetPlan,
+        clinicalNotes: `${targetPlan.clinicalNotes} [อนุมัติ AI: ${proposal.proposedAdjustment} โดย ${currentUser?.name || 'นักกายภาพ'}]`,
+      });
+    }
+    addActivityLog(
+      'APPROVE_AI_RECOMMENDATION',
+      'AI',
+      `อนุมัติข้อเสนอแนะ AI สำหรับคนไข้ ${proposal.patientName} (${proposal.patientCode}): ${proposal.proposedAdjustment}`
+    );
+    showToast(`✅ อนุมัติข้อเสนอแนะ AI สำหรับ ${proposal.patientName} สำเร็จ`);
+  };
+
+  const handleRejectProposal = (proposal: AiRecommendationProposal) => {
+    setAiProposals((prev) =>
+      prev.map((p) => (p.id === proposal.id ? { ...p, status: 'REJECTED' } : p))
+    );
+    addActivityLog(
+      'REJECT_AI_RECOMMENDATION',
+      'AI',
+      `ปฏิเสธข้อเสนอแนะ AI สำหรับคนไข้ ${proposal.patientName} (${proposal.patientCode})`
+    );
+    showToast(`❌ ปฏิเสธข้อเสนอแนะ AI สำหรับ ${proposal.patientName} (คงแผนเดิม)`);
+  };
+
+  const handleAdjustProposal = (proposal: AiRecommendationProposal) => {
+    const customAdjustment = prompt('กรุณาระบุการปรับแก้แผนการรักษาทางคลินิก:', proposal.proposedAdjustment);
+    if (!customAdjustment) return;
+
+    setAiProposals((prev) =>
+      prev.map((p) =>
+        p.id === proposal.id
+          ? { ...p, proposedAdjustment: customAdjustment, status: 'APPROVED', therapistNotes: 'ปรับแก้โดยนักกายภาพ' }
+          : p
+      )
+    );
+    const targetPlan = treatmentPlans.find(
+      (tp) => String(tp.patientId) === String(proposal.patientId) || tp.patientCode === proposal.patientCode
+    );
+    if (targetPlan) {
+      saveTreatmentPlan({
+        ...targetPlan,
+        clinicalNotes: `${targetPlan.clinicalNotes} [ปรับแก้โดยนักกายภาพ: ${customAdjustment}]`,
+      });
+    }
+    addActivityLog(
+      'ADJUST_AI_RECOMMENDATION',
+      'AI',
+      `ปรับแก้และอนุมัติข้อเสนอแนะสำหรับคนไข้ ${proposal.patientName}: ${customAdjustment}`
+    );
+    showToast(`✏️ บันทึกการปรับแก้และอนุมัติแผนสำหรับ ${proposal.patientName} สำเร็จ`);
+  };
 
   const filteredTreatmentPlans = useMemo(() => {
     return treatmentPlans.filter((plan) => {
@@ -1973,6 +2087,18 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                       <List className="w-3.5 h-3.5" />
                       <span>ตารางรายชื่อ (List)</span>
                     </button>
+                    <button
+                      onClick={() => setScheduleViewMode('approvals')}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                        scheduleViewMode === 'approvals'
+                          ? 'bg-[#10B981] text-[#0F2F2B] font-extrabold shadow-xs'
+                          : 'text-slate-600 hover:text-emerald-800'
+                      }`}
+                      title="ระบบอนุมัติคำแนะนำทางคลินิกจาก AI (Therapist Approval Gate)"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>อนุมัติแผน AI ({aiProposals.filter((p) => p.status === 'PENDING_CLINICAL_APPROVAL').length})</span>
+                    </button>
                   </div>
 
                   {/* Month & Year Navigator */}
@@ -2648,6 +2774,138 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                         )}
                       </tbody>
                     </table>
+                  </div>
+                </div>
+              )}
+
+              {/* C. มุมมองระบบกลั่นกรองคำแนะนำทางคลินิก (Therapist Approval Gate P2-10) */}
+              {scheduleViewMode === 'approvals' && (
+                <div className="space-y-4 animate-fadeIn">
+                  {/* Banner Human-in-the-Loop */}
+                  <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-900 to-[#0F2F2B] text-white border-2 border-emerald-400/80 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="w-5 h-5 text-[#4AE387]" />
+                        <h4 className="font-extrabold text-base sm:text-lg text-white">
+                          🛡️ ระบบกลั่นกรองคำแนะนำทางคลินิก (Therapist Approval Gate)
+                        </h4>
+                      </div>
+                      <p className="text-xs text-emerald-200/90 leading-relaxed max-w-2xl">
+                        หลักการ <strong>Human-in-the-Loop:</strong> AI วิเคราะห์และเสนอแนะการปรับปรุงโปรแกรมตามผลการฝึกจริง
+                        แต่นักกายภาพบำบัดวิชาชีพเป็นผู้มีอำนาจตัดสินใจอนุมัติ ปรับแก้ หรือปฏิเสธก่อนบันทึกลง Prescription จริงเสมอ
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-400 text-emerald-300 text-xs font-bold font-mono">
+                        Direct DB Write: FORBIDDEN 🔒
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* List of Proposals */}
+                  <div className="space-y-3">
+                    {aiProposals.length === 0 ? (
+                      <div className="p-8 text-center bg-white rounded-2xl border border-emerald-100 text-slate-500">
+                        <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
+                        <p className="font-bold text-sm text-[#0F2F2B]">ไม่มีข้อเสนอแนะค้างการพิจารณา</p>
+                        <p className="text-xs text-slate-400 mt-0.5">เมื่อคนไข้ฝึกเสร็จที่ตู้ Kiosk ข้อเสนอแนะ AI จะปรากฏที่นี่</p>
+                      </div>
+                    ) : (
+                      aiProposals.map((proposal) => (
+                        <div
+                          key={proposal.id}
+                          className={`p-4 sm:p-5 rounded-2xl bg-white border-2 transition shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                            proposal.status === 'PENDING_CLINICAL_APPROVAL'
+                              ? 'border-amber-400 bg-amber-50/20 shadow-amber-500/10'
+                              : proposal.status === 'APPROVED'
+                              ? 'border-emerald-300 bg-emerald-50/10'
+                              : 'border-slate-200 bg-slate-50 opacity-80'
+                          }`}
+                        >
+                          <div className="space-y-2 flex-1 min-w-0">
+                            <div className="flex items-center gap-2.5 flex-wrap">
+                              <span className="font-extrabold text-sm sm:text-base text-[#0F2F2B]">
+                                {proposal.patientName}
+                              </span>
+                              <span className="text-xs font-mono font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md">
+                                {proposal.patientCode}
+                              </span>
+                              <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                                proposal.status === 'PENDING_CLINICAL_APPROVAL'
+                                  ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                  : proposal.status === 'APPROVED'
+                                  ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                  : 'bg-rose-100 text-rose-900 border-rose-300'
+                              }`}>
+                                {proposal.status === 'PENDING_CLINICAL_APPROVAL'
+                                  ? '⏳ รอการอนุมัติ (Pending Approval)'
+                                  : proposal.status === 'APPROVED'
+                                  ? '✅ อนุมัติแล้ว (Approved)'
+                                  : '❌ ปฏิเสธ (Rejected)'}
+                              </span>
+                              <span className="text-[11px] text-slate-400">
+                                {new Date(proposal.createdAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.
+                              </span>
+                            </div>
+
+                            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
+                              <div className="text-xs sm:text-sm font-bold text-[#0F2F2B] flex items-center gap-1.5 flex-wrap">
+                                <span className="text-emerald-700">💡 ข้อเสนอแนะ AI:</span>
+                                <span>{proposal.proposedAdjustment}</span>
+                              </div>
+                              <p className="text-[11px] text-slate-500">
+                                <strong>เหตุผลทางชีวกลศาสตร์:</strong> {proposal.clinicalRationale}
+                              </p>
+                              {proposal.therapistNotes && (
+                                <p className="text-[11px] text-emerald-800 font-semibold pt-1 border-t border-slate-200 mt-1">
+                                  🩺 บันทึกของนักกายภาพ: {proposal.therapistNotes}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex items-center gap-2 flex-shrink-0 self-end md:self-center">
+                            {proposal.status === 'PENDING_CLINICAL_APPROVAL' ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApproveProposal(proposal)}
+                                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#10B981] to-[#059669] hover:brightness-105 text-white font-extrabold text-xs shadow-md transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                                  title="อนุมัติและปรับปรุง Prescription คนไข้ทันที"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>อนุมัติ (Approve)</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAdjustProposal(proposal)}
+                                  className="px-3 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-bold text-xs transition active:scale-95 flex items-center gap-1 cursor-pointer"
+                                  title="ปรับแก้ข้อเสนอแนะก่อนอนุมัติ"
+                                >
+                                  <Pencil className="w-3.5 h-3.5 text-slate-500" />
+                                  <span>ปรับแก้ (Adjust)</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRejectProposal(proposal)}
+                                  className="px-3 py-2 rounded-xl bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 font-bold text-xs transition active:scale-95 flex items-center gap-1 cursor-pointer"
+                                  title="ปฏิเสธข้อเสนอแนะ AI"
+                                >
+                                  <X className="w-3.5 h-3.5 text-rose-500" />
+                                  <span>ปฏิเสธ (Reject)</span>
+                                </button>
+                              </>
+                            ) : (
+                              <div className="text-xs font-bold text-slate-500 px-3 py-1.5 rounded-lg bg-slate-100">
+                                ดำเนินการแล้ว
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               )}

@@ -12,13 +12,14 @@
 > 
 > “Strong Care is an AI-assisted rehabilitation monitoring platform that combines facial identity verification, liveness detection, pose and biomechanical analysis, real-time safety monitoring, adaptive recommendations, and human approval within a privacy-conscious offline-first architecture.”
 
-### 🌟 ฟีเจอร์เด่นใหม่ (New Features):
-1. **Vertical Fullscreen Smart-Mirror**: กล้องแนวตั้งเต็มจอสไตล์ Smart Rehab Mirror ล็อกจอ 100% Zero-Scroll เหมาะสำหรับผู้สูงอายุ
-2. **Picture-in-Picture (PiP) Video Inset**: คลิปวิดีโอคุณหมอสาธิต (Dr. Fame) ฝังในหน้าจอกล้องโดยตรง สลับมุมซ้าย-ขวาได้ ไม่บังการเคลื่อนไหว
-3. **11 Clinical Stretch Program**: โปรแกรมยืดเส้นกายภาพ 11 ท่า พร้อมระบบปรับเวลาค้างท่าอิสระ
-4. **Senior-Friendly PIN & Face Auth**: ทางเลือกเข้าสู่ระบบด้วยรหัส PIN 6 หลัก หรือสแกนใบหน้าอัจฉริยะ (ทดลอง/Beta)
-5. **Clinical Safety Watchdog**: ตรวจจับข้อต่อและมุมผิดรูป พร้อมเสียง AI ภาษาไทยแจ้งเตือนและสั่งหยุดพักฉุกเฉิน
-6. **Resilient Offline-First Sync**: จัดเก็บข้อมูลลง IndexedDB และแคชสรุปย่อ พร้อมคิวซิงก์เดี่ยวอัตโนมัติ
+### 🌟 ฟีเจอร์เด่นใหม่ (Production-Ready Architecture):
+1. **Single Primary Entrance & Senior Mode Default ON**: ซ่อนปุ่มสลับภาพและปุ่มเดโมใน Production Mode (เปิดดูด้วย `?demo=1`) พร้อมเปิดโหมดผู้สูงอายุเป็นค่าเริ่มต้น (ปุ่มสัมผัสขนาดใหญ่ $\ge 48$px ตัวอักษรคมชัด คอนทราสต์สูง ลดการกระตุ้นประสาทตา)
+2. **Vertical Fullscreen Smart-Mirror**: กล้องแนวตั้งเต็มจอสไตล์ Smart Rehab Mirror แบบ Zero-Scroll ขอสิทธิ์และเปิดกล้องอัตโนมัติทันที
+3. **Picture-in-Picture (PiP) Doctor Demo Video**: วิดีโอคุณหมอสาธิต (นพ. กฤติณห์ / DeDoctor) ฝังเป็น PiP ในกล้อง สลับมุมซ้าย-ขวาได้ ไม่บังสเกเลตันตรวจจับ
+4. **11 Clinical Stretch Programs Library**: คลังโปรแกรมยืดเหยียด 11 ท่าตามหลักกายภาพ พร้อมระบบปรับเวลาค้างท่าอิสระ (10-60 วินาที) ก่อนเริ่มฝึก
+5. **Tangible Safety Watchdog & Manual Emergency Stop**: ตรวจจับมุมข้อต่อผิดรูปและ Compensations พร้อมเสียงแจ้งเตือนภาษาไทย (SpeechSynthesis/Web Audio) และปุ่ม `🛑 หยุดฉุกเฉิน` ที่บันทึกเหตุการณ์ลง IndexedDB ทันที
+6. **Therapist Approval Gate (Human-in-the-Loop)**: ปัญญาประดิษฐ์เสนอแนะการปรับโปรแกรมหลังจบเซสชัน แต่ต้องผ่านการอนุมัติ (Approve / Adjust / Reject) โดยนักกายภาพบำบัดใน Hospital Portal เท่านั้น
+7. **Offline-First Resilience**: ใช้งานบน GitHub Pages ได้สมบูรณ์ 100% โดยบันทึกลง IndexedDB (`StrongCareDB`) และจัดเข้าคิวซิงก์อัตโนมัติเมื่อออนไลน์
 
 ---
 

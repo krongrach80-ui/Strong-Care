@@ -131,6 +131,33 @@ export class IndexedDBStorageService {
   }
 
   /**
+   * บันทึกเหตุการณ์ด้านความปลอดภัย (Safety Violation / Emergency Stop) ลง IndexedDB ทันที
+   */
+  public static async saveSafetyEvent(
+    event: SafetyViolation,
+    patientId: number | string = 1,
+    sessionId: number | string = Date.now()
+  ): Promise<void> {
+    try {
+      const db = await this.getDB();
+      const tx = db.transaction('safety_events', 'readwrite');
+      const store = tx.objectStore('safety_events');
+      store.put({
+        ...event,
+        patient_id: patientId,
+        session_id: sessionId,
+        recorded_at: new Date().toISOString(),
+      });
+      return new Promise((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (err) {
+      console.warn('IndexedDB saveSafetyEvent error:', err);
+    }
+  }
+
+  /**
    * Fetch all sessions for a specific patient, sorted newest first
    */
   public static async getSessionsForPatient(patientId: number): Promise<Session[]> {

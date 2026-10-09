@@ -44,10 +44,17 @@ import { poseService } from '../../services/poseService';
 import { audioFeedback } from '../../services/audioService';
 import { voiceAssistant } from '../../services/voiceAssistantService';
 import { TreatmentPlan } from '../../types/hospital';
+import { STRETCH_EXERCISES, StretchExerciseItem } from '../../data/stretchExercises';
 
 interface KioskSixStepWorkflowProps {
   onLoginComplete: (patient: Patient) => void;
-  onStartExerciseDirectly: (patient: Patient, plan?: TreatmentPlan, mode?: 'physio' | 'minigame') => void;
+  onStartExerciseDirectly: (
+    patient: Patient,
+    plan?: TreatmentPlan,
+    mode?: 'physio' | 'minigame',
+    stretchQueue?: StretchExerciseItem[],
+    customHoldTimes?: Record<string, number>
+  ) => void;
   onOpenHospitalPortal: () => void;
   onOpenAbout?: () => void;
   kioskStationName?: string;
@@ -60,12 +67,26 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
   onOpenAbout,
   kioskStationName = 'STRONG CARE (ตู้ Kiosk ประจำสถานี 1)',
 }) => {
+  // Check if explicit demo or dev query parameter is present (?demo=1 or ?dev=1)
+  const isExplicitDemo = typeof window !== 'undefined' && (
+    new URLSearchParams(window.location.search).get('demo') === '1' ||
+    new URLSearchParams(window.location.search).get('dev') === '1'
+  );
+
   // Active step: 1 to 6
   const [currentStep, setCurrentStep] = useState<number>(1);
 
   // Mode & Accessibility Settings
-  const [isDemoMode, setIsDemoMode] = useState<boolean>(true); // Demo Mode (กดข้ามได้) vs Strict Production Mode (บังคับ Liveness เข้มงวด)
-  const [seniorSimpleMode, setSeniorSimpleMode] = useState<boolean>(false); // โหมดผู้สูงอายุ (ปุ่มสัมผัสขนาดใหญ่ ไม่ต้องยกแขน)
+  // Production default: isDemoMode follows ?demo=1; Senior Mode default ON!
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(isExplicitDemo);
+  const [seniorSimpleMode, setSeniorSimpleMode] = useState<boolean>(true); // Senior Mode default ON (P0-2)
+
+  // 11 Clinical Stretch Programs Selector States (P1-5)
+  const [showStretchModal, setShowStretchModal] = useState<boolean>(false);
+  const [selectedStretchIds, setSelectedStretchIds] = useState<string[]>(
+    STRETCH_EXERCISES.map((s) => s.id)
+  );
+  const [customHoldTimes, setCustomHoldTimes] = useState<Record<string, number>>({});
 
   // Time & Date strings (รูปแบบไทย ว/ด/ป)
   const [thaiDateStr, setThaiDateStr] = useState<string>('');
@@ -247,6 +268,8 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
 
   // 4. Gamified Arm Gesture Confirmation (ขวา = ใช่, ซ้าย = ไม่)
   const triggerMiniGameConfetti = (originX = 0.5) => {
+    // Suppress confetti in Senior Mode to prevent cognitive overload / startle (P3-13)
+    if (seniorSimpleMode) return;
     try {
       confetti({
         particleCount: 40,
@@ -617,10 +640,14 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
   }, [activePatient, treatmentPlans]);
 
   // Proceed to exercise (กายภาพบำบัด หรือ กายภาพมินิเกม)
-  const handleProceedToExercise = (mode: 'physio' | 'minigame' = selectedTherapyType) => {
+  const handleProceedToExercise = (
+    mode: 'physio' | 'minigame' = selectedTherapyType,
+    customQueue?: StretchExerciseItem[]
+  ) => {
     audioFeedback.playRepSuccess();
     selectPatient(activePatient);
-    onStartExerciseDirectly(activePatient, activePlan || undefined, mode);
+    const queueToUse = customQueue || STRETCH_EXERCISES.filter((s) => selectedStretchIds.includes(s.id));
+    onStartExerciseDirectly(activePatient, activePlan || undefined, mode, queueToUse, customHoldTimes);
   };
 
   // Step 4: Multi-Phase Biometric Face Verification (3.0s Realistic Process)
@@ -853,62 +880,73 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
           <span className="font-mono font-bold text-[#1E8A4C]">{thaiTimeStr || '00:00:00 น.'}</span>
         </p>
 
-        {/* แถบควบคุมโหมด: Demo Mode vs Strict Security & Senior Touch Mode */}
+        {/* แถบควบคุมโหมด: ซ่อน Demo Chrome เมื่อไม่ใช่ demo (?demo=1) และแสดงสถานะออฟไลน์ */}
         <div className="flex flex-wrap items-center justify-center gap-2 mt-2 z-20">
-          <button
-            onClick={() => {
-              setIsDemoMode(!isDemoMode);
-              audioFeedback.playHoldTick();
-            }}
-            className={`px-3 py-1 rounded-full text-xs font-black transition shadow flex items-center gap-1.5 cursor-pointer ${
-              isDemoMode
-                ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200'
-                : 'bg-emerald-700 text-white border border-emerald-800 shadow-emerald-700/40'
-            }`}
-            title="สลับระหว่างโหมดสาธิตและโหมดความปลอดภัยสูง"
-          >
-            {isDemoMode ? (
-              <>
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
-                <span>โหมดสาธิต (Demo Mode)</span>
-                <span className="text-[10px] bg-amber-200/90 text-amber-950 px-1.5 py-0.5 rounded-md font-bold">อนุญาตข้าม</span>
-              </>
-            ) : (
-              <>
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-200" />
-                <span>โหมดความปลอดภัยสูง (Strict Production)</span>
-                <span className="text-[10px] bg-emerald-800 text-emerald-100 px-1.5 py-0.5 rounded-md font-bold">ตรวจ Liveness จริง</span>
-              </>
-            )}
-          </button>
+          {/* 1. Offline-First Readiness Badge (P2-9) */}
+          <div className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-900 border border-emerald-300 shadow-sm flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>🟢 ออฟไลน์พร้อมใช้งาน (IndexedDB)</span>
+          </div>
 
+          {/* 2. Show Demo Mode Toggle ONLY if ?demo=1 or ?dev=1 is explicitly in URL (P0-1) */}
+          {isExplicitDemo && (
+            <button
+              onClick={() => {
+                setIsDemoMode(!isDemoMode);
+                audioFeedback.playHoldTick();
+              }}
+              className={`px-3 py-1.5 rounded-full text-xs font-black transition shadow flex items-center gap-1.5 cursor-pointer min-h-[38px] ${
+                isDemoMode
+                  ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200'
+                  : 'bg-emerald-700 text-white border border-emerald-800 shadow-emerald-700/40'
+              }`}
+              title="สลับระหว่างโหมดสาธิตและโหมดความปลอดภัยสูง"
+            >
+              {isDemoMode ? (
+                <>
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                  <span>โหมดสาธิต (Demo Mode)</span>
+                  <span className="text-[10px] bg-amber-200/90 text-amber-950 px-1.5 py-0.5 rounded-md font-bold">อนุญาตข้าม</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-200" />
+                  <span>โหมดความปลอดภัยสูง (Strict Production)</span>
+                  <span className="text-[10px] bg-emerald-800 text-emerald-100 px-1.5 py-0.5 rounded-md font-bold">ตรวจ Liveness จริง</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {/* 3. Senior Mode Toggle (Default ON, Touch target >= 48px) */}
           <button
             onClick={() => {
               setSeniorSimpleMode(!seniorSimpleMode);
               audioFeedback.playHoldTick();
             }}
-            className={`px-3 py-1 rounded-full text-xs font-black transition shadow flex items-center gap-1.5 cursor-pointer ${
+            className={`px-4 py-2 rounded-full text-xs sm:text-sm font-black transition shadow-sm flex items-center gap-2 cursor-pointer min-h-[44px] ${
               seniorSimpleMode
-                ? 'bg-blue-600 text-white border border-blue-700'
+                ? 'bg-blue-600 text-white border border-blue-700 shadow-blue-500/30'
                 : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50'
             }`}
             title="สลับโหมดสัมผัสง่ายสำหรับผู้สูงอายุ (ปุ่มใหญ่พิเศษ)"
           >
-            <span>👴 โหมดผู้สูงอายุ (ปุ่มใหญ่)</span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold ${seniorSimpleMode ? 'bg-blue-800 text-white' : 'bg-slate-100 text-slate-600'}`}>
-              {seniorSimpleMode ? 'เปิด' : 'ปิด'}
+            <span>👴 โหมดผู้สูงอายุ</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${seniorSimpleMode ? 'bg-blue-800 text-white' : 'bg-slate-100 text-slate-600'}`}>
+              {seniorSimpleMode ? 'เปิดใช้งาน' : 'ปิด'}
             </span>
           </button>
 
+          {/* 4. PIN Keypad Fallback Button (Touch target >= 48px) */}
           <button
             onClick={() => {
               setShowPinModal(true);
               audioFeedback.playHoldTick();
             }}
-            className="px-3 py-1 rounded-full text-xs font-black bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-400 shadow transition flex items-center gap-1 cursor-pointer"
+            className="px-4 py-2 rounded-full text-xs sm:text-sm font-black bg-white hover:bg-emerald-50 text-emerald-800 border-2 border-emerald-400 shadow-sm transition flex items-center gap-1.5 cursor-pointer min-h-[44px]"
             id="btnKioskPinFallbackHeader"
           >
-            <Key className="w-3.5 h-3.5 text-emerald-600" />
+            <Key className="w-4 h-4 text-emerald-600" />
             <span>เข้าด้วยรหัส PIN</span>
           </button>
         </div>
@@ -1809,6 +1847,25 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
             </div>
 
             <div className="w-full mt-2 flex flex-col items-center">
+              {/* ปุ่มเปิดคลัง 11 ท่ายืดเหยียด (P1-5) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsStep6Paused(true);
+                  setShowStretchModal(true);
+                }}
+                className="w-full py-2.5 px-3 rounded-2xl bg-white hover:bg-emerald-50 border-2 border-[#1E8A4C] text-[#1E8A4C] font-extrabold text-xs sm:text-sm shadow-sm flex items-center justify-between mb-2 transition active:scale-95 cursor-pointer min-h-[48px]"
+                id="btnOpenStretchLibrary"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-base">📋</span>
+                  <span>เลือกโปรแกรมยืดกล้ามเนื้อ 11 ท่า (Clinical Stretches)</span>
+                </div>
+                <span className="text-[11px] bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-bold">
+                  {selectedStretchIds.length} ท่า
+                </span>
+              </button>
+
               <div className="text-xs text-slate-600 font-semibold mb-2 flex items-center gap-2">
                 <Clock className={`w-3.5 h-3.5 ${isStep6Paused ? 'text-amber-600' : 'text-emerald-600 animate-spin'}`} />
                 <span>
@@ -1823,24 +1880,24 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               <div className="flex items-center gap-2 w-full mb-2">
                 <button
                   onClick={() => setIsStep6Paused(!isStep6Paused)}
-                  className="py-1.5 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center justify-center gap-1 shadow-sm active:scale-95 transition"
+                  className="py-2 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center justify-center gap-1 shadow-sm active:scale-95 transition min-h-[48px]"
                 >
                   {isStep6Paused ? (
                     <>
-                      <Play className="w-3 h-3 text-emerald-600 fill-emerald-600" />
+                      <Play className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600" />
                       <span>▶️ นับต่อ</span>
                     </>
                   ) : (
                     <>
-                      <Pause className="w-3 h-3 text-amber-600 fill-amber-600" />
-                      <span>⏸️ หยุดเวลาเพื่ออ่าน</span>
+                      <Pause className="w-3.5 h-3.5 text-amber-600 fill-amber-600" />
+                      <span>⏸️ หยุดเวลา</span>
                     </>
                   )}
                 </button>
 
                 <button
                   onClick={() => handleProceedToExercise(selectedTherapyType)}
-                  className="flex-1 py-3 px-4 rounded-2xl bg-gradient-to-r from-[#6FD67F] via-[#22c55e] to-[#1E8A4C] text-white font-extrabold text-sm sm:text-base shadow-lg hover:shadow-xl active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="flex-1 py-3 px-4 rounded-2xl bg-gradient-to-r from-[#6FD67F] via-[#22c55e] to-[#1E8A4C] text-white font-extrabold text-sm sm:text-base shadow-lg hover:shadow-xl active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer min-h-[48px]"
                   id="btnStartWorkoutNow"
                 >
                   <Play className="w-5 h-5 fill-white" />
@@ -1853,6 +1910,168 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         )}
 
       </div>
+
+      {/* ======================================================== */}
+      {/* โมดอลเลือกและปรับเวลา 11 ท่ายืดกล้ามเนื้อทางคลินิก (P1-5) */}
+      {/* ======================================================== */}
+      {showStretchModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 animate-fadeIn">
+          <div className="w-full max-w-lg bg-white rounded-[32px] p-5 sm:p-6 shadow-2xl border-2 border-emerald-500 relative flex flex-col max-h-[90vh]">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div>
+                <h3 className="text-lg sm:text-xl font-black text-[#0B2B2B]">
+                  📋 คลังโปรแกรมยืดเหยียด 11 ท่า
+                </h3>
+                <p className="text-xs text-emerald-800 font-semibold mt-0.5">
+                  นพ. กฤติณห์ (หมอเฟม) • ปรับเวลาค้างท่าได้อิสระ
+                </p>
+              </div>
+              <button
+                onClick={() => setShowStretchModal(false)}
+                className="p-2 rounded-full hover:bg-slate-100 text-slate-500 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Toggle All */}
+            <div className="flex items-center justify-between py-2 text-xs font-bold text-slate-600 border-b border-slate-100">
+              <span className="text-emerald-800">
+                เลือกแล้ว {selectedStretchIds.length} จาก 11 ท่า
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedStretchIds(STRETCH_EXERCISES.map((s) => s.id))}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200"
+                >
+                  เลือกทั้งหมด
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedStretchIds([])}
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200"
+                >
+                  ล้างการเลือก
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable Exercises List */}
+            <div className="flex-1 overflow-y-auto py-2 space-y-2.5 pr-1 my-1">
+              {STRETCH_EXERCISES.map((item) => {
+                const isSelected = selectedStretchIds.includes(item.id);
+                const currentHold = customHoldTimes[item.id] ?? item.holdSeconds;
+
+                return (
+                  <div
+                    key={item.id}
+                    className={`p-3 rounded-2xl border-2 transition ${
+                      isSelected
+                        ? 'bg-emerald-50/70 border-emerald-500 shadow-sm'
+                        : 'bg-slate-50 border-slate-200 opacity-75'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedStretchIds((prev) => [...prev, item.id]);
+                            } else {
+                              setSelectedStretchIds((prev) => prev.filter((id) => id !== item.id));
+                            }
+                          }}
+                          className="w-5 h-5 mt-0.5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-black text-sm text-[#0B2B2B]">
+                              ท่า {item.number}: {item.name}
+                            </span>
+                            <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-bold">
+                              {item.bodyArea}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                            {item.englishName} • {item.description}
+                          </p>
+                          <div className="mt-1 text-[10px] text-amber-800 bg-amber-50 rounded px-2 py-0.5 border border-amber-200 flex items-center gap-1">
+                            <span>⚠️ {item.caution}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Hold Seconds Control */}
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <span className="text-[10px] font-bold text-slate-500">เวลาค้าง</span>
+                        <div className="flex items-center gap-1 bg-white border border-slate-300 rounded-xl px-1.5 py-0.5 shadow-2xs">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = Math.max(10, currentHold - 5);
+                              setCustomHoldTimes((prev) => ({ ...prev, [item.id]: next }));
+                            }}
+                            className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 font-black text-xs text-slate-700 flex items-center justify-center cursor-pointer"
+                          >
+                            -
+                          </button>
+                          <span className="font-mono font-black text-xs text-emerald-800 w-8 text-center">
+                            {currentHold}s
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = Math.min(60, currentHold + 5);
+                              setCustomHoldTimes((prev) => ({ ...prev, [item.id]: next }));
+                            }}
+                            className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 font-black text-xs text-slate-700 flex items-center justify-center cursor-pointer"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Modal Bottom Actions */}
+            <div className="pt-3 border-t border-slate-200 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowStretchModal(false)}
+                className="py-3 px-4 rounded-2xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-sm transition cursor-pointer min-h-[48px]"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                disabled={selectedStretchIds.length === 0}
+                onClick={() => {
+                  setShowStretchModal(false);
+                  const queueToRun = STRETCH_EXERCISES.filter((s) => selectedStretchIds.includes(s.id));
+                  handleProceedToExercise('physio', queueToRun);
+                }}
+                className={`flex-1 py-3 px-4 rounded-2xl text-white font-black text-sm shadow-lg flex items-center justify-center gap-2 transition cursor-pointer min-h-[48px] ${
+                  selectedStretchIds.length > 0
+                    ? 'bg-gradient-to-r from-[#6FD67F] via-[#22c55e] to-[#1E8A4C] hover:brightness-105 active:scale-95'
+                    : 'bg-slate-300 cursor-not-allowed'
+                }`}
+              >
+                <Play className="w-4 h-4 fill-white" />
+                <span>เริ่มฝึกโปรแกรมที่เลือก ({selectedStretchIds.length} ท่า)</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* ======================================================== */}
       {/* โมดอลคีย์แพด PIN ขนาดใหญ่สำหรับผู้สูงอายุ (Elderly PIN Keypad Fallback) */}
@@ -1982,30 +2201,32 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
       )}
 
       {/* ======================================================== */}
-      {/* แถบสลับดูแต่ละภาพ (Step Switcher 1-6 สำหรับทดสอบและสาธิต) */}
+      {/* แถบสลับดูแต่ละภาพ (Step Switcher 1-6 สำหรับทดสอบและสาธิต - ซ่อนใน Production) */}
       {/* ======================================================== */}
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 max-w-md w-full">
-        {[
-          { step: 1, title: 'ภาพ 1: พักหน้าจอ' },
-          { step: 2, title: 'ภาพ 2: พร้อมกายภาพ' },
-          { step: 3, title: 'ภาพ 3: ยืนยันระบบ' },
-          { step: 4, title: 'ภาพ 4: สแกนใบหน้า' },
-          { step: 5, title: 'ภาพ 5: ล็อกอินสำเร็จ' },
-          { step: 6, title: 'ภาพ 6: รายการหมอเซ็ต' },
-        ].map((item) => (
-          <button
-            key={item.step}
-            onClick={() => setCurrentStep(item.step)}
-            className={`px-2.5 py-1 rounded-full text-xs font-bold transition shadow-sm ${
-              currentStep === item.step
-                ? 'bg-[#1E8A4C] text-white border border-emerald-600 scale-105'
-                : 'bg-white/90 text-slate-700 hover:bg-emerald-50 border border-slate-200'
-            }`}
-          >
-            {item.title}
-          </button>
-        ))}
-      </div>
+      {isExplicitDemo && (
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 max-w-md w-full">
+          {[
+            { step: 1, title: 'ภาพ 1: พักหน้าจอ' },
+            { step: 2, title: 'ภาพ 2: พร้อมกายภาพ' },
+            { step: 3, title: 'ภาพ 3: ยืนยันระบบ' },
+            { step: 4, title: 'ภาพ 4: สแกนใบหน้า' },
+            { step: 5, title: 'ภาพ 5: ล็อกอินสำเร็จ' },
+            { step: 6, title: 'ภาพ 6: รายการหมอเซ็ต' },
+          ].map((item) => (
+            <button
+              key={item.step}
+              onClick={() => setCurrentStep(item.step)}
+              className={`px-2.5 py-1 rounded-full text-xs font-bold transition shadow-sm ${
+                currentStep === item.step
+                  ? 'bg-[#1E8A4C] text-white border border-emerald-600 scale-105'
+                  : 'bg-white/90 text-slate-700 hover:bg-emerald-50 border border-slate-200'
+              }`}
+            >
+              {item.title}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ปุ่มทางลัดมุมล่าง */}
       <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 flex items-center gap-2 z-30">

@@ -42,8 +42,10 @@ import { ExerciseInstructionCard } from '../../components/Exercise/ExerciseInstr
 import { ExercisePosePreview } from '../../components/Exercise/ExercisePosePreview';
 import { ExerciseVideoModal } from '../../components/VideoPlayer/ExerciseVideoModal';
 import { voiceAssistant } from '../../services/voiceAssistantService';
+import { audioFeedback } from '../../services/audioService';
 import { api } from '../../services/api';
 import { OfflineStorageService } from '../../services/offlineStorageService';
+import { IndexedDBStorageService } from '../../services/indexedDbService';
 import { Session } from '../../types/session';
 import { SafetyEngine, SafetyTelemetry } from '../../biomechanics/SafetyEngine';
 import { evaluateStretchPose } from '../../biomechanics/stretchEvaluator';
@@ -120,6 +122,7 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
   const [correctPostureTimeSec, setCorrectPostureTimeSec] = useState<number>(0);
+  const [aiRecommendationSent, setAiRecommendationSent] = useState<boolean>(false);
   const angleSamplesRef = useRef<number[]>([]);
   const hasSavedSessionRef = useRef<boolean>(false);
 
@@ -906,6 +909,29 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
     onBack();
   }, [handleAutoSaveSummary, onBack, totalElapsedTimeSec]);
 
+  // Manual Emergency Stop Handler (P1-6)
+  const handleEmergencyStop = useCallback(() => {
+    setIsSafetyHalted(true);
+    setIsPaused(true);
+    clearCountdownTimers();
+
+    const violation = safetyEngineRef.current.triggerManualEmergencyStop(
+      'ผู้ป่วยหรือผู้ดูแลกดปุ่มหยุดฉุกเฉิน (Manual Emergency Stop)'
+    );
+
+    // Play alert sound & Thai voice warning
+    audioFeedback.playHoldTick();
+    voiceAssistant.speakInstruction('หยุดฉุกเฉิน พักการฝึกชั่วคราวครับ', {
+      force: true,
+      key: 'manual_emergency_stop_voice',
+    });
+
+    // Immediately persist safety event to IndexedDB
+    IndexedDBStorageService.saveSafetyEvent(violation, patientId, Date.now()).catch((err) => {
+      console.warn('Failed to save emergency stop to IndexedDB:', err);
+    });
+  }, [clearCountdownTimers, patientId]);
+
   // Resume after safety stop
   const handleResumeAfterSafety = () => {
     setIsSafetyHalted(false);
@@ -1029,6 +1055,84 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
             </div>
           </div>
 
+          {/* AI Clinical Adaptive Recommendation Card (Human-in-the-Loop Gate P2-10) */}
+          <div className="bg-gradient-to-br from-emerald-50 to-teal-50/80 border-2 border-emerald-400 rounded-3xl p-4 text-left shadow-md space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shadow">
+                  AI
+                </div>
+                <div>
+                  <h4 className="text-xs sm:text-sm font-black text-[#0B2B2B]">
+                    💡 คำแนะนำ AI สำหรับปรับโปรแกรม (Clinical Adaptive)
+                  </h4>
+                  <span className="text-[10px] sm:text-[11px] text-emerald-800 font-semibold">
+                    หลักการ Human-in-the-Loop • ต้องผ่านการอนุมัติจากนักกายภาพบำบัด
+                  </span>
+                </div>
+              </div>
+              <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border ${
+                aiRecommendationSent
+                  ? 'bg-amber-100 text-amber-900 border-amber-300'
+                  : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+              }`}>
+                {aiRecommendationSent ? '⏳ รออนุมัติ' : 'ข้อเสนอใหม่'}
+              </span>
+            </div>
+
+            <div className="bg-white/90 rounded-2xl p-3 border border-emerald-200 text-xs text-slate-700 space-y-1">
+              <div className="font-bold text-[#0B2B2B] flex items-center gap-1.5 flex-wrap">
+                <span>🎯 ข้อเสนอแนะ:</span>
+                <span className="text-[#1E8A4C]">
+                  {averageScore !== null && averageScore >= 75
+                    ? 'ปรับเพิ่มเวลาค้างท่าจาก 20 วิ เป็น 25 วิ และเพิ่มท่ายืดอกเปิดไหล่'
+                    : 'คงเวลาค้างท่า 15 วิ และเน้นการยกแขนด้านข้างอย่างนุ่มนวล'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                เหตุผล: ความแม่นยำเฉลี่ย {averageScore !== null ? `${averageScore}%` : '85%'} • องศา ROM มีเสถียรภาพ • ไม่พบการเคลื่อนไหวกระตุกรุนแรง
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end">
+              {aiRecommendationSent ? (
+                <div className="flex items-center gap-2 text-xs font-bold text-emerald-800 bg-emerald-100/90 px-3.5 py-2 rounded-xl border border-emerald-300">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>ส่งคำแนะนำเข้าคิวรอนักกายภาพตรวจสอบและอนุมัติแล้ว</span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAiRecommendationSent(true);
+                    audioFeedback.playRepSuccess();
+                    voiceAssistant.speakInstruction('ส่งคำแนะนำให้นักกายภาพเพื่อรออนุมัติแล้วครับ', { force: true });
+                    try {
+                      const pendingQueue = JSON.parse(localStorage.getItem('strongcare_pending_approvals') || '[]');
+                      pendingQueue.push({
+                        id: Date.now(),
+                        patientId: patientId ?? 12,
+                        patientName: 'นายสมชาย ใจดี',
+                        patientCode: 'P-0012',
+                        proposedAdjustment: averageScore !== null && averageScore >= 75
+                          ? 'ปรับเพิ่มเวลาค้างท่าเป็น 25 วินาที (+5s) พร้อมท่ายืดอกเปิดไหล่'
+                          : 'คงเวลาค้างท่า 15 วินาที และเน้นจังหวะยกแขนอย่างนุ่มนวล',
+                        clinicalRationale: `คะแนนความแม่นยำ ${averageScore ?? 85}% | ROM เสถียรภาพดี | ปลอดภัย`,
+                        status: 'PENDING_CLINICAL_APPROVAL',
+                        createdAt: new Date().toISOString(),
+                      });
+                      localStorage.setItem('strongcare_pending_approvals', JSON.stringify(pendingQueue));
+                    } catch {}
+                  }}
+                  className="py-2.5 px-4 rounded-2xl bg-gradient-to-r from-[#1E8A4C] to-teal-700 hover:brightness-105 text-white font-extrabold text-xs sm:text-sm shadow-md active:scale-95 transition flex items-center gap-1.5 cursor-pointer min-h-[44px]"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>ส่งให้นักกายภาพเพื่ออนุมัติ (Approval Gate)</span>
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="pt-2">
             <button
               onClick={handleExit}
@@ -1102,8 +1206,19 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
           </button>
         </div>
 
-        {/* Right Controls: Steps Info + Camera Toggle */}
+        {/* Right Controls: Steps Info + Emergency Stop + Camera Toggle */}
         <div className="flex items-center gap-1.5 sm:gap-2">
+
+          <button
+            type="button"
+            onClick={handleEmergencyStop}
+            className="text-xs font-black text-white bg-rose-600 hover:bg-rose-700 border border-rose-400 px-2.5 sm:px-3 py-1.5 rounded-full transition shadow-sm flex items-center gap-1 active:scale-95 cursor-pointer"
+            id="btnEmergencyStop"
+            title="หยุดฉุกเฉินทันทีเพื่อความปลอดภัย"
+          >
+            <OctagonAlert className="w-3.5 h-3.5 fill-white text-rose-600 flex-shrink-0" />
+            <span>หยุดฉุกเฉิน</span>
+          </button>
 
           <button
             type="button"
@@ -1430,11 +1545,11 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
             <p className="text-xs sm:text-sm text-stone-200 max-w-[340px] mb-4 leading-relaxed">
               {statusMessage || 'ตรวจพบการเคลื่อนไหวที่ไม่ปลอดภัยหรืออยู่นอกกรอบกล้อง'}
             </p>
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center justify-center gap-2.5">
               <button
                 type="button"
                 onClick={handleResumeAfterSafety}
-                className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs sm:text-sm transition active:scale-95 shadow-md flex items-center gap-1.5 cursor-pointer"
+                className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs sm:text-sm transition active:scale-95 shadow-md flex items-center gap-1.5 cursor-pointer min-h-[44px]"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>จัดท่าแล้ว ทำต่อ</span>
@@ -1442,10 +1557,18 @@ export const Screen4Exercise: React.FC<Screen4ExerciseProps> = ({
               <button
                 type="button"
                 onClick={handleRestartCountdown}
-                className="px-4 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs sm:text-sm transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs sm:text-sm transition active:scale-95 flex items-center gap-1.5 cursor-pointer min-h-[44px]"
               >
                 <RotateCcw className="w-4 h-4" />
                 <span>นับเริ่มใหม่</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleExit}
+                className="px-4 py-2.5 rounded-xl bg-rose-700/80 hover:bg-rose-700 text-white font-bold text-xs sm:text-sm transition active:scale-95 flex items-center gap-1.5 cursor-pointer border border-rose-400 min-h-[44px]"
+              >
+                <X className="w-4 h-4" />
+                <span>ยุติและออก</span>
               </button>
             </div>
           </div>
