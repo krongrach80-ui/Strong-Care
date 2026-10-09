@@ -68,6 +68,15 @@ export const EditTreatmentPlanModal: React.FC<EditTreatmentPlanModalProps> = ({
   const [clinicalNotes, setClinicalNotes] = useState<string>('');
   const [status, setStatus] = useState<'active' | 'completed' | 'paused'>('active');
 
+  // Timetable scheduling state (เหมือนตารางเรียน: วัน เวลา เดือน ปี)
+  const [scheduleDays, setScheduleDays] = useState<string[]>(['จันทร์', 'พุธ', 'ศุกร์']);
+  const [timeSlot, setTimeSlot] = useState<string>('09:30 - 10:30');
+  const [startTime, setStartTime] = useState<string>('09:30');
+  const [endTime, setEndTime] = useState<string>('10:30');
+  const [startDate, setStartDate] = useState<string>('2026-10-01');
+  const [endDate, setEndDate] = useState<string>('2026-10-31');
+  const [roomStation, setRoomStation] = useState<string>('ตู้ Kiosk 1');
+
   // Exercise picker temporary state
   const [selectedExerciseSlug, setSelectedExerciseSlug] = useState<string>('');
   const [exerciseSets, setExerciseSets] = useState<number>(3);
@@ -95,6 +104,13 @@ export const EditTreatmentPlanModal: React.FC<EditTreatmentPlanModalProps> = ({
         setAssignedExercises(plan.assignedExercises || []);
         setClinicalNotes(plan.clinicalNotes || '');
         setStatus(plan.status || 'active');
+        setScheduleDays(plan.scheduleDays || ['จันทร์', 'พุธ', 'ศุกร์']);
+        setTimeSlot(plan.timeSlot || '09:30 - 10:30');
+        setStartTime(plan.startTime || '09:30');
+        setEndTime(plan.endTime || '10:30');
+        setStartDate(plan.startDate || '2026-10-01');
+        setEndDate(plan.endDate || '2026-10-31');
+        setRoomStation(plan.roomStation || 'ตู้ Kiosk 1');
       } else {
         // Creating new plan
         const firstPt = patientUsers[0];
@@ -123,6 +139,13 @@ export const EditTreatmentPlanModal: React.FC<EditTreatmentPlanModalProps> = ({
         ]);
         setClinicalNotes('เน้นฝึกอย่างสม่ำเสมอ พักระหว่างเซ็ต 30 วินาที หากปวดเกินระดับ 3 ให้หยุดพัก');
         setStatus('active');
+        setScheduleDays(['จันทร์', 'พุธ', 'ศุกร์']);
+        setTimeSlot('09:30 - 10:30');
+        setStartTime('09:30');
+        setEndTime('10:30');
+        setStartDate('2026-10-01');
+        setEndDate('2026-10-31');
+        setRoomStation('ตู้ Kiosk 1');
       }
 
       if (exercises.length > 0) {
@@ -222,6 +245,13 @@ export const EditTreatmentPlanModal: React.FC<EditTreatmentPlanModalProps> = ({
         assignedExercises,
         clinicalNotes: clinicalNotes.trim(),
         status,
+        scheduleDays,
+        timeSlot: timeSlot || `${startTime} - ${endTime}`,
+        startTime,
+        endTime,
+        startDate,
+        endDate,
+        roomStation,
       });
 
       onSuccessToast(
@@ -503,7 +533,163 @@ export const EditTreatmentPlanModal: React.FC<EditTreatmentPlanModalProps> = ({
             </div>
           </div>
 
-          {/* Section 4: Clinical Notes & Status */}
+          {/* Section 4: จัดตารางเวลาฝึก (เหมือนตารางเรียน: วัน เวลา เดือน ปี) */}
+          <div className="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-200/80 space-y-3.5">
+            <div className="flex items-center justify-between">
+              <label className="font-extrabold text-sm text-[#0F2F2B] flex items-center gap-2">
+                <Clock className="w-4 h-4 text-emerald-700" />
+                <span>กำหนดเวลาฝึกกายภาพ (เหมือนตารางเรียน)</span>
+              </label>
+              <span className="text-[11px] font-semibold text-emerald-800 bg-white px-2.5 py-0.5 rounded-full border border-emerald-200">
+                วัน • เวลา • เดือน • ปี
+              </span>
+            </div>
+
+            {/* วันในสัปดาห์ที่ลงเรียน/ฝึก */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-bold text-slate-700">วันที่ลงฝึกในแต่ละสัปดาห์:</span>
+                {/* Quick Presets */}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setScheduleDays(['จันทร์', 'พุธ', 'ศุกร์'])}
+                    className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-emerald-200 hover:bg-emerald-100 text-emerald-800 transition cursor-pointer"
+                  >
+                    จ-พ-ศ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScheduleDays(['อังคาร', 'พฤหัสบดี'])}
+                    className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-emerald-200 hover:bg-emerald-100 text-emerald-800 transition cursor-pointer"
+                  >
+                    อ-พฤ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScheduleDays(['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์'])}
+                    className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-emerald-200 hover:bg-emerald-100 text-emerald-800 transition cursor-pointer"
+                  >
+                    จ-ศ (ทุกวันทำการ)
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-7 gap-1.5">
+                {[
+                  { name: 'จันทร์', short: 'จ.', color: 'border-amber-300 hover:bg-amber-50' },
+                  { name: 'อังคาร', short: 'อ.', color: 'border-pink-300 hover:bg-pink-50' },
+                  { name: 'พุธ', short: 'พ.', color: 'border-emerald-300 hover:bg-emerald-50' },
+                  { name: 'พฤหัสบดี', short: 'พฤ.', color: 'border-orange-300 hover:bg-orange-50' },
+                  { name: 'ศุกร์', short: 'ศ.', color: 'border-blue-300 hover:bg-blue-50' },
+                  { name: 'เสาร์', short: 'ส.', color: 'border-purple-300 hover:bg-purple-50' },
+                  { name: 'อาทิตย์', short: 'อา.', color: 'border-rose-300 hover:bg-rose-50' },
+                ].map((d) => {
+                  const isSelected = scheduleDays.includes(d.name);
+                  return (
+                    <button
+                      key={d.name}
+                      type="button"
+                      onClick={() => {
+                        if (isSelected) {
+                          setScheduleDays(scheduleDays.filter((x) => x !== d.name));
+                        } else {
+                          setScheduleDays([...scheduleDays, d.name]);
+                        }
+                      }}
+                      className={`py-2 px-1 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center cursor-pointer border ${
+                        isSelected
+                          ? 'bg-[#10B981] text-[#0F2F2B] border-emerald-400 shadow-sm font-extrabold ring-2 ring-emerald-300'
+                          : `bg-white text-slate-600 ${d.color}`
+                      }`}
+                    >
+                      <span className="text-[11px] leading-tight">{d.short}</span>
+                      <span className="text-[9px] opacity-80">{d.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ช่วงเวลา & ตู้ Kiosk */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  ช่วงเวลาที่ลงฝึก (Time Slot)
+                </label>
+                <div className="relative">
+                  <select
+                    value={timeSlot}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setTimeSlot(val);
+                      const [s, end] = val.split(' - ');
+                      if (s) setStartTime(s.trim());
+                      if (end) setEndTime(end.trim());
+                    }}
+                    className="w-full bg-white border border-emerald-200 rounded-xl p-2.5 font-bold text-[#0F2F2B] focus:outline-none focus:ring-2 focus:ring-[#10B981] appearance-none"
+                  >
+                    <option value="08:30 - 09:30">08:30 - 09:30 น. (คาบ 1 - เช้า)</option>
+                    <option value="09:30 - 10:30">09:30 - 10:30 น. (คาบ 2 - เช้า)</option>
+                    <option value="10:30 - 11:30">10:30 - 11:30 น. (คาบ 3 - เช้า)</option>
+                    <option value="13:00 - 14:00">13:00 - 14:00 น. (คาบ 4 - บ่าย)</option>
+                    <option value="14:00 - 15:00">14:00 - 15:00 น. (คาบ 5 - บ่าย)</option>
+                    <option value="15:00 - 16:00">15:00 - 16:00 น. (คาบ 6 - บ่าย)</option>
+                    <option value="16:00 - 17:00">16:00 - 17:00 น. (คาบ 7 - เย็น)</option>
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  สถานที่ฝึก / ตู้ Kiosk
+                </label>
+                <div className="relative">
+                  <select
+                    value={roomStation}
+                    onChange={(e) => setRoomStation(e.target.value)}
+                    className="w-full bg-white border border-emerald-200 rounded-xl p-2.5 font-bold text-[#0F2F2B] focus:outline-none focus:ring-2 focus:ring-[#10B981] appearance-none"
+                  >
+                    <option value="ตู้ Kiosk 1">🖥️ ตู้ Kiosk 1 (ห้องกายภาพรวม)</option>
+                    <option value="ตู้ Kiosk 2">🖥️ ตู้ Kiosk 2 (โซนฟื้นฟูข้อเข่า)</option>
+                    <option value="ตู้ Kiosk 3">🖥️ ตู้ Kiosk 3 (โซนออฟฟิศซินโดรม)</option>
+                    <option value="เตียงฝึก 1">🛏️ เตียงฝึกกายภาพ 1</option>
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </div>
+            </div>
+
+            {/* วันที่เริ่มต้น - วันที่สิ้นสุด (ระบุ วัน/เดือน/ปี) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  📅 วันที่เริ่มต้นคอร์ส (วัน/เดือน/ปี)
+                </label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-full bg-white border border-emerald-200 rounded-xl p-2.5 font-bold text-[#0F2F2B] focus:outline-none focus:ring-2 focus:ring-[#10B981]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  📅 วันที่สิ้นสุดคอร์ส (วัน/เดือน/ปี)
+                </label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="w-full bg-white border border-emerald-200 rounded-xl p-2.5 font-bold text-[#0F2F2B] focus:outline-none focus:ring-2 focus:ring-[#10B981]"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Section 5: Clinical Notes & Status */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-1">
             <div className="sm:col-span-2">
               <label className="block font-bold text-slate-700 mb-1">

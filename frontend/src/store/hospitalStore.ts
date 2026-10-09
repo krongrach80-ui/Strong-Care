@@ -464,8 +464,15 @@ const INITIAL_TREATMENT_PLANS: TreatmentPlan[] = [
       { exerciseSlug: 'stretch_chest_open', exerciseName: 'ยืดอกเปิดไหล่', sets: 2, reps: 5, holdSeconds: 15, difficulty: 'beginner' },
     ],
     clinicalNotes: 'เน้นเพิ่มองศาการยกแขนด้านข้าง หลีกเลี่ยงการยกแขนกระตุกเร็ว สังเกตอาการปวดไม่ให้เกินระดับ 3/10',
-    createdAt: '2026-02-02',
+    createdAt: '2026-10-01',
     status: 'active',
+    scheduleDays: ['จันทร์', 'พุธ', 'ศุกร์'],
+    timeSlot: '09:30 - 10:30',
+    startTime: '09:30',
+    endTime: '10:30',
+    startDate: '2026-10-01',
+    endDate: '2026-10-31',
+    roomStation: 'ตู้ Kiosk 1',
   },
   {
     id: 2,
@@ -482,8 +489,15 @@ const INITIAL_TREATMENT_PLANS: TreatmentPlan[] = [
       { exerciseSlug: 'stretch_hamstrings', exerciseName: 'ยืดต้นขาด้านหลัง', sets: 2, reps: 5, holdSeconds: 20, difficulty: 'beginner' },
     ],
     clinicalNotes: 'ฝึกย่อเข่าระดับปลอดภัย เข่าต้องไม่เลยปลายเท้า ระวังเข่าบิดเข้าด้านใน',
-    createdAt: '2026-02-06',
+    createdAt: '2026-10-02',
     status: 'active',
+    scheduleDays: ['อังคาร', 'พฤหัสบดี'],
+    timeSlot: '10:30 - 11:30',
+    startTime: '10:30',
+    endTime: '11:30',
+    startDate: '2026-10-01',
+    endDate: '2026-10-31',
+    roomStation: 'ตู้ Kiosk 2',
   },
   {
     id: 3,
@@ -500,8 +514,15 @@ const INITIAL_TREATMENT_PLANS: TreatmentPlan[] = [
       { exerciseSlug: 'stretch_piriformis_seated', exerciseName: 'ยืดสะโพกบนเก้าอี้', sets: 2, reps: 5, holdSeconds: 15, difficulty: 'beginner' },
     ],
     clinicalNotes: 'นั่งตัวตรงขณะฝึก หลีกเลี่ยงการก้มตัวยกของหนัก แนะนำยืดเหยียดระหว่างวันทำงาน',
-    createdAt: '2026-02-10',
+    createdAt: '2026-10-05',
     status: 'active',
+    scheduleDays: ['จันทร์', 'พฤหัสบดี', 'เสาร์'],
+    timeSlot: '13:00 - 14:00',
+    startTime: '13:00',
+    endTime: '14:00',
+    startDate: '2026-10-05',
+    endDate: '2026-11-05',
+    roomStation: 'ตู้ Kiosk 1',
   },
   {
     id: 4,
@@ -518,8 +539,15 @@ const INITIAL_TREATMENT_PLANS: TreatmentPlan[] = [
       { exerciseSlug: 'stretch_shoulder_cross', exerciseName: 'ยืดไหล่ข้ามอก', sets: 2, reps: 5, holdSeconds: 15, difficulty: 'beginner' },
     ],
     clinicalNotes: 'ผ่อนคลายกล้ามเนื้อคอ ไม่เกร็งยกสะบัก พักสายตาและปรับความสูงหน้าจอคอมพิวเตอร์',
-    createdAt: '2026-02-12',
+    createdAt: '2026-10-06',
     status: 'active',
+    scheduleDays: ['พุธ', 'ศุกร์'],
+    timeSlot: '15:00 - 16:00',
+    startTime: '15:00',
+    endTime: '16:00',
+    startDate: '2026-10-01',
+    endDate: '2026-10-31',
+    roomStation: 'ตู้ Kiosk 3',
   },
 ];
 
@@ -528,7 +556,22 @@ const getStoredTreatmentPlans = (): TreatmentPlan[] => {
     const raw = localStorage.getItem('strongcare_hospital_treatment_plans');
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((p: TreatmentPlan, idx: number) => {
+          const fallback = INITIAL_TREATMENT_PLANS[idx % INITIAL_TREATMENT_PLANS.length];
+          return {
+            ...fallback,
+            ...p,
+            scheduleDays: p.scheduleDays && p.scheduleDays.length > 0 ? p.scheduleDays : fallback.scheduleDays,
+            timeSlot: p.timeSlot || fallback.timeSlot,
+            startTime: p.startTime || fallback.startTime,
+            endTime: p.endTime || fallback.endTime,
+            startDate: p.startDate || fallback.startDate,
+            endDate: p.endDate || fallback.endDate,
+            roomStation: p.roomStation || fallback.roomStation,
+          };
+        });
+      }
     }
   } catch (e) {}
   return INITIAL_TREATMENT_PLANS;
