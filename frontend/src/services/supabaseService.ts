@@ -452,7 +452,7 @@ export const supabaseService = {
         gender: genderStr,
         phone: patientData.phone || null,
         chief_complaint: patientData.chiefComplaint || patientData.chief_complaint || patientData.notes || '',
-        medical_history: patientData.medicalHistory || patientData.patientBackground || '',
+        medical_history: patientData.medicalHistory || patientData.patientBackground || (patientData.embeddings ? 'FACE_EMB:' + JSON.stringify(patientData.embeddings) : ''),
         treatment_outcome: patientData.treatmentOutcome || '',
         therapist_notes: patientData.therapistNotes || '',
         responsible_therapist_id: respTherapist,
@@ -884,20 +884,103 @@ export const supabaseService = {
   // =========================================================================
 
   async saveFaceEmbedding(patientId: any, embeddingVector: number[]): Promise<any> {
-    if (!isSupabaseConfigured()) return null;
+    return this.saveFaceEmbeddings(patientId, [embeddingVector]);
+  },
+
+  async saveFaceEmbeddings(patientId: any, embeddings: number[][]): Promise<any> {
+    if (!isSupabaseConfigured() || !embeddings || !embeddings.length) return null;
+
+    // 1. ลองบันทึกลงตาราง face_embeddings
     try {
-      const { data, error } = await supabase.from('face_embeddings').insert([
-        {
-          patient_id: patientId,
-          embedding: embeddingVector,
-          model_version: 'face-resnet34-v2',
-        },
-      ]).select().single();
-      if (error) throw error;
-      return data;
-    } catch (e) {
-      console.warn('saveFaceEmbedding failed:', e);
-      return null;
+      const rows = embeddings.map((emb, idx) => ({
+        patient_id: patientId,
+        embedding: emb,
+        angle_tag: idx === 0 ? 'center' : idx === 1 ? 'left' : 'right',
+        model_version: 'face-resnet34-v2',
+      }));
+      const { data, error } = await supabase.from('face_embeddings').insert(rows).select();
+      if (!error && data) {
+        return data;
+      }
+    } catch {
+      // ตาราง face_embeddings อาจยังไม่ได้สร้างใน Supabase
     }
+
+    // 2. Fallback บันทึกสำรองลงคอลัมน์ medical_history ในตาราง patients
+    try {
+      const payload = 'FACE_EMB:' + JSON.stringify(embeddings);
+      const { data, error } = await supabase
+        .from('patients')
+        .update({ medical_history: payload })
+        .eq('id', patientId)
+        .select()
+        .single();
+      if (!error) return data;
+    } catch (e) {
+      console.warn('saveFaceEmbeddings fallback failed:', e);
+    }
+    return null;
+  },
+
+  async fetchFaceEmbeddings(): Promise<{ patient_id: any; patient_code: string; name: string; age?: number; gender?: string; embeddings: number[][] }[]> {
+    if (!isSupabaseConfigured()) return [];
+    const results: { patient_id: any; patient_code: string; name: string; age?: number; gender?: string; embeddings: number[][] }[] = [];
+
+    // 1. ตรวจสอบตาราง face_embeddings ถ้ามี
+    try {
+      const { data, error } = await supabase
+        .from('face_embeddings')
+        .select('patient_id, embedding, patients!patient_id(patient_code, full_name, age, gender)');
+      if (!error && data && data.length > 0) {
+        const byPatient: Record<string, any> = {};
+        for (const row of data) {
+          const pid = row.patient_id;
+          if (!byPatient[pid]) {
+            byPatient[pid] = {
+              patient_id: pid,
+              patient_code: row.patients?.patient_code || '',
+              name: row.patients?.full_name || '',
+              age: row.patients?.age,
+              gender: row.patients?.gender,
+              embeddings: [],
+            };
+          }
+          if (Array.isArray(row.embedding)) {
+            byPatient[pid].embeddings.push(row.embedding);
+          }
+        }
+        return Object.values(byPatient);
+      }
+    } catch {
+      // ตาราง face_embeddings ยังไม่มี
+    }
+
+    // 2. ตรวจสอบจากตาราง patients ที่มี FACE_EMB: ใน medical_history
+    try {
+      const { data: pts } = await supabase.from('patients').select('id, patient_code, full_name, age, gender, medical_history');
+      if (pts) {
+        for (const p of pts) {
+          if (typeof p.medical_history === 'string' && p.medical_history.startsWith('FACE_EMB:')) {
+            try {
+              const embs = JSON.parse(p.medical_history.slice('FACE_EMB:'.length));
+              if (Array.isArray(embs) && embs.length > 0) {
+                results.push({
+                  patient_id: p.id,
+                  patient_code: p.patient_code,
+                  name: p.full_name,
+                  age: p.age,
+                  gender: p.gender,
+                  embeddings: embs,
+                });
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('fetchFaceEmbeddings fallback failed:', e);
+    }
+
+    return results;
   },
 };

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { Patient } from '../types/patient';
 import { api } from '../services/api';
 import { supabaseService } from '../services/supabaseService';
+import { faceRegistryService } from '../services/faceRegistryService';
 
 interface PatientState {
   patients: Patient[];
@@ -31,6 +32,7 @@ export const usePatientStore = create<PatientState>((set, get) => ({
       try {
         const sbPatients = await supabaseService.fetchPatients();
         if (sbPatients && sbPatients.length > 0) {
+          faceRegistryService.syncFromPatients(sbPatients);
           const mapped: Patient[] = sbPatients.map((p: any) => ({
             id: p.id,
             patient_code: p.patient_code,

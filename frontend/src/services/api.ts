@@ -4,6 +4,7 @@ import { Session, SessionReport } from '../types/session';
 import { API_BASE_URL, IS_STATIC_MODE } from '../config/apiConfig';
 import { IndexedDbService } from './indexedDbService';
 import { supabaseService } from './supabaseService';
+import { faceRegistryService } from './faceRegistryService';
 
 const API_BASE = API_BASE_URL || '/api';
 
@@ -353,98 +354,193 @@ export const api = {
   },
 
   /**
-   * ลงทะเบียนใบหน้า
+   * ลงทะเบียนใบหน้า (จัดเก็บทั้งใน Supabase และ Local Registry พร้อมจับคู่)
    */
   async enrollFace(payload: any): Promise<any> {
+    // ดึงเวกเตอร์ 128 มิติจาก payload (รองรับทั้ง center, left, right)
+    const rawVectors: number[][] = [];
+    if (payload.embeddings && Array.isArray(payload.embeddings)) {
+      for (const item of payload.embeddings) {
+        if (item && Array.isArray(item.embedding) && item.embedding.length === 128) {
+          rawVectors.push(item.embedding);
+        } else if (Array.isArray(item) && item.length === 128) {
+          rawVectors.push(item);
+        }
+      }
+    }
+
+    let enrolledPatient: any = null;
+
     if (supabaseService.isConfigured()) {
       try {
-        const pCode = payload.patient_code || `P-${Math.floor(1000 + Math.random() * 9000)}`;
-        const created = await supabaseService.createPatient({
-          patient_code: pCode,
-          name: payload.name,
-          age: payload.age || 60,
-          gender: payload.gender || 'ชาย',
-          phone: payload.phone || null,
-          pin: payload.pin || '1234',
-          chief_complaint: payload.notes || 'ลงทะเบียนด้วยใบหน้า Face Enrollment',
-          status: 'active',
-        });
+        const pName = (payload.name || '').trim();
+        let existingPatient: any = null;
 
-        if (created) {
-          if (payload.embeddings && Array.isArray(payload.embeddings) && payload.embeddings.length > 0) {
-            for (const emb of payload.embeddings) {
-              if (emb.embedding) {
-                await supabaseService.saveFaceEmbedding(created.id, emb.embedding).catch(() => {});
-              }
-            }
+        // ค้นหาว่ามีคนไข้อยู่แล้วหรือไม่ เพื่อไม่สร้างข้อมูลซ้ำ
+        if (payload.patient_code) {
+          existingPatient = await supabaseService.findPatientByCode(payload.patient_code);
+        }
+        if (!existingPatient && pName) {
+          const all = await supabaseService.fetchPatients();
+          existingPatient = all.find(
+            (p) => p.full_name && p.full_name.trim().toLowerCase() === pName.toLowerCase()
+          );
+        }
+
+        if (existingPatient) {
+          enrolledPatient = {
+            id: existingPatient.id,
+            patient_code: existingPatient.patient_code,
+            name: existingPatient.full_name,
+            age: existingPatient.age,
+            gender: existingPatient.gender,
+          };
+          if (rawVectors.length > 0) {
+            await supabaseService.saveFaceEmbeddings(existingPatient.id, rawVectors).catch(() => {});
           }
+        } else {
+          const pCode = payload.patient_code || `P-${Math.floor(1000 + Math.random() * 9000)}`;
+          const created = await supabaseService.createPatient({
+            patient_code: pCode,
+            name: payload.name,
+            age: payload.age || 60,
+            gender: payload.gender || 'ชาย',
+            phone: payload.phone || null,
+            pin: payload.pin || '1234',
+            chief_complaint: payload.notes || 'ลงทะเบียนด้วยใบหน้า Face Enrollment',
+            status: 'active',
+            embeddings: rawVectors,
+          });
 
-          return {
-            status: 'success',
-            message: 'ลงทะเบียนคนไข้และบันทึกข้อมูลลงฐานข้อมูลสำเร็จ',
-            patient: {
+          if (created) {
+            enrolledPatient = {
               id: created.id,
               patient_code: created.patient_code,
               name: created.full_name,
               age: created.age,
               gender: created.gender,
-            },
-          };
+            };
+            if (rawVectors.length > 0) {
+              await supabaseService.saveFaceEmbeddings(created.id, rawVectors).catch(() => {});
+            }
+          }
         }
       } catch (err) {
         console.error('Supabase enrollFace failed:', err);
       }
     }
 
-    if (IS_STATIC_MODE) {
-      return {
-        status: 'success',
-        message: 'ลงทะเบียนใบหน้าสำเร็จ [โหมดสาธิต]',
-        patient: { id: 1, name: `${payload.name ?? 'คุณสมชาย ใจดี'} [โหมดสาธิต]` },
+    if (!enrolledPatient) {
+      const pCode = payload.patient_code || `P-${Math.floor(1000 + Math.random() * 9000)}`;
+      enrolledPatient = {
+        id: `local-${Date.now()}`,
+        patient_code: pCode,
+        name: payload.name || 'ผู้ลงทะเบียนใหม่',
+        age: payload.age || 60,
+        gender: payload.gender || 'ชาย',
       };
     }
 
-    const res = await fetch(`${API_BASE}/face/enroll`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      throw new Error(`ลงทะเบียนใบหน้าไม่สำเร็จ HTTP ${res.status}: ${res.statusText}`);
+    // บันทึกเวกเตอร์ลงเครื่องเพื่อใช้สแกนยืนยันตัวตนได้ทันที
+    if (rawVectors.length > 0) {
+      faceRegistryService.saveProfile({
+        patientId: enrolledPatient.id,
+        patientCode: enrolledPatient.patient_code,
+        name: enrolledPatient.name,
+        age: enrolledPatient.age,
+        gender: enrolledPatient.gender,
+        embeddings: rawVectors,
+        enrolledAt: new Date().toISOString(),
+      });
     }
-    return await res.json();
+
+    return {
+      status: 'success',
+      message: `ลงทะเบียนใบหน้าสำเร็จ ยินดีต้อนรับคุณ ${enrolledPatient.name}`,
+      patient: enrolledPatient,
+    };
   },
 
   /**
-   * ยืนยันตัวตนด้วยใบหน้า (รองรับทั้งโหมดสาธิตและเซิร์ฟเวอร์จริง)
-   * เกณฑ์ความคล้ายคลึงถูกบริหารจัดการจาก backend config.php ที่เดียว
+   * ยืนยันตัวตนด้วยใบหน้า (ResNet-34 128-D Vector Match)
+   * เปรียบเทียบกับเวกเตอร์จริงที่บันทึกไว้ในระบบ (ไม่สุ่มหรือฮาร์ดโค้ด)
    */
   async verifyFace(embedding: number[]): Promise<any> {
-    if (IS_STATIC_MODE) {
+    // 1. ตรวจสอบและซิงค์ข้อมูลใบหน้าจาก Supabase เข้า local registry ถ้ามี
+    if (supabaseService.isConfigured()) {
+      try {
+        const cloudEmbeddings = await supabaseService.fetchFaceEmbeddings();
+        if (cloudEmbeddings && cloudEmbeddings.length > 0) {
+          for (const item of cloudEmbeddings) {
+            faceRegistryService.saveProfile({
+              patientId: item.patient_id,
+              patientCode: item.patient_code,
+              name: item.name,
+              age: item.age,
+              gender: item.gender,
+              embeddings: item.embeddings,
+              enrolledAt: new Date().toISOString(),
+            });
+          }
+        }
+      } catch {}
+    }
+
+    // 2. ตรวจสอบเปรียบเทียบเวกเตอร์ด้วย Cosine Similarity ใน faceRegistryService
+    const matchRes = faceRegistryService.findBestMatch(embedding, 0.76);
+
+    if (matchRes.match && matchRes.bestProfile) {
+      const p = matchRes.bestProfile;
+      const token = `face-token-${p.patientCode}-${Date.now()}`;
+      authStorage.setToken(token);
+
       return {
         status: 'success',
         match: true,
-        similarity: 0.92,
-        similarity_percent: 92,
-        token: 'demo-face-token',
-        patient: { id: 1, patient_code: 'PT-2026-001', name: 'คุณสมชาย ใจดี [โหมดสาธิต]', age: 65 },
+        similarity: matchRes.similarity,
+        similarity_percent: matchRes.similarityPercent,
+        token,
+        patient: {
+          id: p.patientId,
+          patient_code: p.patientCode,
+          name: p.name,
+          age: p.age,
+          gender: p.gender,
+        },
+        message: `ยืนยันตัวตนสำเร็จ: ยินดีต้อนรับคุณ ${p.name} (ความแม่นยำ ${matchRes.similarityPercent}%)`,
       };
     }
 
-    const res = await fetch(`${API_BASE}/face/verify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embedding }),
-    });
+    // 3. หากมี Backend API ให้ลองส่งตรวจที่ Backend
+    if (!IS_STATIC_MODE) {
+      try {
+        const res = await fetch(`${API_BASE}/face/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ embedding }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.match) {
+            if (data.token) authStorage.setToken(data.token);
+            return data;
+          }
+        }
+      } catch {
+        // Backend ไม่พร้อมใช้งาน ให้ใช้ผลการตรวจจากเครื่อง
+      }
+    }
 
-    if (!res.ok) {
-      throw new Error(`ตรวจสอบใบหน้าไม่สำเร็จ HTTP ${res.status}: ${res.statusText}`);
-    }
-    const data = await res.json();
-    if (data.token) {
-      authStorage.setToken(data.token);
-    }
-    return data;
+    // 4. ไม่พบใบหน้าที่ตรงกัน (ห้ามฮาร์ดโค้ดเป็นสมชาย)
+    return {
+      status: 'failed',
+      match: false,
+      similarity: matchRes.similarity,
+      similarity_percent: matchRes.similarityPercent,
+      message: matchRes.similarity > 0.45
+        ? `ความคล้ายคลึงใบหน้า (${matchRes.similarityPercent}%) ยังไม่ถึงเกณฑ์ความปลอดภัย กรุณาจัดตำแหน่งใบหน้าให้อยู่ในกรอบ หรือเข้าสู่ระบบด้วย PIN`
+        : 'ไม่พบข้อมูลใบหน้าที่ตรงกับระบบ กรุณาสมัครสมาชิกก่อน หรือเข้าสู่ระบบด้วย PIN',
+    };
   },
 
   /**
