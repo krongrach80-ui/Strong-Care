@@ -73,8 +73,12 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     new URLSearchParams(window.location.search).get('dev') === '1'
   );
 
-  // Active step: 1 to 6
-  const [currentStep, setCurrentStep] = useState<number>(1);
+  // Active step: 1 to 6 (supports ?step=1..6 URL param for instant preview and QA)
+  const initialStepParam = typeof window !== 'undefined'
+    ? parseInt(new URLSearchParams(window.location.search).get('step') || '1', 10)
+    : 1;
+  const validInitialStep = !isNaN(initialStepParam) && initialStepParam >= 1 && initialStepParam <= 6 ? initialStepParam : 1;
+  const [currentStep, setCurrentStep] = useState<number>(validInitialStep);
 
   // Mode & Accessibility Settings
   // Production default: isDemoMode follows ?demo=1; Senior Mode default ON!
