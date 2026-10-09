@@ -421,15 +421,18 @@ export const supabaseService = {
 
   async createPatient(patientData: any): Promise<any> {
     if (!isSupabaseConfigured()) return null;
-    const pinH = patientData.pin ? await hashPin(patientData.pin) : await hashPin('1234');
-    const { data, error } = await supabase.from('patients').insert([
+    const pinH = patientData.pin ? String(patientData.pin).trim() : '1234';
+    const patientCode = patientData.patient_code || patientData.code || `P-${Math.floor(1000 + Math.random() * 9000)}`;
+    const fullName = patientData.name || patientData.full_name || 'ผู้ป่วยใหม่';
+    
+    const { data, error } = await supabase.from('patients').upsert([
       {
-        patient_code: patientData.patient_code || patientData.code,
-        full_name: patientData.name || patientData.full_name,
-        age: patientData.age || 60,
-        gender: patientData.gender || 'male',
+        patient_code: patientCode,
+        full_name: fullName,
+        age: Number(patientData.age) || 60,
+        gender: patientData.gender || 'ชาย',
         phone: patientData.phone || null,
-        chief_complaint: patientData.chiefComplaint || patientData.chief_complaint || '',
+        chief_complaint: patientData.chiefComplaint || patientData.chief_complaint || patientData.notes || '',
         medical_history: patientData.medicalHistory || patientData.patientBackground || '',
         treatment_outcome: patientData.treatmentOutcome || '',
         therapist_notes: patientData.therapistNotes || '',
@@ -437,9 +440,12 @@ export const supabaseService = {
         status: patientData.status || 'active',
         pin_hash: pinH,
       },
-    ]).select().single();
+    ], { onConflict: 'patient_code' }).select().single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase createPatient error:', error);
+      throw error;
+    }
     await this.logActivity(
       'CREATE_PATIENT',
       `ลงทะเบียนคนไข้ใหม่: ${data.full_name} (${data.patient_code})`,

@@ -3,6 +3,7 @@ import { ExerciseDefinition } from '../types/exercise';
 import { Session, SessionReport } from '../types/session';
 import { API_BASE_URL, IS_STATIC_MODE } from '../config/apiConfig';
 import { IndexedDbService } from './indexedDbService';
+import { supabaseService } from './supabaseService';
 
 const API_BASE = API_BASE_URL || '/api';
 
@@ -158,6 +159,29 @@ export const api = {
    * สร้างโปรไฟล์ผู้ป่วยใหม่ (มี Fallback โหมดสาธิตหากล้มเหลว)
    */
   async createPatient(patient: Partial<Patient>): Promise<Patient> {
+    if (supabaseService.isConfigured()) {
+      try {
+        const sbRes = await supabaseService.createPatient(patient);
+        if (sbRes) {
+          return {
+            id: sbRes.id,
+            patient_code: sbRes.patient_code,
+            name: sbRes.full_name,
+            age: sbRes.age,
+            gender: sbRes.gender,
+            notes: sbRes.therapist_notes || sbRes.chief_complaint,
+            phone: sbRes.phone,
+            chief_complaint: sbRes.chief_complaint,
+            medical_history: sbRes.medical_history,
+            treatment_outcome: sbRes.treatment_outcome,
+            therapist_notes: sbRes.therapist_notes,
+          };
+        }
+      } catch (err) {
+        console.warn('Supabase createPatient in api.ts failed:', err);
+      }
+    }
+
     if (IS_STATIC_MODE) {
       return {
         id: Date.now(),
@@ -332,6 +356,46 @@ export const api = {
    * ลงทะเบียนใบหน้า
    */
   async enrollFace(payload: any): Promise<any> {
+    if (supabaseService.isConfigured()) {
+      try {
+        const pCode = payload.patient_code || `P-${Math.floor(1000 + Math.random() * 9000)}`;
+        const created = await supabaseService.createPatient({
+          patient_code: pCode,
+          name: payload.name,
+          age: payload.age || 60,
+          gender: payload.gender || 'ชาย',
+          phone: payload.phone || null,
+          pin: payload.pin || '1234',
+          chief_complaint: payload.notes || 'ลงทะเบียนด้วยใบหน้า Face Enrollment',
+          status: 'active',
+        });
+
+        if (created) {
+          if (payload.embeddings && Array.isArray(payload.embeddings) && payload.embeddings.length > 0) {
+            for (const emb of payload.embeddings) {
+              if (emb.embedding) {
+                await supabaseService.saveFaceEmbedding(created.id, emb.embedding).catch(() => {});
+              }
+            }
+          }
+
+          return {
+            status: 'success',
+            message: 'ลงทะเบียนคนไข้และบันทึกข้อมูลลงฐานข้อมูลสำเร็จ',
+            patient: {
+              id: created.id,
+              patient_code: created.patient_code,
+              name: created.full_name,
+              age: created.age,
+              gender: created.gender,
+            },
+          };
+        }
+      } catch (err) {
+        console.error('Supabase enrollFace failed:', err);
+      }
+    }
+
     if (IS_STATIC_MODE) {
       return {
         status: 'success',

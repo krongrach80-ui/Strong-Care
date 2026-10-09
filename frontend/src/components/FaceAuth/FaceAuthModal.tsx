@@ -558,7 +558,8 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
         selectPatient(res.patient);
 
         setVerifySuccess(true);
-        setVerifyMessage(`สมัครสมาชิกสำเร็จ! ยินดีต้อนรับคุณ ${res.patient.name}`);
+        const codeMsg = res.patient.patient_code ? ` (รหัส: ${res.patient.patient_code} | PIN: 1234)` : '';
+        setVerifyMessage(`สมัครสมาชิกสำเร็จ! ยินดีต้อนรับคุณ ${res.patient.name}${codeMsg}`);
         const pName = res.patient.name ? res.patient.name.split(' ')[0] : 'ท่าน';
         voiceAssistant.speakSystem(`สมัครสมาชิกเรียบร้อยแล้วครับ ยินดีต้อนรับคุณ${pName}ครับ`, {
           priority: 'success',

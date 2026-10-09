@@ -811,13 +811,36 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
     );
 
     if (supabaseService.isConfigured()) {
-      supabaseService.createProfile(newUser).then((created) => {
-        if (created?.id) {
-          set((state) => ({
-            users: state.users.map((u) => (u.id === newId ? { ...u, id: created.id } : u)),
-          }));
-        }
-      }).catch((e) => console.warn('Supabase createProfile error:', e));
+      if (newUser.role === 'patient') {
+        supabaseService.createPatient({
+          patient_code: newUser.code,
+          name: newUser.name,
+          age: newUser.age,
+          gender: newUser.gender,
+          phone: newUser.phone,
+          pin: (newUser as any).password || '1234',
+          chief_complaint: newUser.chiefComplaint || newUser.diagnosis || '',
+          medical_history: newUser.patientBackground || '',
+          treatment_outcome: newUser.treatmentOutcome || '',
+          therapist_notes: newUser.therapistNotes || '',
+          responsible_therapist_id: newUser.assignedTherapistId || null,
+          status: newUser.status || 'active',
+        }).then((created) => {
+          if (created?.id) {
+            set((state) => ({
+              users: state.users.map((u) => (u.id === newId ? { ...u, id: created.id } : u)),
+            }));
+          }
+        }).catch((e) => console.warn('Supabase createPatient in addUser error:', e));
+      } else {
+        supabaseService.createProfile(newUser).then((created) => {
+          if (created?.id) {
+            set((state) => ({
+              users: state.users.map((u) => (u.id === newId ? { ...u, id: created.id } : u)),
+            }));
+          }
+        }).catch((e) => console.warn('Supabase createProfile error:', e));
+      }
     }
 
     return newUser;
