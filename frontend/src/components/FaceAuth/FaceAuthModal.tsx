@@ -70,6 +70,8 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
   const [isSavingEnroll, setIsSavingEnroll] = useState<boolean>(false);
   const [hasBiometricConsent, setHasBiometricConsent] = useState<boolean>(false);
   const [consentTimestamp, setConsentTimestamp] = useState<string | null>(null);
+  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+  const [matchedPhoto, setMatchedPhoto] = useState<string | null>(null);
 
   // Start Camera with resilient fallbacks
   const startCamera = async () => {
@@ -167,6 +169,8 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
       setCountdown(null);
       setEnrollStep(1);
       setCapturedEmbeddings({});
+      setCapturedPhoto(null);
+      setMatchedPhoto(null);
       faceService.resetLiveness();
       faceService.initialize();
       startCamera();
@@ -331,6 +335,9 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
 
       if (res.status === 'success' && res.match && res.patient) {
         setVerifySuccess(true);
+        if (res.patient.photo || res.matchedPhoto) {
+          setMatchedPhoto(res.patient.photo || res.matchedPhoto);
+        }
         setVerifyMessage(res.message);
         audioFeedback.playRepSuccess();
         confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 } });
@@ -350,7 +357,7 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
         }, 1500);
       } else {
         setVerifySuccess(false);
-        setVerifyMessage(res.message || 'ไม่พบข้อมูลใบหน้าที่ตรงกับระบบ');
+        setVerifyMessage(res.message || '❌ ไม่พบใบหน้าที่ลงทะเบียนในระบบ (ความคล้ายคลึงไม่ถึงเกณฑ์ 90%)');
         audioFeedback.playSafetyAlert();
         voiceAssistant.speakSystem('ไม่พบใบหน้าที่ลงทะเบียนในระบบครับ กรุณาสมัครสมาชิกก่อน หรือใช้รหัส PIN ครับ', {
           priority: 'warning',
@@ -416,8 +423,32 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
       lastAttemptTimeRef.current = Date.now();
 
       if (angleTag === 'center') {
+        // บันทึกภาพ Snapshot คมชัดจากกล้องเป็นภาพอ้างอิงของสมาชิก
+        if (videoRef.current && videoRef.current.videoWidth > 0) {
+          try {
+            const vw = videoRef.current.videoWidth;
+            const vh = videoRef.current.videoHeight;
+            const canvas = document.createElement('canvas');
+            canvas.width = 240;
+            canvas.height = 240;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              const size = Math.min(vw, vh);
+              const sx = (vw - size) / 2;
+              const sy = (vh - size) / 2;
+              // Mirror-flip เพื่อให้ตรงกับมุมมองกระจกเงา
+              ctx.translate(240, 0);
+              ctx.scale(-1, 1);
+              ctx.drawImage(videoRef.current, sx, sy, size, size, 0, 0, 240, 240);
+              const photoUrl = canvas.toDataURL('image/jpeg', 0.82);
+              setCapturedPhoto(photoUrl);
+            }
+          } catch (e) {
+            console.warn('Failed to capture photo frame:', e);
+          }
+        }
         setEnrollStep(2);
-        setVerifyMessage(`บันทึกมุมตรงสำเร็จ (คุณภาพ ${averaged.qualityScore}%) กรุณาหันหน้าไปทางซ้ายเล็กน้อย`);
+        setVerifyMessage(`บันทึกมุมตรงและถ่ายภาพสำเร็จ (คุณภาพ ${averaged.qualityScore}%) กรุณาหันหน้าไปทางซ้ายเล็กน้อย`);
         voiceAssistant.speakSystem('ดีมากครับ ตอนนี้ค่อยๆ หันใบหน้าไปทางซ้ายเล็กน้อยครับ', { priority: 'instruction', force: true });
       } else if (angleTag === 'left') {
         setEnrollStep(3);
@@ -551,6 +582,7 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
         name: enrollName.trim(),
         age: enrollAge,
         gender: enrollGender,
+        photo: capturedPhoto || undefined,
         notes: `ลงทะเบียนด้วยระบบใบหน้าอัจฉริยะ (Face Enrollment) • ยินยอม PDPA: ${consentTimestamp || new Date().toISOString()}`,
         embeddings: embeddingsList,
       });
@@ -600,8 +632,8 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
             <div className="min-w-0">
               <h3 className="font-bold text-slate-900 text-sm sm:text-base truncate flex items-center gap-2">
                 <span>{mode === 'login' ? 'เข้าสู่ระบบด้วยใบหน้า (Face Login)' : 'สมัครสมาชิกด้วยใบหน้า (Face Enrollment)'}</span>
-                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 flex-shrink-0">
-                  ทดลอง (Beta)
+                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex-shrink-0 shadow-2xs">
+                  v2.0 (Photo AI • เกณฑ์ 90%)
                 </span>
               </h3>
               <p className="text-[11px] text-slate-500 font-medium truncate">ออกแบบเพื่อผู้สูงอายุ • เทคโนโลยี AI ไบโอเมตริกซ์</p>
@@ -724,10 +756,19 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
 
             {/* Success Overlay */}
             {verifySuccess && (
-              <div className="absolute inset-0 bg-emerald-950/80 backdrop-blur-sm flex flex-col items-center justify-center text-center p-6 animate-in zoom-in-95 duration-200">
-                <div className="w-16 h-16 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/50 mb-3">
-                  <CheckCircle2 className="w-10 h-10" />
-                </div>
+              <div className="absolute inset-0 bg-emerald-950/85 backdrop-blur-sm flex flex-col items-center justify-center text-center p-6 animate-in zoom-in-95 duration-200">
+                {matchedPhoto || capturedPhoto ? (
+                  <div className="relative w-24 h-24 rounded-full overflow-hidden border-4 border-emerald-400 shadow-xl mb-3">
+                    <img src={(matchedPhoto || capturedPhoto)!} alt="ใบหน้าที่บันทึกไว้" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-emerald-600/20 flex items-center justify-center">
+                      <CheckCircle2 className="w-8 h-8 text-white drop-shadow-md" />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/50 mb-3">
+                    <CheckCircle2 className="w-10 h-10" />
+                  </div>
+                )}
                 <h4 className="text-xl font-extrabold text-white mb-1">ยืนยันตัวตนสำเร็จ</h4>
                 <p className="text-sm text-emerald-200 font-medium">{verifyMessage}</p>
               </div>
@@ -998,8 +1039,29 @@ export const FaceAuthModal: React.FC<FaceAuthModalProps> = ({
               {/* Step 4: Simple Elderly Form (Name + Age Only!) */}
               {enrollStep === 4 && (
                 <form onSubmit={handleEnrollSubmit} className="space-y-3 pt-1">
-                  <div className="bg-emerald-50/60 p-3 rounded-xl border border-emerald-100 text-xs text-emerald-900 font-medium">
-                    ✓ บันทึกข้อมูลมุมใบหน้าเรียบร้อยแล้ว กรอกเพียงชื่อและอายุเพื่อเสร็จสิ้น:
+                  {/* Photo Preview Badge */}
+                  <div className="flex items-center gap-3 bg-emerald-50/70 p-3 rounded-2xl border border-emerald-200 shadow-2xs">
+                    {capturedPhoto ? (
+                      <div className="relative w-14 h-14 rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-sm flex-shrink-0">
+                        <img src={capturedPhoto} alt="ภาพถ่ายใบหน้า" className="w-full h-full object-cover" />
+                        <div className="absolute bottom-0 inset-x-0 bg-emerald-700/85 text-[8px] text-white text-center py-0.5 font-bold">
+                          ภาพอ้างอิง
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-14 h-14 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-600 flex-shrink-0">
+                        <User className="w-7 h-7" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                        <span>บันทึกภาพถ่ายและมุมใบหน้าสำเร็จ</span>
+                      </div>
+                      <p className="text-[11px] text-emerald-700 mt-0.5 leading-snug">
+                        ภาพนี้จะถูกใช้เป็นภาพประจำตัว และสกัดเป็นเวกเตอร์ไบโอเมตริกซ์ความปลอดภัยสูง
+                      </p>
+                    </div>
                   </div>
 
                   <div>

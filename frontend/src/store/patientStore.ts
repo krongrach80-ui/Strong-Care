@@ -39,6 +39,8 @@ export const usePatientStore = create<PatientState>((set, get) => ({
             name: p.full_name,
             age: p.age,
             gender: p.gender,
+            photo: p.photo || p.avatar_url,
+            avatar_url: p.avatar_url || p.photo,
             notes: p.therapist_notes || p.chief_complaint,
             phone: p.phone,
             chief_complaint: p.chief_complaint,

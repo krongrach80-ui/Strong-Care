@@ -17,6 +17,7 @@ export interface EnrolledFaceProfile {
   name: string;
   age?: number;
   gender?: string;
+  photo?: string; // Captured photo (Data URL JPEG)
   embeddings: number[][]; // 128-D L2-normalized float vectors
   enrolledAt: string;
 }
@@ -80,7 +81,7 @@ export class FaceRegistryService {
   }
 
   /**
-   * บันทึกหรืออัปเดตโปรไฟล์ใบหน้า (อัปเดตเวกเตอร์ล่าสุด)
+   * บันทึกหรืออัปเดตโปรไฟล์ใบหน้า (อัปเดตเวกเตอร์ล่าสุดและรูปถ่าย)
    */
   public saveProfile(profile: EnrolledFaceProfile): void {
     const list = this.getAllProfiles();
@@ -106,6 +107,7 @@ export class FaceRegistryService {
       name: profile.name,
       age: profile.age,
       gender: profile.gender,
+      photo: profile.photo || (existingIdx >= 0 ? list[existingIdx].photo : undefined),
       embeddings: cleanEmbeddings,
       enrolledAt: profile.enrolledAt || new Date().toISOString(),
     };
@@ -291,6 +293,12 @@ export class FaceRegistryService {
         } catch {}
       }
 
+      let photo: string | undefined = p.photo || p.avatar_url;
+      if (!photo && typeof p.medical_history === 'string' && p.medical_history.includes('FACE_PHOTO:')) {
+        const match = p.medical_history.match(/FACE_PHOTO:(data:image\/[^\s\n]+)/);
+        if (match) photo = match[1];
+      }
+
       if (embeddings.length > 0) {
         this.saveProfile({
           patientId: p.id,
@@ -298,6 +306,7 @@ export class FaceRegistryService {
           name: p.full_name || p.name,
           age: p.age,
           gender: p.gender,
+          photo,
           embeddings,
           enrolledAt: p.created_at || new Date().toISOString(),
         });

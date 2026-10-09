@@ -51,9 +51,17 @@ export const Screen3Menu: React.FC<Screen3MenuProps> = ({
 
         {/* User Profile Badge */}
         <div className="flex items-center gap-3.5 bg-white rounded-2xl p-3.5 border border-emerald-200/80 shadow-sm">
-          <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#6FD67F] to-[#1E8A4C] flex items-center justify-center text-white font-bold text-xl shadow-sm flex-shrink-0">
-            {userName.charAt(0) || 'ส'}
-          </div>
+          {patient?.photo || patient?.avatar_url ? (
+            <img
+              src={patient.photo || patient.avatar_url}
+              alt={userName}
+              className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-sm flex-shrink-0"
+            />
+          ) : (
+            <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#6FD67F] to-[#1E8A4C] flex items-center justify-center text-white font-bold text-xl shadow-sm flex-shrink-0">
+              {userName.charAt(0) || 'ส'}
+            </div>
+          )}
           <div className="flex-1 min-w-0 text-left">
             <div className="text-sm sm:text-base font-bold text-[#0B2B2B] truncate">
               {userName}

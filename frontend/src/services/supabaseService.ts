@@ -421,7 +421,18 @@ export const supabaseService = {
       }
       const { data, error } = await query;
       if (error) throw error;
-      return data || [];
+      return (data || []).map((p: any) => {
+        let photo = p.photo || p.avatar_url;
+        if (!photo && typeof p.medical_history === 'string' && p.medical_history.includes('FACE_PHOTO:')) {
+          const match = p.medical_history.match(/FACE_PHOTO:(data:image\/[^\s\n]+)/);
+          if (match) photo = match[1];
+        }
+        return {
+          ...p,
+          photo,
+          avatar_url: photo,
+        };
+      });
     } catch (e) {
       console.warn('fetchPatients failed:', e);
       return [];
@@ -444,6 +455,14 @@ export const supabaseService = {
     if (genderStr === 'male') genderStr = 'ชาย';
     if (genderStr === 'female') genderStr = 'หญิง';
 
+    let medHistory = patientData.medicalHistory || patientData.patientBackground || '';
+    if (patientData.embeddings) {
+      medHistory = 'FACE_EMB:' + JSON.stringify(patientData.embeddings) + (medHistory ? '\n' + medHistory : '');
+    }
+    if (patientData.photo) {
+      medHistory = 'FACE_PHOTO:' + patientData.photo + (medHistory ? '\n' + medHistory : '');
+    }
+
     const { data, error } = await supabase.from('patients').upsert([
       {
         patient_code: patientCode,
@@ -452,7 +471,7 @@ export const supabaseService = {
         gender: genderStr,
         phone: patientData.phone || null,
         chief_complaint: patientData.chiefComplaint || patientData.chief_complaint || patientData.notes || '',
-        medical_history: patientData.medicalHistory || patientData.patientBackground || (patientData.embeddings ? 'FACE_EMB:' + JSON.stringify(patientData.embeddings) : ''),
+        medical_history: medHistory,
         treatment_outcome: patientData.treatmentOutcome || '',
         therapist_notes: patientData.therapistNotes || '',
         responsible_therapist_id: respTherapist,

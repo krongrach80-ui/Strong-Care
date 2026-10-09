@@ -4,6 +4,8 @@ export interface Patient {
   name: string;
   age: number;
   gender: 'male' | 'female' | 'other';
+  photo?: string;
+  avatar_url?: string;
   notes?: string;
   phone?: string;
   chief_complaint?: string;

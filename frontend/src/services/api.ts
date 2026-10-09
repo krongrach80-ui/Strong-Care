@@ -401,6 +401,7 @@ export const api = {
             gender: payload.gender || 'ชาย',
             phone: payload.phone || null,
             pin: payload.pin || '1234',
+            photo: payload.photo || null,
             chief_complaint: payload.notes || 'ลงทะเบียนด้วยใบหน้า Face Enrollment',
             status: 'active',
             embeddings: rawVectors,
@@ -413,6 +414,7 @@ export const api = {
               name: created.full_name,
               age: created.age,
               gender: created.gender,
+              photo: payload.photo || null,
             };
             if (rawVectors.length > 0) {
               await supabaseService.saveFaceEmbeddings(created.id, rawVectors).catch(() => {});
@@ -432,10 +434,11 @@ export const api = {
         name: payload.name || 'ผู้ลงทะเบียนใหม่',
         age: payload.age || 60,
         gender: payload.gender || 'ชาย',
+        photo: payload.photo || null,
       };
     }
 
-    // บันทึกเวกเตอร์ลงเครื่องเพื่อใช้สแกนยืนยันตัวตนได้ทันที
+    // บันทึกเวกเตอร์และรูปภาพลงเครื่องเพื่อใช้สแกนยืนยันตัวตนได้ทันที
     if (rawVectors.length > 0) {
       faceRegistryService.saveProfile({
         patientId: enrolledPatient.id,
@@ -443,6 +446,7 @@ export const api = {
         name: enrolledPatient.name,
         age: enrolledPatient.age,
         gender: enrolledPatient.gender,
+        photo: payload.photo,
         embeddings: rawVectors,
         enrolledAt: new Date().toISOString(),
       });
@@ -500,7 +504,9 @@ export const api = {
           name: p.name,
           age: p.age,
           gender: p.gender,
+          photo: p.photo,
         },
+        matchedPhoto: p.photo,
         message: `ยืนยันตัวตนสำเร็จ: ยินดีต้อนรับคุณ ${p.name} (ความแม่นยำ ${matchRes.similarityPercent}%)`,
       };
     }
@@ -532,8 +538,8 @@ export const api = {
       similarity: matchRes.similarity,
       similarity_percent: matchRes.similarityPercent,
       message: matchRes.similarity > 0.65
-        ? `ไม่พบใบหน้าที่ลงทะเบียนในระบบ (ความคล้ายคลึง ${matchRes.similarityPercent}% ไม่ถึงเกณฑ์ 90%) ระบบปฏิเสธเพื่อความปลอดภัย`
-        : 'ไม่พบใบหน้าที่ลงทะเบียนในระบบ กรุณาสมัครสมาชิกก่อน หรือเข้าสู่ระบบด้วย PIN',
+        ? `❌ ไม่พบใบหน้าที่ลงทะเบียนในระบบ (ความคล้ายคลึง ${matchRes.similarityPercent}% ไม่ถึงเกณฑ์ 90%) ระบบปฏิเสธเพื่อความปลอดภัย`
+        : '❌ ไม่พบใบหน้าที่ลงทะเบียนในระบบ กรุณาสมัครสมาชิกก่อน หรือเข้าสู่ระบบด้วย PIN',
     };
   },
 
