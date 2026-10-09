@@ -94,6 +94,10 @@ class AudioFeedbackService {
     this.playWarning();
   }
 
+  public playSafetyAlert() {
+    this.playWarning();
+  }
+
   public playWorkoutComplete() {
     if (this.isMuted) return;
     this.initCtx();

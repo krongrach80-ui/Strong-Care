@@ -504,9 +504,17 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
 
         <div className="p-4 rounded-2xl bg-[#F4FAF5] border border-emerald-100 space-y-3">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#6FD67F] to-[#1E8A4C] flex items-center justify-center text-white font-bold text-xl shadow-md">
-              {patient?.name?.charAt(0) || 'ส'}
-            </div>
+            {patient?.photo || patient?.avatar_url ? (
+              <img
+                src={patient.photo || patient.avatar_url}
+                alt={patient?.name || 'รูปคนไข้'}
+                className="w-14 h-14 rounded-full object-cover border-2 border-emerald-500 shadow-md flex-shrink-0"
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#6FD67F] to-[#1E8A4C] flex items-center justify-center text-white font-bold text-xl shadow-md flex-shrink-0">
+                {patient?.name?.charAt(0) || 'ส'}
+              </div>
+            )}
             <div>
               <div className="text-base font-bold text-[#0B2B2B]">
                 {patient?.name || 'คุณสมชาย ใจดี'}

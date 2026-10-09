@@ -72,6 +72,7 @@ export const ReceptionOnboardingModal: React.FC<ReceptionOnboardingModalProps> =
   const [countdown, setCountdown] = useState<number | null>(null);
   const [showShutterFlash, setShowShutterFlash] = useState<boolean>(false);
   const [createdPatientData, setCreatedPatientData] = useState<any>(null);
+  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -82,6 +83,7 @@ export const ReceptionOnboardingModal: React.FC<ReceptionOnboardingModalProps> =
       setFullName('');
       setPhone('');
       setCapturedEmbeddings({});
+      setCapturedPhoto(null);
       setScanStage('center');
       setFormError(null);
     } else {
@@ -225,6 +227,28 @@ export const ReceptionOnboardingModal: React.FC<ReceptionOnboardingModalProps> =
       setCapturedEmbeddings(updated);
 
       if (angle === 'center') {
+        if (videoRef.current && videoRef.current.videoWidth > 0) {
+          try {
+            const vw = videoRef.current.videoWidth;
+            const vh = videoRef.current.videoHeight;
+            const canvas = document.createElement('canvas');
+            canvas.width = 240;
+            canvas.height = 240;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              const size = Math.min(vw, vh);
+              const sx = (vw - size) / 2;
+              const sy = (vh - size) / 2;
+              ctx.translate(240, 0);
+              ctx.scale(-1, 1);
+              ctx.drawImage(videoRef.current, sx, sy, size, size, 0, 0, 240, 240);
+              const photoUrl = canvas.toDataURL('image/jpeg', 0.82);
+              setCapturedPhoto(photoUrl);
+            }
+          } catch (e) {
+            console.warn('Failed to capture frame in Reception modal:', e);
+          }
+        }
         setScanStage('left');
         setScanMessage('บันทึกมุมตรงสำเร็จ! กรุณาหันหน้าไปทางซ้ายเล็กน้อย');
         voiceAssistant.speakSystem('บันทึกมุมตรงเรียบร้อยครับ ตอนนี้ค่อยๆ หันหน้าไปทางซ้ายเล็กน้อยครับ', {
@@ -288,6 +312,7 @@ export const ReceptionOnboardingModal: React.FC<ReceptionOnboardingModalProps> =
         age,
         gender,
         pin: pin.trim() || '1234',
+        photo: capturedPhoto || undefined,
         notes: `วินิจฉัย: ${diagnosis} | กภ. ผู้รับผิดชอบ: ${assignedTherapistName} | โทร: ${phone}`,
         embeddings: embeddingsList,
       };
@@ -318,6 +343,8 @@ export const ReceptionOnboardingModal: React.FC<ReceptionOnboardingModalProps> =
         patient_code: patientCode,
         age,
         gender,
+        photo: capturedPhoto || undefined,
+        avatar_url: capturedPhoto || undefined,
         notes: diagnosis,
         assignedTherapistName,
       };
@@ -747,10 +774,23 @@ export const ReceptionOnboardingModal: React.FC<ReceptionOnboardingModalProps> =
 
             {/* Patient Badge Card */}
             <div className="max-w-md mx-auto p-4 rounded-3xl bg-emerald-50/80 border border-emerald-200 text-left space-y-2">
-              <div className="flex items-center justify-between border-b border-emerald-200/60 pb-2">
-                <div className="font-bold text-sm text-emerald-950">{createdPatientData.name}</div>
-                <div className="font-mono text-xs font-bold px-2.5 py-0.5 rounded-full bg-white text-emerald-800 border border-emerald-300">
-                  {createdPatientData.patient_code}
+              <div className="flex items-center gap-3.5 border-b border-emerald-200/60 pb-3">
+                {createdPatientData.photo || capturedPhoto ? (
+                  <img
+                    src={createdPatientData.photo || capturedPhoto}
+                    alt={createdPatientData.name}
+                    className="w-14 h-14 rounded-2xl object-cover border-2 border-emerald-500 shadow-sm flex-shrink-0"
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-bold text-xl shadow-sm flex-shrink-0">
+                    {createdPatientData.name?.charAt(0) || 'ผ'}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-sm text-emerald-950 truncate">{createdPatientData.name}</div>
+                  <div className="inline-block font-mono text-[11px] font-bold px-2 py-0.5 rounded-full bg-white text-emerald-800 border border-emerald-300 mt-0.5">
+                    {createdPatientData.patient_code}
+                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs text-slate-700 pt-1">

@@ -439,6 +439,21 @@ export const supabaseService = {
     }
   },
 
+  async findPatientByCode(patientCode: string): Promise<any | null> {
+    if (!isSupabaseConfigured() || !patientCode) return null;
+    try {
+      const { data, error } = await supabase
+        .from('patients')
+        .select('*')
+        .ilike('patient_code', patientCode.trim())
+        .maybeSingle();
+      if (error) return null;
+      return data;
+    } catch {
+      return null;
+    }
+  },
+
   async createPatient(patientData: any): Promise<any> {
     if (!isSupabaseConfigured()) return null;
     const pinH = patientData.pin ? String(patientData.pin).trim() : '1234';
@@ -955,15 +970,16 @@ export const supabaseService = {
         .select('patient_id, embedding, patients!patient_id(patient_code, full_name, age, gender)');
       if (!error && data && data.length > 0) {
         const byPatient: Record<string, any> = {};
-        for (const row of data) {
+        for (const row of (data as any[])) {
           const pid = row.patient_id;
+          const patientObj = Array.isArray(row.patients) ? row.patients[0] : row.patients;
           if (!byPatient[pid]) {
             byPatient[pid] = {
               patient_id: pid,
-              patient_code: row.patients?.patient_code || '',
-              name: row.patients?.full_name || '',
-              age: row.patients?.age,
-              gender: row.patients?.gender,
+              patient_code: patientObj?.patient_code || '',
+              name: patientObj?.full_name || '',
+              age: patientObj?.age,
+              gender: patientObj?.gender,
               embeddings: [],
             };
           }
