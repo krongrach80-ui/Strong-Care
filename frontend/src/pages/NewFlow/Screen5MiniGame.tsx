@@ -299,7 +299,7 @@ export const Screen5MiniGame: React.FC<Screen5MiniGameProps> = ({
 
     setBothRaised(false);
 
-    const detectedSide: 'yes' | 'no' | null = leftUp ? 'yes' : rightUp ? 'no' : null;
+    const detectedSide: 'yes' | 'no' | null = rightUp ? 'yes' : leftUp ? 'no' : null;
 
     if (detectedSide) {
       const now = performance.now();
@@ -526,8 +526,8 @@ export const Screen5MiniGame: React.FC<Screen5MiniGameProps> = ({
                 *กติกา*
               </span>
               <div className="flex flex-wrap sm:flex-col gap-x-3 gap-y-0.5 text-xs font-semibold text-emerald-900">
-                <span>• หาก &quot;ใช่&quot; ให้ยกมือซ้าย</span>
-                <span>• หาก &quot;ไม่&quot; ให้ยกมือขวา</span>
+                <span>• หาก &quot;ใช่&quot; ให้ยกมือขวา</span>
+                <span>• หาก &quot;ไม่&quot; ให้ยกมือซ้าย</span>
               </div>
             </div>
 

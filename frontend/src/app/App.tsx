@@ -384,13 +384,13 @@ export const App: React.FC = () => {
                 return;
               }
 
-              // Set active stretch queue if provided, or default to all 11 stretch programs
+              // Set active stretch queue if provided; if not provided (physiotherapy prescribed route), clear stretch queue so it focuses on prescribed exercise
               if (stretchQueue && stretchQueue.length > 0) {
                 setActiveStretchQueue(stretchQueue);
                 setActiveCustomHoldTimes(customHoldTimes || {});
               } else {
-                setActiveStretchQueue(STRETCH_EXERCISES);
-                setActiveCustomHoldTimes(customHoldTimes || {});
+                setActiveStretchQueue([]);
+                setActiveCustomHoldTimes({});
               }
 
               if (plan?.assignedExercises && plan.assignedExercises.length > 0) {

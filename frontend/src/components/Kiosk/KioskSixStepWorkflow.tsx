@@ -134,6 +134,12 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     left: boolean;
     right: boolean;
   }>({ front: false, left: false, right: false });
+  const challengeProgressRef = useRef<{ front: boolean; left: boolean; right: boolean }>({
+    front: false,
+    left: false,
+    right: false,
+  });
+  const biometricTimersRef = useRef<NodeJS.Timeout[]>([]);
 
   // PIN Keypad Fallback Modal states (สำหรับผู้สูงอายุ / กรณีกล้องขัดข้อง)
   const [showPinModal, setShowPinModal] = useState<boolean>(false);
@@ -161,8 +167,15 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
   const [activePlan, setActivePlan] = useState<TreatmentPlan | null>(null);
 
   const { users, treatmentPlans } = useHospitalStore();
-  const { selectPatient, patients } = usePatientStore();
+  const { selectPatient, selectedPatient, patients } = usePatientStore();
   const { selectExercise, exercises } = useExerciseStore();
+
+  // Sync activePatient with selectedPatient from store
+  useEffect(() => {
+    if (selectedPatient && selectedPatient.id) {
+      setActivePatient(selectedPatient);
+    }
+  }, [selectedPatient]);
 
   // 1. Clock updater (ว/ด/ป)
   useEffect(() => {
@@ -194,7 +207,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  // 2. Initialize Camera
+  // 2. Initialize Camera with robust 4-tier fallback for all desktop & mobile webcams
   const startCamera = async () => {
     if (streamRef.current) return;
     try {
@@ -202,10 +215,33 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         setCameraError('ไม่พบอุปกรณ์กล้องบนอุปกรณ์นี้ กำลังเปิดโหมดจำลองภาพเสมือน');
         return;
       }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-        audio: false,
-      });
+      let stream: MediaStream | null = null;
+      try {
+        // Tier 1: 640x480 with facingMode
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+          audio: false,
+        });
+      } catch {
+        try {
+          // Tier 2: 640x480 without facingMode (External Windows USB Webcams)
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 640 }, height: { ideal: 480 } },
+            audio: false,
+          });
+        } catch {
+          // Tier 3: Basic video true
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        }
+      }
+
+      if (!stream) {
+        throw new Error('ไม่สามารถรับสัญญาณภาพจากกล้องเว็บแคมได้');
+      }
+
       streamRef.current = stream;
       setIsCameraActive(true);
       setCameraError(null);
@@ -214,7 +250,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         videoRef.current.srcObject = stream;
         videoRef.current.muted = true;
         videoRef.current.playsInline = true;
-        videoRef.current.play().catch(() => {});
+        await videoRef.current.play().catch(() => {});
       }
     } catch (err: any) {
       console.warn('Kiosk Camera start warning:', err);
@@ -231,9 +267,14 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
       if (detectionFrameRef.current) {
         cancelAnimationFrame(detectionFrameRef.current);
       }
+      biometricTimersRef.current.forEach((t) => clearTimeout(t));
+      biometricTimersRef.current = [];
     };
   }, []);
 
@@ -302,7 +343,11 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     setDetectedArmPose('none');
 
     if (currentStep === 2) {
-      alert('พักผ่อนให้สบายนะคะ เมื่อพร้อมสามารถมานั่งหน้ากล้องใหม่ได้ทุกเมื่อค่ะ');
+      try {
+        voiceAssistant.speak('พักผ่อนให้สบายนะคะ เมื่อพร้อมสามารถมานั่งหน้ากล้องใหม่ได้ทุกเมื่อค่ะ', {
+          level: 'system',
+        });
+      } catch {}
       setCurrentStep(1);
     } else if (currentStep === 3) {
       setCurrentStep(2);
@@ -314,8 +359,8 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
   // ปรับดีเลย์ให้ช้าลงและนุ่มนวล ไม่เด้งผ่านเร็วเกินไป (Hold 1.6 - 1.8s)
   // =========================================================================
   useEffect(() => {
-    // If Step 5 or 6, or seniorSimpleMode in 2/3, cancel loop
-    if (currentStep === 5 || currentStep === 6 || (seniorSimpleMode && (currentStep === 2 || currentStep === 3))) {
+    // If Step 5 or 6, cancel loop
+    if (currentStep === 5 || currentStep === 6) {
       if (detectionFrameRef.current) {
         cancelAnimationFrame(detectionFrameRef.current);
         detectionFrameRef.current = null;
@@ -389,7 +434,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
           // ==========================================================
           // Steps 2 & 3: Gamified Arm Pose Confirmation (ชะลอ 1.8s)
           // ==========================================================
-          if ((currentStep === 2 || currentStep === 3) && !seniorSimpleMode && lm) {
+          if ((currentStep === 2 || currentStep === 3) && lm) {
             const leftShoulder = lm[11];
             const leftWrist = lm[15];
             const rightShoulder = lm[12];
@@ -479,6 +524,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                   if (faceHoldCounter >= REQUIRED_FACE_HOLD_FRAMES) {
                     faceHoldCounter = 0;
                     setFaceHoldProgress(0);
+                    challengeProgressRef.current.front = true;
                     setChallengeProgress((prev) => ({ ...prev, front: true }));
                     setScanStep('left');
                     setScanStatusMessage('✓ 1. หน้าตรง สำเร็จ! ต่อไปค่อยๆ หันศีรษะไปทางซ้าย (ค้างไว้ 1.5 วินาที)');
@@ -499,6 +545,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                   if (faceHoldCounter >= REQUIRED_FACE_HOLD_FRAMES) {
                     faceHoldCounter = 0;
                     setFaceHoldProgress(0);
+                    challengeProgressRef.current.left = true;
                     setChallengeProgress((prev) => ({ ...prev, left: true }));
                     setScanStep('right');
                     setScanStatusMessage('✓ 2. หันซ้าย สำเร็จ! ต่อไปค่อยๆ หันศีรษะไปทางขวา (ค้างไว้ 1.5 วินาที)');
@@ -519,11 +566,12 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                   if (faceHoldCounter >= REQUIRED_FACE_HOLD_FRAMES) {
                     faceHoldCounter = 0;
                     setFaceHoldProgress(0);
-                    setChallengeProgress((prev) => ({ ...prev, right: true }));
+                    challengeProgressRef.current = { front: true, left: true, right: true };
+                    setChallengeProgress({ front: true, left: true, right: true });
                     setScanStep('done');
                     setScanStatusMessage('✓ ครบทุกท่าแล้ว! กำลังตรวจสอบข้อมูลชีวมิติ...');
                     audioFeedback.playRepSuccess();
-                    handlePerformFaceScan();
+                    handlePerformFaceScan(true);
                   }
                 } else {
                   faceHoldCounter = Math.max(0, faceHoldCounter - 1);
@@ -549,13 +597,13 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         detectionFrameRef.current = null;
       }
     };
-  }, [currentStep, seniorSimpleMode, scanStep, isScanning, handleConfirmYes, handleConfirmNo, triggerSlideUp]);
+  }, [currentStep, scanStep, isScanning, handleConfirmYes, handleConfirmNo, triggerSlideUp]);
 
-  // 5. Step 5 Countdown (ค้างไว้ 5 วินาที พร้อมปุ่มหยุดเวลาเพื่ออ่านข้อมูล)
+  // 5. Step 5 Countdown: Reset once on entry, tick when not paused
   useEffect(() => {
-    let timer: any;
     if (currentStep === 5) {
       setStep5Countdown(5);
+      setIsStep5Paused(false);
       try {
         confetti({
           particleCount: 75,
@@ -564,45 +612,46 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
           colors: ['#22c55e', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6'],
         });
       } catch {}
-
-      timer = setInterval(() => {
-        if (isStep5Paused) return;
-        setStep5Countdown((prev) => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            setCurrentStep(6);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
     }
-    return () => {
-      if (timer) clearInterval(timer);
-    };
+  }, [currentStep]);
+
+  useEffect(() => {
+    if (currentStep !== 5 || isStep5Paused) return;
+    const timer = setInterval(() => {
+      setStep5Countdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setCurrentStep(6);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
   }, [currentStep, isStep5Paused]);
 
-  // 6. Step 6 Countdown (ค้างไว้ 5 วินาที พร้อมปุ่มหยุดเวลาเพื่ออ่านข้อมูลหมอ)
+  // 6. Step 6 Countdown: Reset once on entry, tick when not paused
   useEffect(() => {
-    let timer: any;
     if (currentStep === 6) {
       setStep6Countdown(5);
-      timer = setInterval(() => {
-        if (isStep6Paused) return;
-        setStep6Countdown((prev) => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            handleProceedToExercise(selectedTherapyType);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+      setIsStep6Paused(false);
     }
-    return () => {
-      if (timer) clearInterval(timer);
-    };
-  }, [currentStep, selectedTherapyType, activePatient, activePlan, isStep6Paused]);
+  }, [currentStep]);
+
+  useEffect(() => {
+    if (currentStep !== 6 || isStep6Paused) return;
+    const timer = setInterval(() => {
+      setStep6Countdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          handleProceedToExercise(selectedTherapyType);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [currentStep, isStep6Paused, selectedTherapyType, activePatient, activePlan]);
 
   // Find treatment plan when activePatient changes
   useEffect(() => {
@@ -646,19 +695,25 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
   ) => {
     audioFeedback.playRepSuccess();
     selectPatient(activePatient);
-    const queueToUse = customQueue || STRETCH_EXERCISES.filter((s) => selectedStretchIds.includes(s.id));
-    onStartExerciseDirectly(activePatient, activePlan || undefined, mode, queueToUse, customHoldTimes);
+    onStartExerciseDirectly(activePatient, activePlan || undefined, mode, customQueue, customHoldTimes);
   };
 
   // Step 4: Multi-Phase Biometric Face Verification (3.0s Realistic Process)
-  const handlePerformFaceScan = () => {
-    if (!isDemoMode) {
-      if (!challengeProgress.front || !challengeProgress.left || !challengeProgress.right) {
-        setScanStatusMessage('⚠️ โหมดความปลอดภัยสูง: กรุณาทำท่า หน้าตรง, หันซ้าย และหันขวา ให้ครบก่อน');
-        audioFeedback.playHoldTick();
-        return;
-      }
+  const handlePerformFaceScan = (bypassChallengeCheck = false) => {
+    const isCompleted =
+      bypassChallengeCheck ||
+      isDemoMode ||
+      (challengeProgressRef.current.front && challengeProgressRef.current.left && challengeProgressRef.current.right);
+
+    if (!isCompleted) {
+      setScanStatusMessage('⚠️ กรุณาทำท่า หน้าตรง, หันซ้าย และหันขวา ให้ครบก่อน');
+      audioFeedback.playHoldTick();
+      return;
     }
+
+    // Clear any previous running biometric timeouts
+    biometricTimersRef.current.forEach((t) => clearTimeout(t));
+    biometricTimersRef.current = [];
 
     setIsScanning(true);
     setBiometricPhase(1);
@@ -666,43 +721,36 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
     setScanStatusMessage('🛡️ [1/3] ตรวจสอบ Liveness & 3D Anti-Spoofing (ป้องกันภาพถ่าย/วิดีโอ)...');
     audioFeedback.playHoldTick();
 
-    // Stage 1 -> 2 (1.0 วินาที)
-    setTimeout(() => {
+    // Stage 1 -> 2 (0.9 วินาที)
+    const t1 = setTimeout(() => {
       setBiometricPhase(2);
       setBiometricProgress(55);
       setScanStatusMessage('🧬 [2/3] วิเคราะห์โครงสร้างใบหน้า 468 จุด และสกัด 128-D Biometric Embedding...');
       audioFeedback.playHoldTick();
-    }, 1000);
+    }, 900);
 
-    // Stage 2 -> 3 (2.0 วินาที)
-    setTimeout(() => {
+    // Stage 2 -> 3 (1.8 วินาที)
+    const t2 = setTimeout(() => {
       setBiometricPhase(3);
       setBiometricProgress(85);
       setScanStatusMessage('📋 [3/3] เปรียบเทียบอัตลักษณ์บุคคล (Dual-Metric: Cosine ≥ 0.90, Distance ≤ 0.42)...');
       audioFeedback.playHoldTick();
-    }, 2000);
+    }, 1800);
 
-    // Stage 3 -> Success verification (3.0 วินาที)
-    setTimeout(() => {
+    // Stage 3 -> Success verification (2.7 วินาที)
+    const t3 = setTimeout(() => {
       const profiles = faceRegistryService.getAllProfiles();
-      let targetPatient: Patient = {
-        id: 12,
-        patient_code: 'P-0012',
-        name: 'นายสมชาย ใจดี',
-        age: 68,
-        gender: 'male',
-        notes: 'ข้อไหล่ติดระยะฟื้นฟู (Frozen Shoulder)',
-      };
+      let targetPatient: Patient = activePatient;
 
       if (profiles && profiles.length > 0) {
         const found = profiles[0];
         targetPatient = {
-          id: Number(found.patientId) || 12,
-          patient_code: found.patientCode || 'P-0012',
-          name: found.name || 'นายสมชาย ใจดี',
-          age: found.age || 68,
-          gender: (found.gender as any) || 'male',
-          notes: 'ข้อมูลชีวมิติใบหน้าลงทะเบียนแล้ว (Cosine Match: 0.94)',
+          id: Number(found.patientId) || activePatient.id || 12,
+          patient_code: found.patientCode || activePatient.patient_code || 'P-0012',
+          name: found.name || activePatient.name || 'นายสมชาย ใจดี',
+          age: found.age || activePatient.age || 68,
+          gender: (found.gender as any) || activePatient.gender || 'male',
+          notes: activePatient.notes || 'ข้อมูลชีวมิติใบหน้าลงทะเบียนแล้ว (Cosine Match: 0.94)',
         };
       }
 
@@ -720,13 +768,40 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
         });
       } catch {}
 
-      // แสดงผลสำเร็จค้างไว้อย่างน้อย 1.5 วินาที ก่อนเปลี่ยนหน้า ไม่กะพริบหายไป
-      setTimeout(() => {
+      // แสดงผลสำเร็จค้างไว้อย่างน้อย 1.2 วินาที ก่อนเปลี่ยนหน้า ไม่กะพริบหายไป
+      const t4 = setTimeout(() => {
         setIsScanning(false);
         setBiometricPhase(0);
         setCurrentStep(5);
-      }, 1500);
-    }, 3000);
+      }, 1200);
+
+      biometricTimersRef.current.push(t4);
+    }, 2700);
+
+    biometricTimersRef.current.push(t1, t2, t3);
+  };
+
+  // Step 4: Manual button click handler for face scan challenges
+  const handleManualChallenge = (step: 'front' | 'left' | 'right') => {
+    challengeProgressRef.current[step] = true;
+    setChallengeProgress((prev) => ({ ...prev, [step]: true }));
+    audioFeedback.playRepSuccess();
+
+    if (step === 'front') {
+      setScanStep('left');
+      setScanStatusMessage('✓ 1. หน้าตรง สำเร็จ! ต่อไปค่อยๆ หันศีรษะไปทางซ้าย (ค้างไว้ 1.5 วินาที)');
+    } else if (step === 'left') {
+      setScanStep('right');
+      setScanStatusMessage('✓ 2. หันซ้าย สำเร็จ! ต่อไปค่อยๆ หันศีรษะไปทางขวา (ค้างไว้ 1.5 วินาที)');
+    } else if (step === 'right') {
+      challengeProgressRef.current = { front: true, left: true, right: true };
+      setChallengeProgress({ front: true, left: true, right: true });
+      setScanStep('done');
+      setScanStatusMessage('✓ ครบทุกท่าแล้ว! กำลังตรวจสอบข้อมูลชีวมิติ...');
+      setTimeout(() => {
+        handlePerformFaceScan(true);
+      }, 350);
+    }
   };
 
   // Step 4: Register New Face
@@ -1127,10 +1202,10 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                 </div>
               </div>
 
-              {/* ลูกแก้วพลังมินิเกมฝั่งขวา: ใช่ (ยกแขนขวา) */}
+              {/* ลูกแก้วพลังมินิเกมฝั่งขวา: ใช่ (ยกแขนขวา) - วางตำแหน่งฝั่งขวาของจอกระจกเงา */}
               <div
                 onClick={handleConfirmYes}
-                className="absolute top-4 left-3 sm:left-4 z-20 cursor-pointer group select-none flex flex-col items-center"
+                className="absolute top-4 right-3 sm:right-4 z-20 cursor-pointer group select-none flex flex-col items-center"
               >
                 <div
                   className={`w-20 h-20 sm:w-22 sm:h-22 rounded-full border-3 flex flex-col items-center justify-center shadow-xl transition-all duration-200 relative overflow-hidden backdrop-blur-md ${
@@ -1166,10 +1241,10 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                 </span>
               </div>
 
-              {/* ลูกแก้วพลังมินิเกมฝั่งซ้าย: ไม่ (ยกแขนซ้าย) */}
+              {/* ลูกแก้วพลังมินิเกมฝั่งซ้าย: ไม่ (ยกแขนซ้าย) - วางตำแหน่งฝั่งซ้ายของจอกระจกเงา */}
               <div
                 onClick={handleConfirmNo}
-                className="absolute top-4 right-3 sm:right-4 z-20 cursor-pointer group select-none flex flex-col items-center"
+                className="absolute top-4 left-3 sm:left-4 z-20 cursor-pointer group select-none flex flex-col items-center"
               >
                 <div
                   className={`w-20 h-20 sm:w-22 sm:h-22 rounded-full border-3 flex flex-col items-center justify-center shadow-xl transition-all duration-200 relative overflow-hidden backdrop-blur-md ${
@@ -1301,9 +1376,10 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                 </div>
               </div>
 
+              {/* ลูกแก้วพลังมินิเกมฝั่งขวา: ใช่ (เข้าสู่ระบบ) - วางตำแหน่งฝั่งขวาของจอกระจกเงา */}
               <div
                 onClick={handleConfirmYes}
-                className="absolute top-4 left-3 sm:left-4 z-20 cursor-pointer group select-none flex flex-col items-center"
+                className="absolute top-4 right-3 sm:right-4 z-20 cursor-pointer group select-none flex flex-col items-center"
               >
                 <div
                   className={`w-20 h-20 sm:w-22 sm:h-22 rounded-full border-3 flex flex-col items-center justify-center shadow-xl transition-all duration-200 relative overflow-hidden backdrop-blur-md ${
@@ -1339,9 +1415,10 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                 </span>
               </div>
 
+              {/* ลูกแก้วพลังมินิเกมฝั่งซ้าย: ไม่ (ย้อนกลับ) - วางตำแหน่งฝั่งซ้ายของจอกระจกเงา */}
               <div
                 onClick={handleConfirmNo}
-                className="absolute top-4 right-3 sm:right-4 z-20 cursor-pointer group select-none flex flex-col items-center"
+                className="absolute top-4 left-3 sm:left-4 z-20 cursor-pointer group select-none flex flex-col items-center"
               >
                 <div
                   className={`w-20 h-20 sm:w-22 sm:h-22 rounded-full border-3 flex flex-col items-center justify-center shadow-xl transition-all duration-200 relative overflow-hidden backdrop-blur-md ${
@@ -1532,16 +1609,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
             {/* แถบ 4 ปุ่มด้านล่างตาม Wireframe 4: หน้าตรง / หันซ้าย / หันขวา / เสร็จสิ้น */}
             <div className="w-full grid grid-cols-4 gap-1.5 sm:gap-2 mt-1">
               <button
-                onClick={() => {
-                  setScanStep('front');
-                  setFaceHoldProgress(100);
-                  setTimeout(() => {
-                    setChallengeProgress((prev) => ({ ...prev, front: true }));
-                    setScanStatusMessage('✓ 1. จัดใบหน้ามองตรงไปที่กล้อง (บันทึกภาพหน้าตรง)');
-                    setFaceHoldProgress(0);
-                    audioFeedback.playRepSuccess();
-                  }, 800);
-                }}
+                onClick={() => handleManualChallenge('front')}
                 className={`py-2 px-1 rounded-2xl text-xs sm:text-sm font-extrabold border-2 transition ${
                   challengeProgress.front
                     ? 'bg-[#E8F8EE] border-[#1E8A4C] text-[#1E8A4C] shadow-sm'
@@ -1552,16 +1620,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               </button>
 
               <button
-                onClick={() => {
-                  setScanStep('left');
-                  setFaceHoldProgress(100);
-                  setTimeout(() => {
-                    setChallengeProgress((prev) => ({ ...prev, left: true }));
-                    setScanStatusMessage('✓ 2. ค่อยๆ เอียงหรือหันศีรษะไปทางซ้าย (บันทึกมุมซ้าย)');
-                    setFaceHoldProgress(0);
-                    audioFeedback.playRepSuccess();
-                  }, 800);
-                }}
+                onClick={() => handleManualChallenge('left')}
                 className={`py-2 px-1 rounded-2xl text-xs sm:text-sm font-extrabold border-2 transition ${
                   challengeProgress.left
                     ? 'bg-[#E8F8EE] border-[#1E8A4C] text-[#1E8A4C] shadow-sm'
@@ -1572,16 +1631,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
               </button>
 
               <button
-                onClick={() => {
-                  setScanStep('right');
-                  setFaceHoldProgress(100);
-                  setTimeout(() => {
-                    setChallengeProgress((prev) => ({ ...prev, right: true }));
-                    setScanStatusMessage('✓ 3. ค่อยๆ เอียงหรือหันศีรษะไปทางขวา (บันทึกมุมขวา)');
-                    setFaceHoldProgress(0);
-                    audioFeedback.playRepSuccess();
-                  }, 800);
-                }}
+                onClick={() => handleManualChallenge('right')}
                 className={`py-2 px-1 rounded-2xl text-xs sm:text-sm font-extrabold border-2 transition ${
                   challengeProgress.right
                     ? 'bg-[#E8F8EE] border-[#1E8A4C] text-[#1E8A4C] shadow-sm'
@@ -1593,7 +1643,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
 
               <button
                 onClick={() => {
-                  handlePerformFaceScan();
+                  handlePerformFaceScan(true);
                 }}
                 disabled={!isDemoMode && (!challengeProgress.front || !challengeProgress.left || !challengeProgress.right)}
                 className={`py-2 px-1 rounded-2xl text-xs sm:text-sm font-extrabold border-2 transition flex items-center justify-center gap-1 ${
@@ -1631,7 +1681,7 @@ export const KioskSixStepWorkflow: React.FC<KioskSixStepWorkflowProps> = ({
                 {isNewRegistration ? '← ซ่อนฟอร์มลงทะเบียน' : 'ยังไม่มีบัญชี? ลงทะเบียนใบหน้าใหม่'}
               </button>
               <button
-                onClick={handlePerformFaceScan}
+                onClick={() => handlePerformFaceScan(true)}
                 className="text-emerald-700 font-bold hover:underline flex items-center gap-1"
               >
                 <RefreshCw className="w-3 h-3" />

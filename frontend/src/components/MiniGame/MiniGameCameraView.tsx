@@ -79,10 +79,10 @@ export const MiniGameCameraView: React.FC<MiniGameCameraViewProps> = ({
 
       // Draw Torso & Arms
       drawBone(11, 12, 'rgba(110, 214, 127, 0.9)', 5); // Shoulders
-      drawBone(11, 13, isLeftRaised ? '#10B981' : 'rgba(255, 255, 255, 0.8)', isLeftRaised ? 6 : 4); // Left Upper Arm
-      drawBone(13, 15, isLeftRaised ? '#10B981' : 'rgba(255, 255, 255, 0.8)', isLeftRaised ? 6 : 4); // Left Forearm
-      drawBone(12, 14, isRightRaised ? '#EF4444' : 'rgba(255, 255, 255, 0.8)', isRightRaised ? 6 : 4); // Right Upper Arm
-      drawBone(14, 16, isRightRaised ? '#EF4444' : 'rgba(255, 255, 255, 0.8)', isRightRaised ? 6 : 4); // Right Forearm
+      drawBone(11, 13, isLeftRaised ? '#EF4444' : 'rgba(255, 255, 255, 0.8)', isLeftRaised ? 6 : 4); // Left Upper Arm (ไม่)
+      drawBone(13, 15, isLeftRaised ? '#EF4444' : 'rgba(255, 255, 255, 0.8)', isLeftRaised ? 6 : 4); // Left Forearm (ไม่)
+      drawBone(12, 14, isRightRaised ? '#10B981' : 'rgba(255, 255, 255, 0.8)', isRightRaised ? 6 : 4); // Right Upper Arm (ใช่)
+      drawBone(14, 16, isRightRaised ? '#10B981' : 'rgba(255, 255, 255, 0.8)', isRightRaised ? 6 : 4); // Right Forearm (ใช่)
 
       drawBone(11, 23, 'rgba(110, 214, 127, 0.5)', 3); // Left Torso
       drawBone(12, 24, 'rgba(110, 214, 127, 0.5)', 3); // Right Torso
@@ -102,51 +102,51 @@ export const MiniGameCameraView: React.FC<MiniGameCameraViewProps> = ({
         }
       });
 
-      // Special Highlight on Left Wrist (Landmark 15) -> "ใช่"
+      // Special Highlight on Left Wrist (Landmark 15) -> "ไม่" (ยกแขนซ้าย)
       const leftWrist = getPt(15);
       if (leftWrist) {
         ctx.beginPath();
         ctx.arc(leftWrist.x, leftWrist.y, isLeftRaised ? 14 : 9, 0, Math.PI * 2);
-        ctx.fillStyle = isLeftRaised ? '#10B981' : '#FFFFFF';
+        ctx.fillStyle = isLeftRaised ? '#EF4444' : '#FFFFFF';
         ctx.fill();
         ctx.lineWidth = isLeftRaised ? 4 : 2.5;
-        ctx.strokeStyle = isLeftRaised ? '#D7F9E1' : '#10B981';
+        ctx.strokeStyle = isLeftRaised ? '#FEE2E2' : '#EF4444';
         ctx.stroke();
 
         if (isLeftRaised) {
-          // Floating "ใช่" Badge
+          // Floating "ไม่" Badge
           ctx.fillStyle = '#0B2B2B';
           ctx.beginPath();
           ctx.roundRect(leftWrist.x - 30, leftWrist.y - 42, 60, 26, 8);
           ctx.fill();
-          ctx.fillStyle = '#4AE387';
+          ctx.fillStyle = '#F87171';
           ctx.font = 'bold 13px "Noto Sans Thai", sans-serif';
           ctx.textAlign = 'center';
-          ctx.fillText('✋ ใช่', leftWrist.x, leftWrist.y - 25);
+          ctx.fillText('✋ ไม่', leftWrist.x, leftWrist.y - 25);
         }
       }
 
-      // Special Highlight on Right Wrist (Landmark 16) -> "ไม่"
+      // Special Highlight on Right Wrist (Landmark 16) -> "ใช่" (ยกแขนขวา)
       const rightWrist = getPt(16);
       if (rightWrist) {
         ctx.beginPath();
         ctx.arc(rightWrist.x, rightWrist.y, isRightRaised ? 14 : 9, 0, Math.PI * 2);
-        ctx.fillStyle = isRightRaised ? '#EF4444' : '#FFFFFF';
+        ctx.fillStyle = isRightRaised ? '#10B981' : '#FFFFFF';
         ctx.fill();
         ctx.lineWidth = isRightRaised ? 4 : 2.5;
-        ctx.strokeStyle = isRightRaised ? '#FEE2E2' : '#EF4444';
+        ctx.strokeStyle = isRightRaised ? '#D7F9E1' : '#10B981';
         ctx.stroke();
 
         if (isRightRaised) {
-          // Floating "ไม่" Badge
+          // Floating "ใช่" Badge
           ctx.fillStyle = '#0B2B2B';
           ctx.beginPath();
           ctx.roundRect(rightWrist.x - 30, rightWrist.y - 42, 60, 26, 8);
           ctx.fill();
-          ctx.fillStyle = '#F87171';
+          ctx.fillStyle = '#4AE387';
           ctx.font = 'bold 13px "Noto Sans Thai", sans-serif';
           ctx.textAlign = 'center';
-          ctx.fillText('✋ ไม่', rightWrist.x, rightWrist.y - 25);
+          ctx.fillText('✋ ใช่', rightWrist.x, rightWrist.y - 25);
         }
       }
     }

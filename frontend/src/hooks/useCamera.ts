@@ -101,6 +101,31 @@ export function useCamera() {
       setIsCameraLoading(false);
     } catch (err: unknown) {
       console.warn('Camera access unavailable:', err);
+
+      // On Windows/Chrome, fast screen switches can briefly hold the camera track; retry once after 350ms
+      if (err instanceof Error && (err.name === 'NotReadableError' || err.name === 'TrackStartError')) {
+        try {
+          await new Promise((res) => setTimeout(res, 350));
+          const retryStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 640 }, height: { ideal: 480 } },
+            audio: false,
+          });
+          streamRef.current = retryStream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = retryStream;
+            videoRef.current.muted = true;
+            videoRef.current.playsInline = true;
+            await videoRef.current.play().catch(() => {});
+          }
+          setIsCameraReady(true);
+          setIsCameraLoading(false);
+          setCameraError(null);
+          return;
+        } catch {
+          // If retry also failed, continue to standard error handler
+        }
+      }
+
       let msg = 'ไม่สามารถเปิดกล้องเว็บแคมได้';
       if (err instanceof Error) {
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {

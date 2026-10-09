@@ -362,7 +362,7 @@ export const MiniGameSettingsModal: React.FC<MiniGameSettingsModalProps> = ({ is
               >
                 <span className="text-sm">📷 กล้อง AI ตรวจจับมือ</span>
                 <span className="text-[10px] font-normal opacity-90">
-                  ยกมือซ้าย (ใช่) / ขวา (ไม่)
+                  ยกมือขวา (ใช่) / ซ้าย (ไม่)
                 </span>
               </button>
 
@@ -819,7 +819,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
                 <span>Mini-Game Cognitive & Physical Rehab (แยกอิสระ 100%)</span>
               </div>
               <p className="text-slate-600 text-[11px] leading-relaxed">
-                มินิเกมตอบคำถาม ใช่ / ไม่ โดยใช้ท่าทางมือ (ยกมือซ้าย = ใช่, ยกมือขวา = ไม่) ตรวจจับด้วย MediaPipe AI เรียลไทม์ คลังคำถาม 99 ข้อ พร้อมระบบเสียง และส่งผลรายงานให้นักกายภาพ
+                มินิเกมตอบคำถาม ใช่ / ไม่ โดยใช้ท่าทางมือ (ยกมือขวา = ใช่, ยกมือซ้าย = ไม่) ตรวจจับด้วย MediaPipe AI เรียลไทม์ คลังคำถาม 99 ข้อ พร้อมระบบเสียง และส่งผลรายงานให้นักกายภาพ
               </p>
             </div>
 
