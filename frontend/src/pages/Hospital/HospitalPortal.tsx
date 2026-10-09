@@ -40,9 +40,11 @@ import {
   AlertTriangle,
   Sparkles,
   ShieldAlert,
+  CalendarDays,
+  Clock,
 } from 'lucide-react';
 import { useHospitalStore } from '../../store/hospitalStore';
-import { UserAccount, UserRole, PhysicalTherapist, HospitalExercise, ActivityLog } from '../../types/hospital';
+import { UserAccount, UserRole, PhysicalTherapist, HospitalExercise, ActivityLog, TreatmentPlan } from '../../types/hospital';
 import { ReceptionOnboardingModal } from '../../components/Reception/ReceptionOnboardingModal';
 import { AddUserModal } from '../../components/Hospital/AddUserModal';
 import { EditUserModal } from '../../components/Hospital/EditUserModal';
@@ -55,6 +57,7 @@ import { EditPatientModal } from '../../components/Hospital/EditPatientModal';
 import { EditTherapistModal } from '../../components/Hospital/EditTherapistModal';
 import { ConfirmActionModal } from '../../components/Hospital/ConfirmActionModal';
 import { BannedManagementModal } from '../../components/Hospital/BannedManagementModal';
+import { EditTreatmentPlanModal } from '../../components/Hospital/EditTreatmentPlanModal';
 
 interface HospitalPortalProps {
   onClose: () => void;
@@ -62,7 +65,7 @@ interface HospitalPortalProps {
   onSelectPatientForKiosk?: (patientData: any) => void;
 }
 
-type TabKey = 'users' | 'patients' | 'therapists' | 'exercises' | 'logs' | 'settings';
+type TabKey = 'users' | 'patients' | 'schedules' | 'therapists' | 'exercises' | 'logs' | 'settings';
 
 export const HospitalPortal: React.FC<HospitalPortalProps> = ({
   onClose,
@@ -77,6 +80,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
     users,
     therapists,
     exercises,
+    treatmentPlans,
     activityLogs,
     bannedDevices,
     bannedIps,
@@ -90,6 +94,8 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
     addExercise,
     updateExercise,
     deleteExercise,
+    saveTreatmentPlan,
+    deleteTreatmentPlan,
     kickSession,
     banDevice,
     unbanDevice,
@@ -353,7 +359,51 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
   }, [users, patientSearch, currentRole, patientCareFilter, canEditUser]);
 
   // =========================================================================
-  // 3. STATE FOR PHYSIOTHERAPIST DATA (Tab 3: therapists)
+  // 3. STATE FOR THERAPY SCHEDULES (Tab 3: schedules - Admin & Therapist)
+  // =========================================================================
+  const [isTreatmentPlanModalOpen, setIsTreatmentPlanModalOpen] = useState<boolean>(false);
+  const [selectedPlanForEdit, setSelectedPlanForEdit] = useState<TreatmentPlan | null>(null);
+  const [deletingPlan, setDeletingPlan] = useState<TreatmentPlan | null>(null);
+  const [planSearch, setPlanSearch] = useState<string>('');
+  const [planStatusFilter, setPlanStatusFilter] = useState<'all' | 'active' | 'paused' | 'completed'>('all');
+  const [planCareFilter, setPlanCareFilter] = useState<'all' | 'assigned'>('all');
+
+  const filteredTreatmentPlans = useMemo(() => {
+    return treatmentPlans.filter((plan) => {
+      // PT Care filter
+      if (currentRole === 'therapist' && planCareFilter === 'assigned') {
+        const isMyPlan =
+          plan.therapistId === currentUserId ||
+          (currentUser?.name &&
+            plan.therapistName.includes(currentUser.name.replace(/^(กภ\.|นาย|นางสาว|ดร\.)\s*/, '')));
+        if (!isMyPlan) return false;
+      }
+
+      // Status filter
+      if (planStatusFilter !== 'all' && plan.status !== planStatusFilter) {
+        return false;
+      }
+
+      // Text search
+      const q = planSearch.toLowerCase().trim();
+      if (!q) return true;
+
+      const matchPatient =
+        plan.patientName.toLowerCase().includes(q) || plan.patientCode.toLowerCase().includes(q);
+      const matchTherapist = plan.therapistName.toLowerCase().includes(q);
+      const matchDiagnosis =
+        plan.diagnosis.toLowerCase().includes(q) || plan.targetJoint.toLowerCase().includes(q);
+      const matchExercise = plan.assignedExercises.some(
+        (e) =>
+          e.exerciseName.toLowerCase().includes(q) || e.exerciseSlug.toLowerCase().includes(q)
+      );
+
+      return matchPatient || matchTherapist || matchDiagnosis || matchExercise;
+    });
+  }, [treatmentPlans, currentRole, planCareFilter, planStatusFilter, planSearch, currentUserId, currentUser]);
+
+  // =========================================================================
+  // 4. STATE FOR PHYSIOTHERAPIST DATA (Tab 4: therapists)
   // =========================================================================
   const [therapistSearch, setTherapistSearch] = useState<string>('');
   const [editingTherapist, setEditingTherapist] = useState<PhysicalTherapist | null>(null);
@@ -538,7 +588,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
         roleTitle: 'แอดมินใหญ่ (Admin)',
         name: 'นพ. วรชัย อมรเวช',
         code: 'ADM-01',
-        description: 'ผู้อำนวยการ รพ. • สิทธิ์ 6 เมนู',
+        description: 'ผู้อำนวยการ รพ. • สิทธิ์เต็ม 7 เมนู',
         badgeColor: 'bg-amber-100 text-amber-900 border-amber-300',
       },
       {
@@ -548,7 +598,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
         roleTitle: 'นักกายภาพ (PT)',
         name: 'กภ. ธนากร วงศ์สวัสดิ์',
         code: 'T-003',
-        description: 'นักกายภาพวิชาชีพ • สิทธิ์ 4 เมนู',
+        description: 'นักกายภาพวิชาชีพ • สิทธิ์ 5 เมนู (รวมตารางกายภาพ)',
         badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
       },
       {
@@ -558,7 +608,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
         roleTitle: 'นักกายภาพ (PT)',
         name: 'กภ. พิมพ์ชนก สุขเกษม',
         code: 'T-007',
-        description: 'นักกายภาพวิชาชีพ • สิทธิ์ 4 เมนู',
+        description: 'นักกายภาพวิชาชีพ • สิทธิ์ 5 เมนู (รวมตารางกายภาพ)',
         badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
       },
     ];
@@ -733,14 +783,15 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
   }
 
   // Sidebar Menu Items based on Role
-  // Admin: 6 items | Physiotherapist: 4 items
+  // Admin: 7 items | Physiotherapist: 5 items
   const sidebarItems: { id: TabKey; label: string; icon: React.FC<{ className?: string }>; adminOnly?: boolean }[] = [
     { id: 'users', label: '1. จัดการผู้ใช้งาน', icon: Users },
     { id: 'patients', label: '2. ข้อมูลคนไข้', icon: User },
-    { id: 'therapists', label: '3. ข้อมูลนักกายภาพ', icon: Stethoscope },
-    { id: 'exercises', label: '4. ท่าทางกายภาพ', icon: Dumbbell },
-    { id: 'logs', label: '5. ประวัติการใช้งาน', icon: History, adminOnly: true },
-    { id: 'settings', label: '6. ตั้งค่าระบบ', icon: Sliders, adminOnly: true },
+    { id: 'schedules', label: '3. ตารางกายภาพ', icon: CalendarDays },
+    { id: 'therapists', label: '4. ข้อมูลนักกายภาพ', icon: Stethoscope },
+    { id: 'exercises', label: '5. ท่าทางกายภาพ', icon: Dumbbell },
+    { id: 'logs', label: '6. ประวัติการใช้งาน', icon: History, adminOnly: true },
+    { id: 'settings', label: '7. ตั้งค่าระบบ', icon: Sliders, adminOnly: true },
   ];
 
   const visibleSidebarItems = sidebarItems.filter((item) => {
@@ -868,6 +919,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                 <span>
                   {activeTab === 'users' && 'จัดการผู้ใช้งาน'}
                   {activeTab === 'patients' && 'ข้อมูลคนไข้'}
+                  {activeTab === 'schedules' && 'ตารางฝึกกายภาพ'}
                   {activeTab === 'therapists' && 'ข้อมูลนักกายภาพ'}
                   {activeTab === 'exercises' && 'ท่าทางกายภาพ'}
                   {activeTab === 'logs' && 'ประวัติการใช้งาน'}
@@ -876,6 +928,7 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                 <span className="hidden xl:inline text-xs font-semibold text-slate-400">
                   {activeTab === 'users' && '(User Management)'}
                   {activeTab === 'patients' && '(Patient Data)'}
+                  {activeTab === 'schedules' && '(Therapy Schedules)'}
                   {activeTab === 'therapists' && '(Physiotherapist Data)'}
                   {activeTab === 'exercises' && '(Exercise Library)'}
                   {activeTab === 'logs' && '(Audit Log)'}
@@ -1072,6 +1125,14 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                   </div>
 
                   <button
+                    onClick={() => setActiveTab('schedules')}
+                    className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 transition cursor-pointer"
+                  >
+                    <CalendarDays className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>ตารางกายภาพ ({treatmentPlans.length})</span>
+                  </button>
+
+                  <button
                     onClick={() => setIsAddUserModalOpen(true)}
                     className="flex items-center gap-1.5 px-3.5 py-1.5 sm:py-2 rounded-full bg-[#10B981] text-white text-xs font-bold shadow-xs hover:bg-emerald-600 transition active:scale-95 cursor-pointer whitespace-nowrap"
                   >
@@ -1093,13 +1154,14 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                         <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap min-w-[125px]">รหัสผ่าน (Password)</th>
                         <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap min-w-[105px]">สถานะ / บทบาท</th>
                         <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap min-w-[130px]">หมอที่รับผิดชอบ</th>
-                        <th className="py-2.5 px-3 sm:px-4 text-right whitespace-nowrap min-w-[95px]">การจัดการ (Actions)</th>
+                        <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap min-w-[155px]">ตารางกายภาพ (Schedule)</th>
+                        <th className="py-2.5 px-3 sm:px-4 text-right whitespace-nowrap min-w-[120px]">การจัดการ (Actions)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-emerald-50">
                       {paginatedUsers.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="py-10 text-center">
+                          <td colSpan={6} className="py-10 text-center">
                             <div className="flex flex-col items-center justify-center space-y-2">
                               <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
                                 <Search className="w-5 h-5" />
@@ -1195,9 +1257,149 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                                 </span>
                               </td>
 
-                              {/* 5. Actions: Edit Name, Edit Password, Delete Account */}
+                              {/* 5. Physical Therapy Schedule */}
+                              <td className="py-2.5 px-3 sm:px-4 whitespace-nowrap">
+                                {user.role === 'patient' ? (
+                                  (() => {
+                                    const pPlan = treatmentPlans.find(
+                                      (p) =>
+                                        String(p.patientId) === String(user.id) ||
+                                        p.patientCode === user.code ||
+                                        p.patientName === user.name
+                                    );
+                                    if (pPlan) {
+                                      return (
+                                        <div className="inline-flex items-center gap-1.5">
+                                          <button
+                                            onClick={() => {
+                                              setSelectedPlanForEdit(pPlan);
+                                              setIsTreatmentPlanModalOpen(true);
+                                            }}
+                                            className="px-2.5 py-1 rounded-full bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[11px] font-bold border border-emerald-300 transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                                            title={`คลิกเพื่อดูและปรับตาราง: ${pPlan.assignedExercises.map((e) => e.exerciseName).join(', ')}`}
+                                          >
+                                            <CalendarDays className="w-3.5 h-3.5 text-emerald-700" />
+                                            <span>{pPlan.assignedExercises.length} ท่าฝึก</span>
+                                            <span
+                                              className={`w-1.5 h-1.5 rounded-full ${
+                                                pPlan.status === 'active'
+                                                  ? 'bg-[#10B981]'
+                                                  : pPlan.status === 'paused'
+                                                  ? 'bg-amber-500'
+                                                  : 'bg-blue-500'
+                                              }`}
+                                            />
+                                          </button>
+                                          {onLaunchKioskExercise && (
+                                            <button
+                                              onClick={() => {
+                                                if (onSelectPatientForKiosk) onSelectPatientForKiosk(user);
+                                                if (onLaunchKioskExercise) onLaunchKioskExercise();
+                                                showToast(`เลือกคนไข้ ${user.name} เริ่มฝึกตามตารางกายภาพ`);
+                                              }}
+                                              className="p-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition cursor-pointer"
+                                              title="เริ่มฝึกตามตารางที่ตู้ Kiosk ทันที"
+                                            >
+                                              <Play className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      );
+                                    }
+                                    return (
+                                      <button
+                                        onClick={() => {
+                                          setSelectedPlanForEdit({
+                                            id: '',
+                                            patientId: user.id,
+                                            patientName: user.name,
+                                            patientCode: user.code,
+                                            therapistId: currentUserId,
+                                            therapistName:
+                                              currentRole === 'therapist'
+                                                ? currentUser?.name || 'นักกายภาพ'
+                                                : user.assignedTherapistName || 'กภ. ธนากร วงศ์สวัสดิ์',
+                                            diagnosis: user.diagnosis || 'ฟื้นฟูกล้ามเนื้อและข้อต่อ',
+                                            targetJoint: 'ข้อต่อและกล้ามเนื้อทั่วไป',
+                                            assignedExercises: [
+                                              {
+                                                exerciseSlug: 'shoulder_raise',
+                                                exerciseName: 'กางแขนยกด้านข้าง',
+                                                sets: 3,
+                                                reps: 10,
+                                                holdSeconds: 3,
+                                                difficulty: 'beginner',
+                                              },
+                                            ],
+                                            clinicalNotes: 'ฝึกอย่างสม่ำเสมอ พักระหว่างเซ็ต',
+                                            createdAt: new Date().toISOString().split('T')[0],
+                                            status: 'active',
+                                          } as TreatmentPlan);
+                                          setIsTreatmentPlanModalOpen(true);
+                                        }}
+                                        className="px-2 py-0.5 rounded-full bg-slate-100 hover:bg-emerald-50 text-slate-500 hover:text-emerald-800 text-[11px] font-semibold border border-dashed border-slate-300 hover:border-emerald-300 transition cursor-pointer flex items-center gap-1"
+                                        title="คลิกเพื่อมอบหมายตารางฝึกกายภาพให้คนไข้"
+                                      >
+                                        <Plus className="w-3 h-3 text-emerald-600" />
+                                        <span>จัดตารางฝึก</span>
+                                      </button>
+                                    );
+                                  })()
+                                ) : (
+                                  <span className="text-slate-300 font-mono text-xs">—</span>
+                                )}
+                              </td>
+
+                              {/* 6. Actions: Edit Name, Edit Password, Delete Account, Edit Schedule */}
                               <td className="py-2.5 px-3 sm:px-4 text-right whitespace-nowrap">
                                 <div className="inline-flex items-center gap-1 justify-end">
+                                  {user.role === 'patient' && (
+                                    <button
+                                      onClick={() => {
+                                        const pPlan = treatmentPlans.find(
+                                          (p) =>
+                                            String(p.patientId) === String(user.id) ||
+                                            p.patientCode === user.code ||
+                                            p.patientName === user.name
+                                        );
+                                        if (pPlan) {
+                                          setSelectedPlanForEdit(pPlan);
+                                        } else {
+                                          setSelectedPlanForEdit({
+                                            id: '',
+                                            patientId: user.id,
+                                            patientName: user.name,
+                                            patientCode: user.code,
+                                            therapistId: currentUserId,
+                                            therapistName:
+                                              currentRole === 'therapist'
+                                                ? currentUser?.name || 'นักกายภาพ'
+                                                : user.assignedTherapistName || 'กภ. ธนากร วงศ์สวัสดิ์',
+                                            diagnosis: user.diagnosis || 'ฟื้นฟูกล้ามเนื้อและข้อต่อ',
+                                            targetJoint: 'ข้อต่อและกล้ามเนื้อทั่วไป',
+                                            assignedExercises: [
+                                              {
+                                                exerciseSlug: 'shoulder_raise',
+                                                exerciseName: 'กางแขนยกด้านข้าง',
+                                                sets: 3,
+                                                reps: 10,
+                                                holdSeconds: 3,
+                                                difficulty: 'beginner',
+                                              },
+                                            ],
+                                            clinicalNotes: 'ฝึกอย่างสม่ำเสมอ พักระหว่างเซ็ต',
+                                            createdAt: new Date().toISOString().split('T')[0],
+                                            status: 'active',
+                                          } as TreatmentPlan);
+                                        }
+                                        setIsTreatmentPlanModalOpen(true);
+                                      }}
+                                      title="จัดการตารางกายภาพคนไข้"
+                                      className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 cursor-pointer transition"
+                                    >
+                                      <CalendarDays className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
                                   <button
                                     onClick={() => {
                                       if (canEdit) {
@@ -1495,9 +1697,487 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
                           </p>
                         </div>
                       </div>
+
+                      {/* 5. Assigned Physical Therapy Schedule Banner */}
+                      {(() => {
+                        const ptPlan = treatmentPlans.find(
+                          (p) =>
+                            String(p.patientId) === String(patient.id) ||
+                            p.patientCode === patient.code ||
+                            p.patientName === patient.name
+                        );
+                        return (
+                          <div className="p-3.5 rounded-2xl bg-emerald-50/80 border border-emerald-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                            <div className="space-y-1.5 min-w-0">
+                              <div className="font-bold text-emerald-950 flex items-center gap-2 flex-wrap">
+                                <div className="flex items-center gap-1.5 text-emerald-800">
+                                  <CalendarDays className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                                  <span>ตารางฝึกกายภาพที่มอบหมาย:</span>
+                                </div>
+                                {ptPlan ? (
+                                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 text-[11px] font-bold border border-emerald-300">
+                                    {ptPlan.assignedExercises.length} ท่าฝึก (
+                                    {ptPlan.status === 'active'
+                                      ? 'กำลังรักษา 🟢'
+                                      : ptPlan.status === 'paused'
+                                      ? 'พักชั่วคราว 🟡'
+                                      : 'เสร็จสิ้น 🔵'}
+                                    )
+                                  </span>
+                                ) : (
+                                  <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[11px] font-semibold border border-slate-200">
+                                    ยังไม่มีตารางฝึก
+                                  </span>
+                                )}
+                              </div>
+                              {ptPlan ? (
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {ptPlan.assignedExercises.map((ex, i) => (
+                                    <span
+                                      key={i}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white border border-emerald-200 text-[#0F2F2B] font-semibold text-[11px] shadow-2xs"
+                                    >
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                      <strong>{ex.exerciseName}</strong>
+                                      <span className="text-slate-400">
+                                        ({ex.sets} เซ็ต × {ex.reps} ครั้ง {ex.holdSeconds}s)
+                                      </span>
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-slate-500 text-[11px]">
+                                  คนไข้รายนี้ยังไม่ได้รับการมอบหมายโปรแกรมท่าฝึกกายภาพบำบัด
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <button
+                                onClick={() => {
+                                  if (ptPlan) {
+                                    setSelectedPlanForEdit(ptPlan);
+                                  } else {
+                                    setSelectedPlanForEdit({
+                                      id: '',
+                                      patientId: patient.id,
+                                      patientName: patient.name,
+                                      patientCode: patient.code,
+                                      therapistId: currentUserId,
+                                      therapistName:
+                                        currentRole === 'therapist'
+                                          ? currentUser?.name || 'นักกายภาพ'
+                                          : patient.assignedTherapistName || 'กภ. ธนากร วงศ์สวัสดิ์',
+                                      diagnosis:
+                                        patient.diagnosis ||
+                                        patient.chiefComplaint ||
+                                        'ฟื้นฟูกล้ามเนื้อและข้อต่อ',
+                                      targetJoint: 'ข้อต่อและกล้ามเนื้อ',
+                                      assignedExercises: [
+                                        {
+                                          exerciseSlug: 'shoulder_raise',
+                                          exerciseName: 'กางแขนยกด้านข้าง',
+                                          sets: 3,
+                                          reps: 10,
+                                          holdSeconds: 3,
+                                          difficulty: 'beginner',
+                                        },
+                                      ],
+                                      clinicalNotes: 'ฝึกอย่างสม่ำเสมอ พักระหว่างเซ็ต',
+                                      createdAt: new Date().toISOString().split('T')[0],
+                                      status: 'active',
+                                    } as TreatmentPlan);
+                                  }
+                                  setIsTreatmentPlanModalOpen(true);
+                                }}
+                                className="px-3 py-1.5 rounded-full border border-emerald-300 bg-white hover:bg-emerald-50 text-emerald-800 font-bold text-xs transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                              >
+                                <CalendarDays className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>{ptPlan ? 'ปรับตารางฝึก' : '+ จัดตารางฝึก'}</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* ================================================================== */}
+          {/* PAGE 3: ตารางกายภาพ (Physical Therapy Schedules - Admin & Therapist)*/}
+          {/* ================================================================== */}
+          {activeTab === 'schedules' && (
+            <div className="space-y-5 sm:space-y-6 animate-fadeIn">
+              {/* Header Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="font-black text-lg text-[#0F2F2B] flex items-center gap-2">
+                    <CalendarDays className="w-5 h-5 text-emerald-600" />
+                    <span>ตารางฝึกกายภาพบำบัดคนไข้ (Therapy Schedules)</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    จัดสรรและติดตามตารางฝึกประจำตัวผู้ป่วยแต่ละราย ทั้งแอดมินและนักกายภาพสามารถกำหนดท่า จำนวนครั้ง และสั่งเปิดฝึกที่ตู้ Kiosk ได้ทันที
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  {/* PT Filter Toggle */}
+                  {currentRole === 'therapist' && (
+                    <div className="flex items-center gap-1 p-1 bg-white border border-emerald-200 rounded-full shadow-2xs">
+                      <button
+                        onClick={() => setPlanCareFilter('assigned')}
+                        className={`px-3 py-1 rounded-full text-xs font-bold transition cursor-pointer ${
+                          planCareFilter === 'assigned'
+                            ? 'bg-[#10B981] text-white shadow-xs'
+                            : 'text-slate-600 hover:text-emerald-800'
+                        }`}
+                      >
+                        เฉพาะที่ฉันดูแล
+                      </button>
+                      <button
+                        onClick={() => setPlanCareFilter('all')}
+                        className={`px-3 py-1 rounded-full text-xs font-bold transition cursor-pointer ${
+                          planCareFilter === 'all'
+                            ? 'bg-[#0F2F2B] text-emerald-300 shadow-xs'
+                            : 'text-slate-600 hover:text-emerald-800'
+                        }`}
+                      >
+                        ตารางทั้งหมด
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Search Input */}
+                  <div className="w-56 sm:w-64 relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={planSearch}
+                      onChange={(e) => setPlanSearch(e.target.value)}
+                      placeholder="ค้นหาชื่อคนไข้, รหัส, ท่าฝึก..."
+                      className="w-full pl-8 pr-3 py-1.5 sm:py-2 rounded-full bg-white border border-emerald-200 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#10B981]"
+                    />
+                  </div>
+
+                  {/* Add Plan Button */}
+                  <button
+                    onClick={() => {
+                      setSelectedPlanForEdit(null);
+                      setIsTreatmentPlanModalOpen(true);
+                    }}
+                    className="px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-r from-[#10B981] to-[#059669] text-white text-xs font-bold shadow-md hover:opacity-95 transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap active:scale-95"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ มอบหมายตารางใหม่</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Stats Cards */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
+                <div className="bg-white rounded-2xl p-3 sm:p-3.5 border border-emerald-100 shadow-2xs flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                    <CalendarDays className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xl sm:text-2xl font-black text-[#0F2F2B] leading-none">
+                      {treatmentPlans.length}
+                    </div>
+                    <div className="text-[11px] text-slate-500 font-semibold mt-1 truncate">ตารางฝึกทั้งหมด</div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl p-3 sm:p-3.5 border border-emerald-100 shadow-2xs flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xl sm:text-2xl font-black text-[#0F2F2B] leading-none">
+                      {treatmentPlans.filter((p) => p.status === 'active').length}
+                    </div>
+                    <div className="text-[11px] text-slate-500 font-semibold mt-1 truncate">กำลังรักษา (Active)</div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl p-3 sm:p-3.5 border border-emerald-100 shadow-2xs flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+                    <Clock className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xl sm:text-2xl font-black text-[#0F2F2B] leading-none">
+                      {treatmentPlans.filter((p) => p.status === 'paused').length}
+                    </div>
+                    <div className="text-[11px] text-slate-500 font-semibold mt-1 truncate">พักชั่วคราว (Paused)</div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl p-3 sm:p-3.5 border border-emerald-100 shadow-2xs flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+                    <Activity className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xl sm:text-2xl font-black text-[#0F2F2B] leading-none">
+                      {treatmentPlans.filter((p) => p.status === 'completed').length}
+                    </div>
+                    <div className="text-[11px] text-slate-500 font-semibold mt-1 truncate">สำเร็จแล้ว (Completed)</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Status Filter Pills */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+                {[
+                  { id: 'all', label: 'ทั้งหมด' },
+                  { id: 'active', label: '🟢 กำลังรักษา (Active)' },
+                  { id: 'paused', label: '🟡 พักการฝึก (Paused)' },
+                  { id: 'completed', label: '🔵 สำเร็จครบโปรแกรม (Completed)' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setPlanStatusFilter(tab.id as any)}
+                    className={`px-3 py-1.5 rounded-full font-bold transition whitespace-nowrap cursor-pointer ${
+                      planStatusFilter === tab.id
+                        ? 'bg-[#10B981] text-white shadow-xs'
+                        : 'bg-white border border-emerald-200 text-slate-600 hover:text-emerald-800'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Schedules Table */}
+              <div className="bg-white rounded-2xl border border-emerald-100 shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs sm:text-sm border-collapse">
+                    <thead>
+                      <tr className="border-b border-emerald-100 text-slate-600 text-[11px] font-bold uppercase tracking-wider bg-emerald-50/70">
+                        <th className="py-2.5 px-3 sm:px-4 sticky left-0 bg-emerald-50 z-20 shadow-xs border-r border-emerald-100/70 min-w-[160px] sm:min-w-[190px]">
+                          คนไข้ (Patient)
+                        </th>
+                        <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap min-w-[130px]">นักกายภาพผู้ดูแล</th>
+                        <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap min-w-[150px]">การวินิจฉัย & ข้อต่อ</th>
+                        <th className="py-2.5 px-3 sm:px-4 min-w-[240px]">รายการท่ากายภาพในตารางฝึก</th>
+                        <th className="py-2.5 px-3 sm:px-4 min-w-[160px]">คำแนะนำทางคลินิก</th>
+                        <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap min-w-[110px]">สถานะ</th>
+                        <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap min-w-[100px]">วันที่บันทึก</th>
+                        <th className="py-2.5 px-3 sm:px-4 text-right whitespace-nowrap min-w-[110px]">การจัดการ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-emerald-50">
+                      {filteredTreatmentPlans.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="py-12 text-center">
+                            <div className="flex flex-col items-center justify-center space-y-2.5">
+                              <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                                <CalendarDays className="w-6 h-6" />
+                              </div>
+                              <div className="font-bold text-sm text-[#0F2F2B]">
+                                ไม่พบตารางฝึกกายภาพที่ตรงตามเงื่อนไข
+                              </div>
+                              <p className="text-xs text-slate-400 max-w-sm">
+                                สามารถกดปุ่มมอบหมายตารางใหม่ หรือปรับตัวกรองเพื่อดูตารางฝึกทั้งหมด
+                              </p>
+                              <button
+                                onClick={() => {
+                                  setSelectedPlanForEdit(null);
+                                  setIsTreatmentPlanModalOpen(true);
+                                }}
+                                className="px-4 py-2 rounded-full bg-[#10B981] text-white text-xs font-bold hover:bg-emerald-600 transition flex items-center gap-1.5 cursor-pointer shadow-xs mt-1"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>+ มอบหมายตารางกายภาพใหม่</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredTreatmentPlans.map((plan) => {
+                          const patientUser = users.find(
+                            (u) =>
+                              String(u.id) === String(plan.patientId) ||
+                              u.code === plan.patientCode ||
+                              u.name === plan.patientName
+                          );
+                          const canManage =
+                            currentRole === 'admin' ||
+                            plan.therapistId === currentUserId ||
+                            (currentUser?.name &&
+                              plan.therapistName.includes(
+                                currentUser.name.replace(/^(กภ\.|นาย|นางสาว|ดร\.)\s*/, '')
+                              ));
+
+                          return (
+                            <tr key={plan.id} className="hover:bg-emerald-50/40 transition group">
+                              {/* 1. Patient info (STICKY FIRST COLUMN) */}
+                              <td className="py-2.5 px-3 sm:px-4 sticky left-0 bg-white group-hover:bg-emerald-50/60 z-10 shadow-xs border-r border-emerald-100/60 min-w-[160px] sm:min-w-[190px]">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#10B981] to-[#059669] text-white font-bold flex items-center justify-center text-xs shadow-2xs flex-shrink-0">
+                                    {plan.patientName.charAt(
+                                      plan.patientName.startsWith('นาย') || plan.patientName.startsWith('นาง')
+                                        ? 3
+                                        : 0
+                                    ) || 'ค'}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="font-bold text-[#0F2F2B] leading-tight text-xs sm:text-sm truncate max-w-[130px] sm:max-w-[170px]">
+                                      {plan.patientName}
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 font-mono truncate mt-0.5">
+                                      <strong className="text-emerald-800">{plan.patientCode}</strong>
+                                      {patientUser?.age && <span> • {patientUser.age} ปี</span>}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* 2. Responsible Therapist */}
+                              <td className="py-2.5 px-3 sm:px-4 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                  <Stethoscope className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                                  <span className="font-semibold text-slate-800 truncate max-w-[140px]">
+                                    {plan.therapistName}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* 3. Diagnosis & Joint */}
+                              <td className="py-2.5 px-3 sm:px-4">
+                                <div className="font-bold text-[#0F2F2B] leading-tight text-xs">
+                                  {plan.diagnosis}
+                                </div>
+                                <div className="text-[10px] text-slate-500 mt-0.5 font-medium">
+                                  {plan.targetJoint}
+                                </div>
+                              </td>
+
+                              {/* 4. Assigned Exercises */}
+                              <td className="py-2.5 px-3 sm:px-4">
+                                <div className="flex flex-wrap gap-1.5 max-w-sm">
+                                  {plan.assignedExercises.map((ex, i) => (
+                                    <span
+                                      key={i}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 border border-emerald-200/80 text-[11px] text-emerald-950 font-semibold shadow-2xs"
+                                    >
+                                      <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
+                                      <span>{ex.exerciseName}</span>
+                                      <span className="text-slate-400 font-normal">
+                                        ({ex.sets}x{ex.reps} {ex.holdSeconds}s)
+                                      </span>
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+
+                              {/* 5. Clinical Notes */}
+                              <td className="py-2.5 px-3 sm:px-4 text-slate-600 text-xs leading-relaxed max-w-[180px]">
+                                <span className="line-clamp-2" title={plan.clinicalNotes}>
+                                  {plan.clinicalNotes || '—'}
+                                </span>
+                              </td>
+
+                              {/* 6. Status */}
+                              <td className="py-2.5 px-3 sm:px-4 whitespace-nowrap">
+                                {plan.status === 'active' && (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[11px] border border-emerald-300">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    <span>กำลังรักษา</span>
+                                  </span>
+                                )}
+                                {plan.status === 'paused' && (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[11px] border border-amber-300">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                    <span>พักชั่วคราว</span>
+                                  </span>
+                                )}
+                                {plan.status === 'completed' && (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold text-[11px] border border-blue-300">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                    <span>ครบโปรแกรม</span>
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* 7. Date */}
+                              <td className="py-2.5 px-3 sm:px-4 whitespace-nowrap text-slate-500 font-mono text-[11px]">
+                                {plan.createdAt || '2026-02-01'}
+                              </td>
+
+                              {/* 8. Actions */}
+                              <td className="py-2.5 px-3 sm:px-4 text-right whitespace-nowrap">
+                                <div className="inline-flex items-center gap-1 justify-end">
+                                  {/* Launch Kiosk */}
+                                  {onLaunchKioskExercise && (
+                                    <button
+                                      onClick={() => {
+                                        if (patientUser && onSelectPatientForKiosk) {
+                                          onSelectPatientForKiosk(patientUser);
+                                        }
+                                        if (onLaunchKioskExercise) {
+                                          onLaunchKioskExercise();
+                                        }
+                                        showToast(`เปิดตู้ Kiosk เริ่มฝึกตามตารางของ ${plan.patientName}`);
+                                        onClose();
+                                      }}
+                                      className="p-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white transition cursor-pointer shadow-2xs"
+                                      title="เริ่มฝึกตามตารางที่ตู้ Kiosk ทันที"
+                                    >
+                                      <Play className="w-3.5 h-3.5 fill-white" />
+                                    </button>
+                                  )}
+
+                                  {/* Edit */}
+                                  <button
+                                    onClick={() => {
+                                      if (canManage) {
+                                        setSelectedPlanForEdit(plan);
+                                        setIsTreatmentPlanModalOpen(true);
+                                      } else {
+                                        showToast('สิทธิ์ไม่เพียงพอ: สามารถแก้ไขได้เฉพาะตารางของคนไข้ที่ตนเองดูแลเท่านั้น');
+                                      }
+                                    }}
+                                    disabled={!canManage}
+                                    className={`p-1.5 rounded-lg border transition ${
+                                      canManage
+                                        ? 'border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 cursor-pointer'
+                                        : 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50'
+                                    }`}
+                                    title={canManage ? 'แก้ไขตารางฝึก' : 'แก้ไขได้เฉพาะคนไข้ที่ตนเองดูแล'}
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  {/* Delete */}
+                                  <button
+                                    onClick={() => {
+                                      if (canManage) {
+                                        setDeletingPlan(plan);
+                                      } else {
+                                        showToast('สิทธิ์ไม่เพียงพอ: สามารถลบได้เฉพาะตารางของคนไข้ที่ตนเองดูแลเท่านั้น');
+                                      }
+                                    }}
+                                    disabled={!canManage}
+                                    className={`p-1.5 rounded-lg border transition ${
+                                      canManage
+                                        ? 'border-slate-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 cursor-pointer'
+                                        : 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50'
+                                    }`}
+                                    title={canManage ? 'ลบตารางฝึกกายภาพ' : 'ลบได้เฉพาะคนไข้ที่ตนเองดูแล'}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
@@ -2664,6 +3344,49 @@ export const HospitalPortal: React.FC<HospitalPortalProps> = ({
         variant="warning"
         iconType="reset"
         onConfirm={handleResetSettingsConfirm}
+      />
+
+      {/* ==================================================================== */}
+      {/* 19. ASSIGN & EDIT TREATMENT PLAN MODAL (Tab 3: schedules)            */}
+      {/* ==================================================================== */}
+      <EditTreatmentPlanModal
+        isOpen={isTreatmentPlanModalOpen}
+        onClose={() => {
+          setIsTreatmentPlanModalOpen(false);
+          setSelectedPlanForEdit(null);
+        }}
+        plan={selectedPlanForEdit}
+        patients={users}
+        therapists={therapists}
+        exercises={exercises}
+        currentRole={currentRole}
+        currentUserId={currentUserId}
+        currentUserName={currentUser?.name || 'เจ้าหน้าที่'}
+        onSavePlan={(planData) => {
+          saveTreatmentPlan(planData);
+        }}
+        onSuccessToast={showToast}
+      />
+
+      {/* ==================================================================== */}
+      {/* 20. CONFIRM DELETE TREATMENT PLAN MODAL                              */}
+      {/* ==================================================================== */}
+      <ConfirmActionModal
+        isOpen={Boolean(deletingPlan)}
+        onClose={() => setDeletingPlan(null)}
+        title="ยืนยันการลบตารางฝึกกายภาพ"
+        message={`ต้องการลบตารางฝึกกายภาพของ ${deletingPlan?.patientName} (${deletingPlan?.patientCode}) ใช่หรือไม่?`}
+        detail="เมื่อลบแล้ว รายการท่าทางที่มอบหมายในตารางนี้จะถูกยกเลิก แต่ประวัติข้อมูลคนไข้เดิมจะยังคงอยู่"
+        confirmLabel="ยืนยันการลบตาราง"
+        variant="danger"
+        iconType="warning"
+        onConfirm={() => {
+          if (deletingPlan) {
+            deleteTreatmentPlan(deletingPlan.id);
+            showToast(`ลบตารางฝึกกายภาพของ ${deletingPlan.patientName} เรียบร้อยแล้ว`);
+            setDeletingPlan(null);
+          }
+        }}
       />
     </div>
   );

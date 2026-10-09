@@ -485,7 +485,55 @@ const INITIAL_TREATMENT_PLANS: TreatmentPlan[] = [
     createdAt: '2026-02-06',
     status: 'active',
   },
+  {
+    id: 3,
+    patientId: 21,
+    patientName: 'นายวิชัย แก้วมณี',
+    patientCode: 'P-0021',
+    therapistId: 1,
+    therapistName: 'กภ. ธนากร วงศ์สวัสดิ์',
+    diagnosis: 'ปวดหลังส่วนล่างเรื้อรัง (Chronic Low Back Pain)',
+    targetJoint: 'กระดูกสันหลังส่วนเอวและสะโพก (Lumbar & Hips)',
+    assignedExercises: [
+      { exerciseSlug: 'stretch_side_bend', exerciseName: 'เอียงตัวยืดสีข้าง', sets: 3, reps: 6, holdSeconds: 12, difficulty: 'beginner' },
+      { exerciseSlug: 'stretch_torso_twist', exerciseName: 'บิดลำตัวคลายหลัง', sets: 3, reps: 6, holdSeconds: 10, difficulty: 'beginner' },
+      { exerciseSlug: 'stretch_piriformis_seated', exerciseName: 'ยืดสะโพกบนเก้าอี้', sets: 2, reps: 5, holdSeconds: 15, difficulty: 'beginner' },
+    ],
+    clinicalNotes: 'นั่งตัวตรงขณะฝึก หลีกเลี่ยงการก้มตัวยกของหนัก แนะนำยืดเหยียดระหว่างวันทำงาน',
+    createdAt: '2026-02-10',
+    status: 'active',
+  },
+  {
+    id: 4,
+    patientId: 'p_p3059',
+    patientName: 'PJ',
+    patientCode: 'P-3059',
+    therapistId: 1,
+    therapistName: 'กภ. ธนากร วงศ์สวัสดิ์',
+    diagnosis: 'ออฟฟิศซินโดรมและกล้ามเนื้อคอบ่าตึง (Cervicogenic Muscle Strain)',
+    targetJoint: 'กระดูกคอและสะบัก (Cervical Spine & Trapezius)',
+    assignedExercises: [
+      { exerciseSlug: 'stretch_neck_lateral', exerciseName: 'ยืดคอด้านข้าง', sets: 3, reps: 5, holdSeconds: 15, difficulty: 'beginner' },
+      { exerciseSlug: 'stretch_neck_flexion', exerciseName: 'ก้มคอยืดท้ายทอย', sets: 3, reps: 5, holdSeconds: 15, difficulty: 'beginner' },
+      { exerciseSlug: 'stretch_shoulder_cross', exerciseName: 'ยืดไหล่ข้ามอก', sets: 2, reps: 5, holdSeconds: 15, difficulty: 'beginner' },
+    ],
+    clinicalNotes: 'ผ่อนคลายกล้ามเนื้อคอ ไม่เกร็งยกสะบัก พักสายตาและปรับความสูงหน้าจอคอมพิวเตอร์',
+    createdAt: '2026-02-12',
+    status: 'active',
+  },
 ];
+
+const getStoredTreatmentPlans = (): TreatmentPlan[] => {
+  try {
+    const raw = localStorage.getItem('strongcare_hospital_treatment_plans');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {}
+  return INITIAL_TREATMENT_PLANS;
+};
+
 
 const INITIAL_LOGS: ActivityLog[] = [
   {
@@ -646,7 +694,7 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
   users: INITIAL_USERS,
   therapists: INITIAL_THERAPISTS,
   exercises: INITIAL_EXERCISES,
-  treatmentPlans: INITIAL_TREATMENT_PLANS,
+  treatmentPlans: getStoredTreatmentPlans(),
   activityLogs: INITIAL_LOGS,
   bannedDevices: ['Linux / Curl Automation Client', 'Unknown Android Emulator #99'],
   bannedIps: ['198.51.100.44', '203.0.113.19'],
@@ -1010,11 +1058,15 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
   saveTreatmentPlan: (planData) => {
     const now = new Date().toISOString().split('T')[0];
     if (planData.id) {
-      set((state) => ({
-        treatmentPlans: state.treatmentPlans.map((p) =>
+      set((state) => {
+        const updated = state.treatmentPlans.map((p) =>
           p.id === planData.id ? { ...p, ...planData, updatedAt: now } : p
-        ),
-      }));
+        );
+        try {
+          localStorage.setItem('strongcare_hospital_treatment_plans', JSON.stringify(updated));
+        } catch (e) {}
+        return { treatmentPlans: updated };
+      });
       get().addActivityLog('อัปเดตแผนการรักษา', 'TREATMENT', `อัปเดตแผนการรักษาของ ${planData.patientName}`);
     } else {
       const newId = Math.max(0, ...get().treatmentPlans.map((p) => typeof p.id === 'number' ? p.id : 0)) + 1;
@@ -1023,15 +1075,25 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
         id: newId,
         createdAt: now,
       };
-      set((state) => ({ treatmentPlans: [newPlan, ...state.treatmentPlans] }));
+      set((state) => {
+        const updated = [newPlan, ...state.treatmentPlans];
+        try {
+          localStorage.setItem('strongcare_hospital_treatment_plans', JSON.stringify(updated));
+        } catch (e) {}
+        return { treatmentPlans: updated };
+      });
       get().addActivityLog('สร้างแผนการรักษาใหม่', 'TREATMENT', `สร้างแผนการรักษาให้ ${planData.patientName}`);
     }
   },
 
   deleteTreatmentPlan: (id) => {
-    set((state) => ({
-      treatmentPlans: state.treatmentPlans.filter((p) => p.id !== id),
-    }));
+    set((state) => {
+      const updated = state.treatmentPlans.filter((p) => p.id !== id);
+      try {
+        localStorage.setItem('strongcare_hospital_treatment_plans', JSON.stringify(updated));
+      } catch (e) {}
+      return { treatmentPlans: updated };
+    });
     get().addActivityLog('ลบแผนการรักษา', 'TREATMENT', `ลบแผนการรักษา ID: ${id}`);
   },
 
