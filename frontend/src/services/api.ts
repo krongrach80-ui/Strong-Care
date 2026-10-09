@@ -373,32 +373,26 @@ export const api = {
 
     if (supabaseService.isConfigured()) {
       try {
-        const pName = (payload.name || '').trim();
-        let existingPatient: any = null;
+        let targetPatient: any = null;
 
-        // ค้นหาว่ามีคนไข้อยู่แล้วหรือไม่ เพื่อไม่สร้างข้อมูลซ้ำ
+        // ถ้ามีการระบุ patient_code มาเฉพาะเจาะจง ให้อัปเดตคนไข้คนนั้น
         if (payload.patient_code) {
-          existingPatient = await supabaseService.findPatientByCode(payload.patient_code);
-        }
-        if (!existingPatient && pName) {
-          const all = await supabaseService.fetchPatients();
-          existingPatient = all.find(
-            (p) => p.full_name && p.full_name.trim().toLowerCase() === pName.toLowerCase()
-          );
+          targetPatient = await supabaseService.findPatientByCode(payload.patient_code);
         }
 
-        if (existingPatient) {
+        if (targetPatient) {
           enrolledPatient = {
-            id: existingPatient.id,
-            patient_code: existingPatient.patient_code,
-            name: existingPatient.full_name,
-            age: existingPatient.age,
-            gender: existingPatient.gender,
+            id: targetPatient.id,
+            patient_code: targetPatient.patient_code,
+            name: targetPatient.full_name,
+            age: targetPatient.age,
+            gender: targetPatient.gender,
           };
           if (rawVectors.length > 0) {
-            await supabaseService.saveFaceEmbeddings(existingPatient.id, rawVectors).catch(() => {});
+            await supabaseService.saveFaceEmbeddings(targetPatient.id, rawVectors).catch(() => {});
           }
         } else {
+          // สร้างข้อมูลคนไข้ใหม่ลงตาราง patients เสมอ
           const pCode = payload.patient_code || `P-${Math.floor(1000 + Math.random() * 9000)}`;
           const created = await supabaseService.createPatient({
             patient_code: pCode,
@@ -486,8 +480,8 @@ export const api = {
       } catch {}
     }
 
-    // 2. ตรวจสอบเปรียบเทียบเวกเตอร์ด้วย Cosine Similarity ใน faceRegistryService
-    const matchRes = faceRegistryService.findBestMatch(embedding, 0.76);
+    // 2. ตรวจสอบเปรียบเทียบเวกเตอร์ด้วย Dual-Metric ความแม่นยำสูง (Cosine >= 0.88, Distance <= 0.48)
+    const matchRes = faceRegistryService.findBestMatch(embedding, 0.88, 0.48);
 
     if (matchRes.match && matchRes.bestProfile) {
       const p = matchRes.bestProfile;
@@ -531,14 +525,14 @@ export const api = {
       }
     }
 
-    // 4. ไม่พบใบหน้าที่ตรงกัน (ห้ามฮาร์ดโค้ดเป็นสมชาย)
+    // 4. ไม่พบใบหน้าที่ตรงกัน หรือคะแนนไม่ผ่านเกณฑ์ความปลอดภัย
     return {
       status: 'failed',
       match: false,
       similarity: matchRes.similarity,
       similarity_percent: matchRes.similarityPercent,
-      message: matchRes.similarity > 0.45
-        ? `ความคล้ายคลึงใบหน้า (${matchRes.similarityPercent}%) ยังไม่ถึงเกณฑ์ความปลอดภัย กรุณาจัดตำแหน่งใบหน้าให้อยู่ในกรอบ หรือเข้าสู่ระบบด้วย PIN`
+      message: matchRes.similarity > 0.65
+        ? `ความคล้ายคลึงใบหน้า (${matchRes.similarityPercent}%) ไม่ถึงเกณฑ์ความปลอดภัย 88% ระบบปฏิเสธเพื่อป้องกันบุคคลอื่นเข้าแทน`
         : 'ไม่พบข้อมูลใบหน้าที่ตรงกับระบบ กรุณาสมัครสมาชิกก่อน หรือเข้าสู่ระบบด้วย PIN',
     };
   },

@@ -892,6 +892,9 @@ export const supabaseService = {
 
     // 1. ลองบันทึกลงตาราง face_embeddings
     try {
+      // ลบเวกเตอร์เดิมของคนไข้คนนี้ก่อน เพื่อให้อัปเดตเป็นเวกเตอร์ล่าสุด
+      await supabase.from('face_embeddings').delete().eq('patient_id', patientId);
+
       const rows = embeddings.map((emb, idx) => ({
         patient_id: patientId,
         embedding: emb,

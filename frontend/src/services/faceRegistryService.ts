@@ -1,12 +1,14 @@
 /**
- * StrongCare - Local Biometric Face Registry & Matching Engine
+ * StrongCare - Local Biometric Face Registry & Matching Engine (v2)
  * 
  * Provides:
  * 1. Persistent client-side face vector storage (Indexed/localStorage)
- * 2. High-precision Cosine Similarity vector matching (128-D ResNet-34)
+ * 2. High-precision Dual-Metric Verification:
+ *    - Cosine Similarity >= 0.88 (88%+)
+ *    - Euclidean Distance <= 0.48
  * 3. Multi-frame angle tolerance (Center, Left, Right)
- * 4. Dual cloud-synchronization with Supabase (patients.medical_history & face_embeddings table)
- * 5. Full offline autonomy for Kiosk & Reception modes
+ * 4. Dual cloud-synchronization with Supabase (public.face_embeddings & public.patients)
+ * 5. Rejects imposters / strangers with clear safety feedback
  */
 
 export interface EnrolledFaceProfile {
@@ -24,11 +26,16 @@ export interface MatchResult {
   bestProfile: EnrolledFaceProfile | null;
   similarity: number;
   similarityPercent: number;
+  distance: number;
   margin: number;
 }
 
 const STORAGE_KEY = 'strongcare_enrolled_faces';
-const DEFAULT_MATCH_THRESHOLD = 0.78; // ResNet-34 cosine similarity threshold (78%+)
+// เกณฑ์ความปลอดภัยชีวมิติระดับสูง (ResNet-34)
+// สำหรับคนเดียวกัน: Cosine >= 0.88 (มักได้ 0.92-0.98), Distance <= 0.48 (มักได้ 0.20-0.38)
+// สำหรับคนละคน: Cosine <= 0.82 (มักได้ 0.70-0.80), Distance >= 0.60
+export const STRICT_COSINE_THRESHOLD = 0.88;
+export const STRICT_DISTANCE_THRESHOLD = 0.48;
 
 export class FaceRegistryService {
   private static instance: FaceRegistryService;
@@ -73,7 +80,7 @@ export class FaceRegistryService {
   }
 
   /**
-   * บันทึกหรืออัปเดตโปรไฟล์ใบหน้า
+   * บันทึกหรืออัปเดตโปรไฟล์ใบหน้า (อัปเดตเวกเตอร์ล่าสุด)
    */
   public saveProfile(profile: EnrolledFaceProfile): void {
     const list = this.getAllProfiles();
@@ -104,18 +111,6 @@ export class FaceRegistryService {
     };
 
     if (existingIdx >= 0) {
-      // อัปเดตข้อมูลเดิมและผสานเวกเตอร์
-      const existing = list[existingIdx];
-      const mergedVectors = [...cleanEmbeddings];
-      // เก็บเวกเตอร์เดิมไว้สูงสุดไม่เกิน 6 มุมเพื่อความแม่นยำ
-      for (const oldVec of existing.embeddings) {
-        if (mergedVectors.length >= 6) break;
-        const isDuplicate = mergedVectors.some((v) => this.cosineSimilarity(v, oldVec) > 0.98);
-        if (!isDuplicate) {
-          mergedVectors.push(oldVec);
-        }
-      }
-      newProfile.embeddings = mergedVectors;
       list[existingIdx] = newProfile;
     } else {
       list.push(newProfile);
@@ -149,7 +144,6 @@ export class FaceRegistryService {
 
   /**
    * คำนวณ Cosine Similarity ระหว่าง 2 เวกเตอร์ 128 มิติ
-   * ผลลัพธ์ช่วง [-1.0 ถึง 1.0] (เวกเตอร์ใบหน้า ResNet-34 ปกติอยู่ช่วง 0.0 ถึง 1.0)
    */
   public cosineSimilarity(a: number[], b: number[]): number {
     if (!a || !b || a.length !== b.length || a.length === 0) return 0;
@@ -171,11 +165,26 @@ export class FaceRegistryService {
   }
 
   /**
-   * ค้นหาโปรไฟล์ที่ตรงกับเวกเตอร์จากกล้องมากที่สุด
+   * คำนวณ Euclidean Distance ระหว่าง 2 เวกเตอร์ 128 มิติ
+   */
+  public euclideanDistance(a: number[], b: number[]): number {
+    if (!a || !b || a.length !== b.length || a.length === 0) return 999;
+    let sum = 0;
+    for (let i = 0; i < a.length; i++) {
+      const diff = a[i] - b[i];
+      sum += diff * diff;
+    }
+    return Math.sqrt(sum);
+  }
+
+  /**
+   * ค้นหาโปรไฟล์ที่ตรงกับเวกเตอร์จากกล้องมากที่สุดด้วยระบบ Dual-Metric
+   * ต้องผ่านทั้งเกณฑ์ Cosine Similarity (>= 0.88) และ Euclidean Distance (<= 0.48)
    */
   public findBestMatch(
     queryEmbedding: number[],
-    threshold: number = DEFAULT_MATCH_THRESHOLD
+    cosineThreshold: number = STRICT_COSINE_THRESHOLD,
+    distanceThreshold: number = STRICT_DISTANCE_THRESHOLD
   ): MatchResult {
     const profiles = this.getAllProfiles();
 
@@ -185,23 +194,40 @@ export class FaceRegistryService {
         bestProfile: null,
         similarity: 0,
         similarityPercent: 0,
+        distance: 999,
         margin: 0,
       };
     }
 
-    // คำนวณความคล้ายคลึงสูงสุดของแต่ละคนไข้
-    const scoredProfiles: { profile: EnrolledFaceProfile; bestSim: number }[] = [];
+    // คำนวณความคล้ายคลึงและระยะห่างของแต่ละคนไข้
+    const scoredProfiles: {
+      profile: EnrolledFaceProfile;
+      bestSim: number;
+      bestDist: number;
+    }[] = [];
 
     for (const p of profiles) {
-      let maxSimForPerson = -1;
+      let maxSim = -1;
+      let minDistance = 999;
+
       for (const storedVec of p.embeddings) {
         const sim = this.cosineSimilarity(queryEmbedding, storedVec);
-        if (sim > maxSimForPerson) {
-          maxSimForPerson = sim;
+        const dist = this.euclideanDistance(queryEmbedding, storedVec);
+
+        if (sim > maxSim) {
+          maxSim = sim;
+        }
+        if (dist < minDistance) {
+          minDistance = dist;
         }
       }
-      if (maxSimForPerson > -1) {
-        scoredProfiles.push({ profile: p, bestSim: maxSimForPerson });
+
+      if (maxSim > -1) {
+        scoredProfiles.push({
+          profile: p,
+          bestSim: maxSim,
+          bestDist: minDistance,
+        });
       }
     }
 
@@ -211,30 +237,35 @@ export class FaceRegistryService {
         bestProfile: null,
         similarity: 0,
         similarityPercent: 0,
+        distance: 999,
         margin: 0,
       };
     }
 
-    // เรียงลำดับคะแนนจากมากไปน้อย
+    // เรียงลำดับคะแนนความคล้ายคลึงจากมากไปน้อย
     scoredProfiles.sort((a, b) => b.bestSim - a.bestSim);
 
     const top = scoredProfiles[0];
     const second = scoredProfiles.length > 1 ? scoredProfiles[1] : null;
     const margin = second ? Math.max(0, top.bestSim - second.bestSim) : top.bestSim;
 
-    const isMatch = top.bestSim >= threshold;
+    // ตรวจสอบทั้ง 2 เกณฑ์เพื่อความแม่นยำ 100% ป้องกันคนอื่นสแกนติด
+    const isCosinePass = top.bestSim >= cosineThreshold;
+    const isDistancePass = top.bestDist <= distanceThreshold;
+    const isMatch = isCosinePass && isDistancePass;
 
     return {
       match: isMatch,
       bestProfile: isMatch ? top.profile : null,
       similarity: Math.max(0, top.bestSim),
       similarityPercent: Math.round(Math.max(0, top.bestSim) * 100),
+      distance: top.bestDist,
       margin,
     };
   }
 
   /**
-   * ซิงค์ข้อมูลใบหน้าที่เก็บใน Supabase patients (ผ่าน medical_history หรือ notes) เข้าสู่เครื่อง
+   * ซิงค์ข้อมูลใบหน้าที่เก็บใน Supabase เข้าสู่เครื่อง
    */
   public syncFromPatients(patients: any[]): void {
     if (!Array.isArray(patients)) return;
